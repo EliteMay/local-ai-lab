@@ -1,0 +1,28 @@
+name: test
+
+on:
+  push:
+    branches:
+      - main
+      - implementation/**
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  node-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Run tests
+        run: npm test
+      - name: Syntax check
+        shell: bash
+        run: |
+          find src tests -type f -name '*.mjs' -print0 | xargs -0 -n1 node --check
