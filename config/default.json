@@ -11,6 +11,9 @@
     "maxModelCalls": 20,
     "maxRetriesPerTask": 1
   },
+  "orchestrator": {
+    "maxReviewPasses": 2
+  },
   "context": {
     "maxFiles": 12,
     "maxChars": 32000,
