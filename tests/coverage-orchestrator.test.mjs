@@ -229,9 +229,6 @@ test("resume refuses a changed batch layout even when repository files are uncha
     ...config,
     coverage: { ...config.coverage, maxBatchChars: 1000 }
   };
-  const second = new CoverageAuditOrchestrator({ changedConfig, modelClient: new CoverageFakeModel(), runStore: store });
-  void second;
-
   const changed = new CoverageAuditOrchestrator({ config: changedConfig, modelClient: new CoverageFakeModel(), runStore: store });
   await assert.rejects(
     () => changed.run({
