@@ -41,7 +41,7 @@ export class LMStudioClient {
     return data.data ?? [];
   }
 
-  async chat({ system, user, temperature = this.temperature, json = false }) {
+  async chat({ system, user, temperature = this.temperature, json = false, jsonSchema = null }) {
     const payload = {
       model: this.model,
       temperature,
@@ -52,7 +52,13 @@ export class LMStudioClient {
     };
 
     if (json) {
-      payload.response_format = { type: "json_object" };
+      payload.response_format = {
+        type: "json_schema",
+        json_schema: {
+          name: "structured_response",
+          schema: jsonSchema ?? { type: "object" }
+        }
+      };
     }
 
     const data = await this.#request("/chat/completions", {
