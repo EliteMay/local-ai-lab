@@ -88,7 +88,6 @@ export class LMStudioClient {
         type: "json_schema",
         json_schema: {
           name: "structured_response",
-          strict: true,
           schema: jsonSchema ?? { type: "object" }
         }
       };
