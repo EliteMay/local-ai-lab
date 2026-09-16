@@ -1,12 +1,36 @@
 # Local AI Lab
 
-ローカルLLMを使ったAIエージェント、マルチエージェント、RAG、長期記憶、モデル比較、GitHub連携などを研究・実装・評価するための親Repositoryです。
+ローカルLLMを使ったAIエージェント、マルチエージェント、Repository監査、RAG、長期記憶、モデル比較、GitHub連携などを研究・実装・評価するための親Repositoryです。
 
-## 最初の目標
+## 目的
 
-最初の主要成果物は **AI Company v1** です。
+最初の主要成果物は **AI Company** です。
 
-同じローカルLLMを複数の役職として使い、対象RepositoryをRead-onlyで調査・監査し、必要に応じてAgent同士がTask Broker経由で作業を委任しながら、Evidence付きの改善案を作ります。
+対象RepositoryをRead-onlyで監査し、Evidence付きの改善案を作ります。初期v1では複数RoleをTask Broker経由で動かす方式を実装しました。最初の実機Qwen3-8B検証を受け、v1.1では **監査可能な全Project Text Chunkを漏れなく処理するWhole Repository Audit** を優先モードとして追加しています。
+
+```text
+Whole Repository Audit v1.1
+
+Repository
+  ↓
+Deterministic Inventory
+  ↓
+全Auditable Text Fileをline-preserving chunk化
+  ↓
+Bounded Batchを全件処理
+  ↓
+BatchごとにCheckpoint保存
+  ↓
+Coverage Ledger
+  ↓
+Evidence-backed Findings
+  ↓
+Improvement Planner
+  ↓
+Reviewer
+```
+
+従来のBrokered AI Companyも比較研究用に残します。
 
 ```text
 CEO（人間）
@@ -24,11 +48,13 @@ Secretary / Run Store
 Run / Task / Evidence記録
 ```
 
-v1では対象Repositoryの自動修正・git commit・git pushは行いません。
+対象Repositoryの自動修正・git commit・git pushは行いません。
 
 ## Source of Truth
 
-現在の正式要件は [`REQUIREMENTS.md`](REQUIREMENTS.md) を参照してください。
+- 基本要件: [`REQUIREMENTS.md`](REQUIREMENTS.md)
+- Whole Repository Audit v1.1追加Contract: [`docs/ai-company-v1.1-contract.md`](docs/ai-company-v1.1-contract.md)
+- 実機失敗ログからのResearch: [`docs/ai-company-v1.1-research.md`](docs/ai-company-v1.1-research.md)
 
 Web / Electron制作に関係する共通Ruleは `EliteMay/web-project-guide` のCurrent `main` をSource of Truthとして扱います。
 
@@ -40,43 +66,59 @@ Web / Electron制作に関係する共通Ruleは `EliteMay/web-project-guide` �
 - Qwen3-8B
 - 初期対象: PC上のローカルGit Repository
 
-## 現在の実装状態
+## 現在の実装
 
-AI Company v1 のRead-only FoundationとE2E Orchestratorがあります。
-
-現在実装済み:
+主な機能:
 
 - LM Studio OpenAI互換API接続
-- 同じQwen3-8Bを役職別Promptで利用
-- Directorによる初期Task委任
-- AgentからのStructured Delegation Request
-- Deterministic Task BrokerによるRoute / Depth / Task数 / Model Call数 / Retry制御
-- Auditor / Researcher / Improvement Planner / Reviewerの順次実行
-- Planner / Reviewerを必ず通す安定した外側Pipeline
-- 対象Repository専用Read-only Reader
-- `.env` / private key / credential系Fileの基本的なModel Context除外
-- Bounded Repository Context
-- JSON Schema相当の出力Validationと1回だけの修正再試行
-- Local Run Evidence保存
-- Node built-in test / GitHub Actions
+- LM Studio native model details確認
+- concrete JSON SchemaによるStructured Output制約
+- `finish_reason = length` をContext/Output Budget Failureとして識別
+- Role別Thinking / Output Token方針
+- Read-only RepoReader
+- Credential / `.env` / private key系Fileの除外
+- Whole Repository Coverage Plan
+- line番号を保持したChunk分割
+- 全Auditable ChunkをBounded Batchで処理
+- BatchごとのCheckpoint保存
+- Repository fingerprint付きResume
+- Coverage Ledger
+- Planner / Reviewerによる最終統合
+- 従来のDirector / Task Broker / Agent delegation実験モード
+- Node built-in tests / GitHub Actions
 
-現在未実装:
+現在未実装または今後の研究対象:
 
 - 外部Web検索 / Web Research Tool
 - GitHub Read-only direct mode
-- Published Evidenceの自動連携
+- 巨大Finding集合向けの階層Synthesis
+- Speculative Decoding Benchmark
+- Model別Benchmark
 - Engineer Agent / 自動修正
-- Single / Fixed Pipeline / Brokered Multi-Agentの本格Benchmark
+- Published Evidenceの自動連携
 
-Researcherは現段階では**Repository内Evidenceの追加確認だけ**を行い、外部Web調査を行ったと偽らないContractになっています。
+## Coverageの意味
+
+`100% Coverage` は **監査対象として認定した全Text Chunkを処理済み** という意味です。
+
+以下を無理にLLMへ渡す意味ではありません。
+
+- `.git` / `node_modules` / `runtime-data` / `dist` / `build` など設定上の除外Directory
+- `.env` / credential / private key等のSensitive File
+- Binary File
+- 現在の安全Read Limitを超えるFile
+
+除外はCoverage Planへ理由付きで記録します。Inventory自体が上限に達した場合は、100%と偽らずRunを停止します。
 
 ## コマンド
 
-### LM Studio接続確認
+### LM Studio接続・Load設定確認
 
 ```powershell
 npm run doctor
 ```
+
+Model IDだけでなく、取得可能な場合はLoaded Context Length / Max Concurrent Predictions / Flash Attentionも表示します。
 
 ### RepositoryをRead-only確認
 
@@ -84,35 +126,35 @@ npm run doctor
 npm run inspect -- --repo "D:\path\to\repo"
 ```
 
-Text検索もできます。
+Text検索:
 
 ```powershell
 npm run inspect -- --repo "D:\path\to\repo" --search "TODO"
 ```
 
-### AI Companyを実行
+### 推奨: Whole Repository Coverage Audit
 
-LM Studioで `qwen/qwen3-8b` をロードしてから実行します。
+LM StudioでConfigured Modelをロードしてから実行します。
+
+```powershell
+npm run coverage -- --repo "D:\path\to\repo" --goal "このRepositoryの全監査対象ファイルを読み、改善点と改善方法をEvidence付きで提案する"
+```
+
+実行中はBatch単位で進捗、所要時間、利用可能なToken Usageを表示します。各Batch完了後にCheckpointを保存します。
+
+途中失敗したRunは、表示されたRun IDを使って同じRepository fingerprintなら再開できます。
+
+```powershell
+npm run coverage -- --repo "D:\path\to\repo" --goal "このRepositoryの全監査対象ファイルを読み、改善点と改善方法をEvidence付きで提案する" --run-id "run-..." --resume
+```
+
+### 比較研究用: Brokered AI Company
 
 ```powershell
 npm run company -- --repo "D:\path\to\repo" --goal "このRepositoryの改善点と改善方法をEvidence付きで監査する"
 ```
 
-実行結果はDefaultで次へ保存されます。
-
-```text
-runtime-data/
-└─ runs/
-   └─ <run-id>/
-      ├─ run.json
-      ├─ tasks.json
-      ├─ findings.json
-      ├─ research.json
-      ├─ review.json
-      └─ summary.md
-```
-
-`runtime-data/` はGit管理対象外です。
+これはDirector / Delegation / Planner / Reviewerを含むv1方式の比較用モードです。Whole Repository Coverageを保証する主経路にはしません。
 
 ### Test
 
@@ -120,25 +162,44 @@ runtime-data/
 npm test
 ```
 
+## Runtime Evidence
+
+Default保存先:
+
+```text
+runtime-data/
+└─ runs/
+   └─ <run-id>/
+      ├─ run.json
+      ├─ coverage-plan.json
+      ├─ batch-results.json
+      ├─ coverage.json
+      ├─ findings.json
+      ├─ synthesis.json
+      ├─ review.json
+      └─ summary.md
+```
+
+Brokered v1 modeでは`tasks.json` / `research.json`等も使用します。`runtime-data/` はGit管理対象外です。
+
 ## 安全境界
 
 - 対象Repository用ReaderにはCreate / Update / Delete APIを持たせない
-- Agentが他Agentを直接起動せず、Task Brokerへ委任要求を返す
+- Repository内容はUntrusted Dataとして扱う
+- 明らかなCredential FileをModel Contextへ入れない
 - Model outputをPermission判定として使わない
-- Repository内容はUntrusted DataとしてPromptへ渡す
-- 明らかなCredential FileはModel Contextへ入れない
-- Agent間の長い自由会話ではなくStructured Resultを引き継ぐ
-- Task / Delegation / Model Callには上限を設ける
+- Whole Repository AuditのScheduling / Coverage / CheckpointはDeterministicなNode.js側で管理する
+- Brokered modeではAgentが他Agentを直接起動せずTask Brokerへ委任要求を返す
+- Structured Resultを引き継ぐ
+- Context/Output上限による途中切れを成功扱いしない
 - Audit結果は命令ではなくEvidence / Proposalとして扱う
+- Audit EvidenceをCurrent Repository / Requirementsの第二Source of Truthにしない
 
-## 方針
+## 研究方針
 
-- Agentの自由な委任要求は許可する
-- 実際のTask配送・Permission・Loop防止はDeterministicなTask Brokerが管理する
-- 対象Repositoryはv1ではRead-only
-- Agent間の引き継ぎはStructured Dataを基本とする
-- Audit結果はCurrent Repository / Requirementsの第二Source of Truthにしない
-- Local保存をDefaultとし、外部Publishは明示操作で行う
-- Single Agent / Fixed Pipeline / Brokered Multi-Agentを実測比較する
-
-詳細は [`REQUIREMENTS.md`](REQUIREMENTS.md) を参照してください。
+- 全ファイル監査要件を、RAGによる一部File選択へ置き換えない
+- 大規模Repositoryは全件Batch Scan + Hierarchical Aggregationで扱う
+- RetrievalはCross-file再確認の補助として将来利用できるがCoverageの代替にはしない
+- Agent数が多いほど良いと仮定しない
+- Single / Fixed Pipeline / Brokered / Full Coverageを実測比較する
+- 速度改善はCoverageやEvidence品質を落として達成しない

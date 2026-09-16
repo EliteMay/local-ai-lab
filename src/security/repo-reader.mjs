@@ -61,20 +61,17 @@ export class RepoReader {
     return true;
   }
 
-  async listFiles() {
+  async listFilesDetailed() {
     await this.assertRepositoryExists();
     const files = [];
+    let truncated = false;
 
     const walk = async (directory) => {
-      if (files.length >= this.maxFiles) {
-        return;
-      }
-
+      if (truncated) return;
       const entries = await readdir(directory, { withFileTypes: true });
+
       for (const entry of entries) {
-        if (files.length >= this.maxFiles) {
-          break;
-        }
+        if (truncated) break;
         if (entry.isSymbolicLink()) {
           continue;
         }
@@ -91,15 +88,26 @@ export class RepoReader {
           await walk(absolute);
         } else if (entry.isFile()) {
           const relativePath = relative(this.root, absolute).split(sep).join("/");
-          if (!this.#isBlocked(relativePath)) {
-            files.push(relativePath);
+          if (this.#isBlocked(relativePath)) {
+            continue;
           }
+          if (files.length >= this.maxFiles) {
+            truncated = true;
+            break;
+          }
+          files.push(relativePath);
         }
       }
     };
 
     await walk(this.root);
-    return files;
+    files.sort((a, b) => a.localeCompare(b));
+    return { files, truncated };
+  }
+
+  async listFiles() {
+    const inventory = await this.listFilesDetailed();
+    return inventory.files;
   }
 
   async readTextFile(relativePath) {

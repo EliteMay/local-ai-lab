@@ -3,6 +3,7 @@ import { LMStudioClient } from "./model/lm-studio-client.mjs";
 import { RepoReader } from "./security/repo-reader.mjs";
 import { TaskBroker } from "./core/task-broker.mjs";
 import { AICompanyOrchestrator } from "./core/orchestrator.mjs";
+import { CoverageAuditOrchestrator } from "./core/coverage-orchestrator.mjs";
 
 async function loadConfig() {
   const url = new URL("../config/default.json", import.meta.url);
@@ -14,8 +15,12 @@ function getOption(args, name) {
   return index >= 0 ? args[index + 1] : undefined;
 }
 
+function hasFlag(args, name) {
+  return args.includes(name);
+}
+
 function printHelp() {
-  console.log(`local-ai-lab\n\nCommands:\n  doctor\n      Check LM Studio API and configured model.\n\n  inspect --repo <path> [--search <text>]\n      Read-only inspection of a local repository.\n\n  broker-demo\n      Exercise deterministic delegation without calling the model.\n\n  company --repo <path> --goal <text> [--run-id <id>]\n      Run the read-only AI Company orchestration against a local repository.\n      Current phase: repository evidence only; external web research is not implemented yet.\n`);
+  console.log(`local-ai-lab\n\nCommands:\n  doctor\n      Check LM Studio API, loaded model, context length, and parallel setting.\n\n  inspect --repo <path> [--search <text>]\n      Read-only inspection of a local repository.\n\n  broker-demo\n      Exercise deterministic delegation without calling the model.\n\n  company --repo <path> --goal <text> [--run-id <id>]\n      Run the original brokered AI Company orchestration.\n\n  coverage --repo <path> --goal <text> [--run-id <id>] [--resume]\n      Audit every auditable text chunk with checkpoints and an explicit coverage ledger.\n      Use --resume with the same --run-id to continue a partial run when repository fingerprints still match.\n`);
 }
 
 function roleLabel(role) {
@@ -39,6 +44,19 @@ function formatDuration(durationMs) {
   return `${minutes}m ${remainder}s`;
 }
 
+function modelUsageSuffix(meta) {
+  const usage = meta?.usage;
+  if (!usage) return "";
+  const prompt = usage.prompt_tokens;
+  const completion = usage.completion_tokens;
+  const reasoning = meta.reasoningTokens;
+  const parts = [];
+  if (Number.isInteger(prompt)) parts.push(`prompt=${prompt}`);
+  if (Number.isInteger(completion)) parts.push(`completion=${completion}`);
+  if (Number.isInteger(reasoning)) parts.push(`reasoning=${reasoning}`);
+  return parts.length ? ` / ${parts.join(" ")}` : "";
+}
+
 function printCompanyProgress(event) {
   if (event.type === "run_started") {
     console.log(`[AI Company] Run ${event.runId} started`);
@@ -59,6 +77,28 @@ function printCompanyProgress(event) {
   }
 }
 
+function printCoverageProgress(event) {
+  if (event.type === "coverage_run_started") {
+    console.log(`[Coverage] Run ${event.runId} started`);
+    console.log(`[Coverage] Files=${event.auditableFiles} excluded=${event.excludedFiles} chunks=${event.totalChunks} batches=${event.totalBatches}`);
+  } else if (event.type === "coverage_run_resumed") {
+    console.log(`[Coverage] Resume ${event.runId}: ${event.completedBatches}/${event.totalBatches} batches already completed`);
+  } else if (event.type === "coverage_batch_started") {
+    console.log(`[Coverage] START ${event.batchId} / chunks=${event.chunks} / chars=${event.chars}`);
+  } else if (event.type === "coverage_batch_retry") {
+    console.log(`[Coverage] RETRY ${event.batchId}: ${event.error}`);
+  } else if (event.type === "coverage_batch_completed") {
+    console.log(`[Coverage] DONE  ${event.batchId} (${formatDuration(event.durationMs)}) / findings=${event.findings.length}${modelUsageSuffix(event.model)}`);
+  } else if (event.type === "coverage_batch_failed") {
+    console.log(`[Coverage] FAIL  ${event.batchId} (${formatDuration(event.durationMs)}): ${event.error}`);
+  } else if (event.type === "coverage_batch_skipped") {
+    console.log(`[Coverage] SKIP  ${event.batchId} (checkpoint complete)`);
+  } else if (event.type === "coverage_run_completed") {
+    console.log(`[Coverage] Run ${event.status} / coverage=${event.coverage.coveragePercent}% / findings=${event.findings}`);
+    if (event.synthesisError) console.log(`[Coverage] Synthesis note: ${event.synthesisError}`);
+  }
+}
+
 async function doctor(config) {
   const client = new LMStudioClient(config.model);
   const models = await client.listModels();
@@ -70,6 +110,22 @@ async function doctor(config) {
   console.log(`Configured model loaded: ${ids.includes(config.model.model) ? "yes" : "no"}`);
   console.log(`Request timeout: ${Math.round((config.model.timeoutMs ?? 600000) / 1000)} seconds`);
   console.log(`Max output tokens: ${config.model.maxTokens ?? 2048}`);
+
+  try {
+    const details = await client.listModelDetails();
+    const model = details.find((item) => item.key === config.model.model || item.loaded_instances?.some((instance) => instance.id === config.model.model));
+    const instance = model?.loaded_instances?.find((item) => item.id === config.model.model) ?? model?.loaded_instances?.[0];
+    if (instance?.config) {
+      console.log(`Loaded context length: ${instance.config.context_length ?? "unknown"}`);
+      console.log(`Max concurrent predictions: ${instance.config.parallel ?? "unknown"}`);
+      console.log(`Flash attention: ${instance.config.flash_attention === undefined ? "unknown" : instance.config.flash_attention ? "on" : "off"}`);
+      if ((instance.config.parallel ?? 1) > 1) {
+        console.log(`Audit note: this workflow is sequential; benchmark parallel=1 to reduce unnecessary slot/cache pressure.`);
+      }
+    }
+  } catch (error) {
+    console.log(`Loaded model details: unavailable (${error.message})`);
+  }
 }
 
 async function inspect(config, args) {
@@ -79,14 +135,15 @@ async function inspect(config, args) {
   }
 
   const reader = new RepoReader(repo, config.repoReader);
-  const files = await reader.listFiles();
+  const inventory = typeof reader.listFilesDetailed === "function" ? await reader.listFilesDetailed() : { files: await reader.listFiles(), truncated: false };
   console.log(`Repository: ${repo}`);
-  console.log(`Readable files: ${files.length}`);
-  for (const file of files.slice(0, 30)) {
+  console.log(`Readable candidate files: ${inventory.files.length}`);
+  console.log(`Inventory truncated: ${inventory.truncated ? "yes" : "no"}`);
+  for (const file of inventory.files.slice(0, 30)) {
     console.log(`- ${file}`);
   }
-  if (files.length > 30) {
-    console.log(`... ${files.length - 30} more`);
+  if (inventory.files.length > 30) {
+    console.log(`... ${inventory.files.length - 30} more`);
   }
 
   const query = getOption(args, "--search");
@@ -117,6 +174,14 @@ function brokerDemo(config) {
   console.log(JSON.stringify({ audit, research, snapshot: broker.snapshot() }, null, 2));
 }
 
+async function assertConfiguredModelLoaded(client, config) {
+  const models = await client.listModels();
+  const modelIds = models.map((item) => item.id).filter(Boolean);
+  if (!modelIds.includes(config.model.model)) {
+    throw new Error(`Configured model is not loaded in LM Studio: ${config.model.model}`);
+  }
+}
+
 async function runCompany(config, args) {
   const repo = getOption(args, "--repo");
   const goal = getOption(args, "--goal");
@@ -126,11 +191,7 @@ async function runCompany(config, args) {
   }
 
   const client = new LMStudioClient(config.model);
-  const models = await client.listModels();
-  const modelIds = models.map((item) => item.id).filter(Boolean);
-  if (!modelIds.includes(config.model.model)) {
-    throw new Error(`Configured model is not loaded in LM Studio: ${config.model.model}`);
-  }
+  await assertConfiguredModelLoaded(client, config);
 
   console.log(`AI Company model: ${config.model.model}`);
   console.log(`Per-request timeout: ${Math.round((config.model.timeoutMs ?? 600000) / 1000)}s / max output tokens: ${config.model.maxTokens ?? 2048}`);
@@ -150,6 +211,41 @@ async function runCompany(config, args) {
   console.log(`Evidence: runtime-data/runs/${result.runId}`);
 }
 
+async function runCoverage(config, args) {
+  const repo = getOption(args, "--repo");
+  const goal = getOption(args, "--goal");
+  const runId = getOption(args, "--run-id");
+  const resume = hasFlag(args, "--resume");
+  if (!repo || !goal) {
+    throw new Error("coverage requires --repo <path> and --goal <text>");
+  }
+  if (resume && !runId) {
+    throw new Error("coverage --resume requires --run-id <id>");
+  }
+
+  const client = new LMStudioClient(config.model);
+  await assertConfiguredModelLoaded(client, config);
+  console.log(`Coverage audit model: ${config.model.model}`);
+  console.log(`Batch budget: ${config.coverage?.maxBatchChars ?? 16000} chars / ${config.coverage?.batchMaxTokens ?? 1000} output tokens`);
+
+  const orchestrator = new CoverageAuditOrchestrator({
+    config,
+    modelClient: client,
+    onProgress: printCoverageProgress
+  });
+  const result = await orchestrator.run({ repoPath: repo, goal, runId, resume });
+
+  console.log(`Coverage run: ${result.runId}`);
+  console.log(`Status: ${result.status}`);
+  console.log(`Coverage: ${result.coverage.coveragePercent}% (${result.coverage.completedChunks}/${result.coverage.totalChunks} chunks)`);
+  console.log(`Findings: ${result.findings.length}`);
+  console.log(`Reviewer decision: ${result.reviewer?.result?.decision ?? "none"}`);
+  console.log(`Evidence/checkpoint: runtime-data/runs/${result.runId}`);
+  if (result.status !== "COMPLETED") {
+    console.log(`Resume command: npm run coverage -- --repo "${repo}" --goal "${goal}" --run-id "${result.runId}" --resume`);
+  }
+}
+
 const args = process.argv.slice(2);
 const command = args[0];
 
@@ -165,6 +261,8 @@ try {
     brokerDemo(config);
   } else if (command === "company") {
     await runCompany(config, args);
+  } else if (command === "coverage") {
+    await runCoverage(config, args);
   } else {
     throw new Error(`Unknown command: ${command}`);
   }
