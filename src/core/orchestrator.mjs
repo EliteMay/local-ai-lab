@@ -47,11 +47,16 @@ function isSuccessfulRecord(record) {
 }
 
 export class AICompanyOrchestrator {
-  constructor({ config, modelClient = null, runStore = null } = {}) {
+  constructor({ config, modelClient = null, runStore = null, onProgress = null } = {}) {
     if (!config) throw new Error("config is required");
     this.config = config;
     this.modelClient = modelClient ?? new LMStudioClient(config.model);
     this.runStore = runStore ?? new RunStore(config.runtimeData?.runsRoot ?? "runtime-data/runs");
+    this.onProgress = typeof onProgress === "function" ? onProgress : null;
+  }
+
+  progress(event) {
+    this.onProgress?.({ at: new Date().toISOString(), ...event });
   }
 
   async run({ repoPath, goal, runId = undefined }) {
@@ -81,12 +86,26 @@ export class AICompanyOrchestrator {
       contextCoverage: repositoryContext.coverage
     });
 
+    this.progress({
+      type: "run_started",
+      runId: actualRunId,
+      contextCoverage: repositoryContext.coverage
+    });
+
     const results = [];
     const rejectedDelegations = [];
 
     const executeTask = async (task) => {
       broker.transition(task.id, "RUNNING");
       const runningTask = broker.getTask(task.id);
+      const startedAt = Date.now();
+      this.progress({
+        type: "task_started",
+        taskId: runningTask.id,
+        role: runningTask.assignedTo,
+        objective: runningTask.objective
+      });
+
       try {
         const result = await runner.run({
           task: runningTask,
@@ -110,13 +129,21 @@ export class AICompanyOrchestrator {
 
         for (const delegation of delegationsToApply) {
           try {
-            broker.requestDelegation({
+            const delegatedTask = broker.requestDelegation({
               fromTaskId: runningTask.id,
               to: delegation.to,
               objective: delegation.objective,
               reason: delegation.reason,
               priority: delegation.priority ?? "normal",
               inputs: { source: "model-delegation" }
+            });
+            this.progress({
+              type: "task_delegated",
+              fromTaskId: runningTask.id,
+              fromRole: runningTask.assignedTo,
+              toTaskId: delegatedTask.id,
+              toRole: delegation.to,
+              objective: delegation.objective
             });
           } catch (error) {
             rejectedDelegations.push({ taskId: runningTask.id, delegation, errors: [error.message] });
@@ -127,6 +154,14 @@ export class AICompanyOrchestrator {
         const finalTask = broker.getTask(runningTask.id);
         const record = taskRecord(finalTask, result, null);
         results.push(record);
+        this.progress({
+          type: "task_completed",
+          taskId: finalTask.id,
+          role: finalTask.assignedTo,
+          status: result.status,
+          decision: result.decision ?? null,
+          durationMs: Date.now() - startedAt
+        });
         return record;
       } catch (error) {
         try {
@@ -137,6 +172,13 @@ export class AICompanyOrchestrator {
         const finalTask = broker.getTask(runningTask.id);
         const record = taskRecord(finalTask, null, error.message);
         results.push(record);
+        this.progress({
+          type: "task_failed",
+          taskId: finalTask.id,
+          role: finalTask.assignedTo,
+          durationMs: Date.now() - startedAt,
+          error: error.message
+        });
         return record;
       }
     };
@@ -250,6 +292,14 @@ export class AICompanyOrchestrator {
         reviewerDecision: finalReview?.result?.decision ?? null
       });
 
+      this.progress({
+        type: "run_completed",
+        runId: actualRunId,
+        reviewerDecision: finalReview?.result?.decision ?? null,
+        taskCount: brokerSnapshot.taskCount,
+        modelCalls: brokerSnapshot.modelCalls
+      });
+
       return {
         runId: actualRunId,
         reviewerDecision: finalReview?.result?.decision ?? null,
@@ -283,6 +333,7 @@ export class AICompanyOrchestrator {
         taskCount: brokerSnapshot.taskCount,
         modelCalls: brokerSnapshot.modelCalls
       });
+      this.progress({ type: "run_failed", runId: actualRunId, error: error.message });
       throw error;
     }
   }
