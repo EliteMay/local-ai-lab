@@ -1,8 +1,28 @@
 import { lstat, readFile, readdir, stat } from "node:fs/promises";
-import { resolve, sep, relative } from "node:path";
+import { basename, extname, resolve, sep, relative } from "node:path";
 
 function isInside(root, target) {
   return target === root || target.startsWith(`${root}${sep}`);
+}
+
+const DEFAULT_BLOCKED_FILE_NAMES = new Set([
+  ".npmrc",
+  ".pypirc",
+  ".netrc",
+  "credentials",
+  "credentials.json",
+  "service-account.json",
+  "id_rsa",
+  "id_ed25519"
+]);
+
+const DEFAULT_BLOCKED_EXTENSIONS = new Set([".pem", ".key", ".p12", ".pfx", ".jks"]);
+const ENV_TEMPLATE_NAMES = new Set([".env.example", ".env.sample", ".env.template"]);
+
+function isBlockedEnvironmentFile(name) {
+  const lower = name.toLowerCase();
+  if (ENV_TEMPLATE_NAMES.has(lower)) return false;
+  return lower === ".env" || lower.startsWith(".env.");
 }
 
 export class RepoReader {
@@ -15,6 +35,8 @@ export class RepoReader {
     this.maxFiles = options.maxFiles ?? 5000;
     this.maxFileBytes = options.maxFileBytes ?? 262144;
     this.excludedDirectories = new Set(options.excludedDirectories ?? [".git", "node_modules", "runtime-data", "dist", "build"]);
+    this.blockedFileNames = new Set(options.blockedFileNames ?? DEFAULT_BLOCKED_FILE_NAMES);
+    this.blockedExtensions = new Set(options.blockedExtensions ?? DEFAULT_BLOCKED_EXTENSIONS);
   }
 
   #resolve(relativePath = ".") {
@@ -23,6 +45,12 @@ export class RepoReader {
       throw new Error("Path escapes repository root");
     }
     return target;
+  }
+
+  #isBlocked(relativePath) {
+    const name = basename(relativePath).toLowerCase();
+    const extension = extname(name).toLowerCase();
+    return isBlockedEnvironmentFile(name) || this.blockedFileNames.has(name) || this.blockedExtensions.has(extension);
   }
 
   async assertRepositoryExists() {
@@ -62,7 +90,10 @@ export class RepoReader {
         if (entry.isDirectory()) {
           await walk(absolute);
         } else if (entry.isFile()) {
-          files.push(relative(this.root, absolute).split(sep).join("/"));
+          const relativePath = relative(this.root, absolute).split(sep).join("/");
+          if (!this.#isBlocked(relativePath)) {
+            files.push(relativePath);
+          }
         }
       }
     };
@@ -72,6 +103,10 @@ export class RepoReader {
   }
 
   async readTextFile(relativePath) {
+    if (this.#isBlocked(relativePath)) {
+      throw new Error(`Sensitive file blocked: ${relativePath}`);
+    }
+
     const absolute = this.#resolve(relativePath);
     const info = await lstat(absolute);
 
@@ -111,7 +146,7 @@ export class RepoReader {
           }
         }
       } catch {
-        // Oversized and binary files are intentionally ignored during text search.
+        // Oversized, binary, sensitive, and unreadable files are intentionally ignored.
       }
     }
 
