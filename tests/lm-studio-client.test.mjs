@@ -38,7 +38,7 @@ test("chatJson uses LM Studio json_schema structured output and bounds output to
   assert.equal(capturedBody.max_tokens, 1536);
   assert.equal(capturedBody.response_format.type, "json_schema");
   assert.equal(capturedBody.response_format.json_schema.name, "structured_response");
-  assert.equal(capturedBody.response_format.json_schema.strict, true);
+  assert.equal("strict" in capturedBody.response_format.json_schema, false);
   assert.deepEqual(capturedBody.response_format.json_schema.schema, schema);
 });
 
