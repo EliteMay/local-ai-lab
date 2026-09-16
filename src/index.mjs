@@ -18,6 +18,47 @@ function printHelp() {
   console.log(`local-ai-lab\n\nCommands:\n  doctor\n      Check LM Studio API and configured model.\n\n  inspect --repo <path> [--search <text>]\n      Read-only inspection of a local repository.\n\n  broker-demo\n      Exercise deterministic delegation without calling the model.\n\n  company --repo <path> --goal <text> [--run-id <id>]\n      Run the read-only AI Company orchestration against a local repository.\n      Current phase: repository evidence only; external web research is not implemented yet.\n`);
 }
 
+function roleLabel(role) {
+  const labels = {
+    director: "Director",
+    researcher: "Researcher",
+    auditor: "Auditor",
+    "improvement-planner": "Improvement Planner",
+    reviewer: "Reviewer"
+  };
+  return labels[role] ?? role;
+}
+
+function formatDuration(durationMs) {
+  if (!Number.isFinite(durationMs)) return "";
+  if (durationMs < 1000) return `${durationMs}ms`;
+  const seconds = durationMs / 1000;
+  if (seconds < 60) return `${seconds.toFixed(1)}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainder = Math.round(seconds % 60);
+  return `${minutes}m ${remainder}s`;
+}
+
+function printCompanyProgress(event) {
+  if (event.type === "run_started") {
+    console.log(`[AI Company] Run ${event.runId} started`);
+    console.log(`[AI Company] Context: ${event.contextCoverage?.includedFiles ?? "?"} files / ${event.contextCoverage?.includedChars ?? "?"} chars`);
+  } else if (event.type === "task_started") {
+    console.log(`[AI Company] START ${roleLabel(event.role)} (${event.taskId})`);
+  } else if (event.type === "task_delegated") {
+    console.log(`[AI Company] DELEGATE ${roleLabel(event.fromRole)} -> ${roleLabel(event.toRole)}: ${event.objective}`);
+  } else if (event.type === "task_completed") {
+    const decision = event.decision ? ` / ${event.decision}` : "";
+    console.log(`[AI Company] DONE  ${roleLabel(event.role)} (${formatDuration(event.durationMs)})${decision}`);
+  } else if (event.type === "task_failed") {
+    console.log(`[AI Company] FAIL  ${roleLabel(event.role)} (${formatDuration(event.durationMs)}): ${event.error}`);
+  } else if (event.type === "run_completed") {
+    console.log(`[AI Company] Run completed / tasks=${event.taskCount} / modelCalls=${event.modelCalls}`);
+  } else if (event.type === "run_failed") {
+    console.log(`[AI Company] Run failed: ${event.error}`);
+  }
+}
+
 async function doctor(config) {
   const client = new LMStudioClient(config.model);
   const models = await client.listModels();
@@ -27,6 +68,8 @@ async function doctor(config) {
   console.log(`Configured model: ${config.model.model}`);
   console.log(`Available models: ${ids.length ? ids.join(", ") : "none"}`);
   console.log(`Configured model loaded: ${ids.includes(config.model.model) ? "yes" : "no"}`);
+  console.log(`Request timeout: ${Math.round((config.model.timeoutMs ?? 600000) / 1000)} seconds`);
+  console.log(`Max output tokens: ${config.model.maxTokens ?? 2048}`);
 }
 
 async function inspect(config, args) {
@@ -89,7 +132,14 @@ async function runCompany(config, args) {
     throw new Error(`Configured model is not loaded in LM Studio: ${config.model.model}`);
   }
 
-  const orchestrator = new AICompanyOrchestrator({ config, modelClient: client });
+  console.log(`AI Company model: ${config.model.model}`);
+  console.log(`Per-request timeout: ${Math.round((config.model.timeoutMs ?? 600000) / 1000)}s / max output tokens: ${config.model.maxTokens ?? 2048}`);
+
+  const orchestrator = new AICompanyOrchestrator({
+    config,
+    modelClient: client,
+    onProgress: printCompanyProgress
+  });
   const result = await orchestrator.run({ repoPath: repo, goal, runId });
 
   console.log(`AI Company run completed: ${result.runId}`);
