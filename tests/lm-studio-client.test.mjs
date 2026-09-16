@@ -73,7 +73,42 @@ test("chatJsonDetailed returns finish reason and usage metadata", async (t) => {
   assert.equal(result.meta.reasoningTokens, 7);
 });
 
-test("finish_reason length is reported as an explicit context or output budget failure", async (t) => {
+test("finish_reason length at max_tokens is classified as output token limit", async (t) => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    choices: [{
+      message: { content: "{\"status\":\"completed\",\"summary\":\"cut" },
+      finish_reason: "length"
+    }],
+    usage: { prompt_tokens: 5140, completion_tokens: 1000 }
+  }), { status: 200, headers: { "content-type": "application/json" } });
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const client = new LMStudioClient({
+    baseUrl: "http://127.0.0.1:1234/v1",
+    model: "qwen/qwen3-8b"
+  });
+
+  await assert.rejects(
+    async () => {
+      try {
+        await client.chatJsonDetailed({ system: "system", user: "user", maxTokens: 1000 });
+      } catch (error) {
+        assert.equal(error.code, "OUTPUT_TOKEN_LIMIT");
+        assert.equal(error.maxTokens, 1000);
+        assert.equal(error.totalTokens, 6140);
+        throw error;
+      }
+    },
+    /max output tokens.*max_tokens=1000.*prompt=5140, completion=1000, total=6140/
+  );
+});
+
+test("finish_reason length below max_tokens is classified as context limit", async (t) => {
   const originalFetch = globalThis.fetch;
 
   globalThis.fetch = async () => new Response(JSON.stringify({
@@ -94,8 +129,16 @@ test("finish_reason length is reported as an explicit context or output budget f
   });
 
   await assert.rejects(
-    () => client.chatJsonDetailed({ system: "system", user: "user" }),
-    /context\/output limit.*prompt=14864, completion=1520, total=16384/
+    async () => {
+      try {
+        await client.chatJsonDetailed({ system: "system", user: "user", maxTokens: 2048 });
+      } catch (error) {
+        assert.equal(error.code, "CONTEXT_LIMIT");
+        assert.equal(error.totalTokens, 16384);
+        throw error;
+      }
+    },
+    /context limit.*prompt=14864, completion=1520, total=16384/
   );
 });
 
