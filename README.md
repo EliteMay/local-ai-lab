@@ -50,4 +50,51 @@ Web / Electron制作に関係する共通Ruleは `EliteMay/web-project-guide` �
 - Local保存をDefaultとし、外部Publishは明示操作で行う
 - Single Agent / Fixed Pipeline / Brokered Multi-Agentを実測比較する
 
+## 現在の実装段階
+
+AI Company v1のFoundationとして、以下を実装中です。
+
+- Deterministic Task Broker
+- Delegation route / depth / task count / model call guard
+- Role definitions
+- Read-only local Repository reader
+- LM Studio OpenAI-compatible API client
+- Local runtime run store
+- Structured output validation
+- Node built-in test suite
+
+まだ自動監査のEnd-to-End orchestration、Web Research Tool、Published Evidence連携は未実装です。
+
+## Foundation CLI
+
+### LM Studio接続確認
+
+```powershell
+npm run doctor
+```
+
+### ローカルRepositoryをRead-onlyで確認
+
+```powershell
+node src/index.mjs inspect --repo "D:\path\to\repository"
+```
+
+文字検索もできます。
+
+```powershell
+node src/index.mjs inspect --repo "D:\path\to\repository" --search "keyword"
+```
+
+### Task Brokerだけ動作確認
+
+```powershell
+node src/index.mjs broker-demo
+```
+
+### Test
+
+```powershell
+npm test
+```
+
 詳細は [`REQUIREMENTS.md`](REQUIREMENTS.md) を参照してください。

@@ -1,0 +1,16 @@
+{
+  "name": "local-ai-lab",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local multi-agent research lab for LM Studio and Qwen.",
+  "scripts": {
+    "start": "node src/index.mjs",
+    "doctor": "node src/index.mjs doctor",
+    "inspect": "node src/index.mjs inspect",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

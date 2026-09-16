@@ -1,0 +1,25 @@
+{
+  "model": {
+    "baseUrl": "http://127.0.0.1:1234/v1",
+    "model": "qwen/qwen3-8b",
+    "timeoutMs": 120000,
+    "temperature": 0.2
+  },
+  "limits": {
+    "maxDelegationDepth": 3,
+    "maxTasksPerRun": 12,
+    "maxModelCalls": 20,
+    "maxRetriesPerTask": 1
+  },
+  "repoReader": {
+    "maxFiles": 5000,
+    "maxFileBytes": 262144,
+    "excludedDirectories": [
+      ".git",
+      "node_modules",
+      "runtime-data",
+      "dist",
+      "build"
+    ]
+  }
+}
