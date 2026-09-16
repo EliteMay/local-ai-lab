@@ -5,10 +5,11 @@ function stripCodeFence(text) {
 }
 
 export class LMStudioClient {
-  constructor({ baseUrl, model, timeoutMs = 120000, temperature = 0.2 }) {
+  constructor({ baseUrl, model, timeoutMs = 600000, maxTokens = 2048, temperature = 0.2 }) {
     this.baseUrl = String(baseUrl).replace(/\/$/, "");
     this.model = model;
     this.timeoutMs = timeoutMs;
+    this.maxTokens = maxTokens;
     this.temperature = temperature;
   }
 
@@ -31,6 +32,11 @@ export class LMStudioClient {
         throw new Error(`LM Studio request failed (${response.status}): ${body.slice(0, 500)}`);
       }
       return await response.json();
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        throw new Error(`LM Studio request timed out after ${Math.round(this.timeoutMs / 1000)} seconds`);
+      }
+      throw error;
     } finally {
       clearTimeout(timer);
     }
@@ -41,7 +47,14 @@ export class LMStudioClient {
     return data.data ?? [];
   }
 
-  async chat({ system, user, temperature = this.temperature, json = false, jsonSchema = null }) {
+  async chat({
+    system,
+    user,
+    temperature = this.temperature,
+    maxTokens = this.maxTokens,
+    json = false,
+    jsonSchema = null
+  }) {
     const payload = {
       model: this.model,
       temperature,
@@ -50,6 +63,10 @@ export class LMStudioClient {
         { role: "user", content: user }
       ]
     };
+
+    if (Number.isInteger(maxTokens) && maxTokens > 0) {
+      payload.max_tokens = maxTokens;
+    }
 
     if (json) {
       payload.response_format = {
