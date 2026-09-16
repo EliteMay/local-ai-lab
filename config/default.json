@@ -2,7 +2,8 @@
   "model": {
     "baseUrl": "http://127.0.0.1:1234/v1",
     "model": "qwen/qwen3-8b",
-    "timeoutMs": 120000,
+    "timeoutMs": 600000,
+    "maxTokens": 2048,
     "temperature": 0.2
   },
   "limits": {
