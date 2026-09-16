@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { LMStudioClient } from "./model/lm-studio-client.mjs";
 import { RepoReader } from "./security/repo-reader.mjs";
 import { TaskBroker } from "./core/task-broker.mjs";
+import { AICompanyOrchestrator } from "./core/orchestrator.mjs";
 
 async function loadConfig() {
   const url = new URL("../config/default.json", import.meta.url);
@@ -14,7 +15,7 @@ function getOption(args, name) {
 }
 
 function printHelp() {
-  console.log(`local-ai-lab\n\nCommands:\n  doctor\n      Check LM Studio API and configured model.\n\n  inspect --repo <path> [--search <text>]\n      Read-only inspection of a local repository.\n\n  broker-demo\n      Exercise deterministic delegation without calling the model.\n`);
+  console.log(`local-ai-lab\n\nCommands:\n  doctor\n      Check LM Studio API and configured model.\n\n  inspect --repo <path> [--search <text>]\n      Read-only inspection of a local repository.\n\n  broker-demo\n      Exercise deterministic delegation without calling the model.\n\n  company --repo <path> --goal <text> [--run-id <id>]\n      Run the read-only AI Company orchestration against a local repository.\n      Current phase: repository evidence only; external web research is not implemented yet.\n`);
 }
 
 async function doctor(config) {
@@ -73,6 +74,32 @@ function brokerDemo(config) {
   console.log(JSON.stringify({ audit, research, snapshot: broker.snapshot() }, null, 2));
 }
 
+async function runCompany(config, args) {
+  const repo = getOption(args, "--repo");
+  const goal = getOption(args, "--goal");
+  const runId = getOption(args, "--run-id");
+  if (!repo || !goal) {
+    throw new Error("company requires --repo <path> and --goal <text>");
+  }
+
+  const client = new LMStudioClient(config.model);
+  const models = await client.listModels();
+  const modelIds = models.map((item) => item.id).filter(Boolean);
+  if (!modelIds.includes(config.model.model)) {
+    throw new Error(`Configured model is not loaded in LM Studio: ${config.model.model}`);
+  }
+
+  const orchestrator = new AICompanyOrchestrator({ config, modelClient: client });
+  const result = await orchestrator.run({ repoPath: repo, goal, runId });
+
+  console.log(`AI Company run completed: ${result.runId}`);
+  console.log(`Reviewer decision: ${result.reviewerDecision ?? "none"}`);
+  console.log(`Findings: ${result.findings.length}`);
+  console.log(`Tasks: ${result.broker.taskCount}`);
+  console.log(`Model calls: ${result.broker.modelCalls}`);
+  console.log(`Evidence: runtime-data/runs/${result.runId}`);
+}
+
 const args = process.argv.slice(2);
 const command = args[0];
 
@@ -86,6 +113,8 @@ try {
     await inspect(config, args);
   } else if (command === "broker-demo") {
     brokerDemo(config);
+  } else if (command === "company") {
+    await runCompany(config, args);
   } else {
     throw new Error(`Unknown command: ${command}`);
   }

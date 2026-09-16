@@ -11,6 +11,15 @@
     "maxModelCalls": 20,
     "maxRetriesPerTask": 1
   },
+  "orchestrator": {
+    "maxReviewPasses": 2
+  },
+  "context": {
+    "maxFiles": 12,
+    "maxChars": 32000,
+    "maxFileChars": 6000,
+    "maxPriorResultChars": 12000
+  },
   "repoReader": {
     "maxFiles": 5000,
     "maxFileBytes": 262144,
@@ -21,5 +30,8 @@
       "dist",
       "build"
     ]
+  },
+  "runtimeData": {
+    "runsRoot": "runtime-data/runs"
   }
 }

@@ -43,3 +43,20 @@ test("RepoReader rejects oversized files", async (t) => {
 
   await assert.rejects(() => reader.readTextFile("large.txt"), /exceeds read limit/);
 });
+
+test("RepoReader excludes obvious credential files from listings and direct reads", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "local-ai-lab-reader-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+
+  await writeFile(join(root, ".env"), "API_KEY=secret\n", "utf8");
+  await writeFile(join(root, "private.pem"), "secret-key\n", "utf8");
+  await writeFile(join(root, ".env.example"), "API_KEY=placeholder\n", "utf8");
+
+  const reader = new RepoReader(root);
+  const files = await reader.listFiles();
+
+  assert.deepEqual(files, [".env.example"]);
+  await assert.rejects(() => reader.readTextFile(".env"), /Sensitive file blocked/);
+  await assert.rejects(() => reader.readTextFile("private.pem"), /Sensitive file blocked/);
+  assert.match(await reader.readTextFile(".env.example"), /placeholder/);
+});

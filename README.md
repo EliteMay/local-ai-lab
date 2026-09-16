@@ -19,7 +19,7 @@ Task Broker
   ├─ Improvement Planner
   └─ Reviewer
 
-Secretary
+Secretary / Run Store
   ↓
 Run / Task / Evidence記録
 ```
@@ -35,37 +35,42 @@ Web / Electron制作に関係する共通Ruleは `EliteMay/web-project-guide` �
 ## 初期環境
 
 - Windows
-- Node.js
+- Node.js 20+
 - LM Studio
 - Qwen3-8B
 - 初期対象: PC上のローカルGit Repository
 
-## 方針
+## 現在の実装状態
 
-- Agentの自由な委任要求は許可する
-- 実際のTask配送・Permission・Loop防止はDeterministicなTask Brokerが管理する
-- 対象Repositoryはv1ではRead-only
-- Agent間の引き継ぎはStructured Dataを基本とする
-- Audit結果は命令ではなくEvidence / Proposalとして扱う
-- Local保存をDefaultとし、外部Publishは明示操作で行う
-- Single Agent / Fixed Pipeline / Brokered Multi-Agentを実測比較する
+AI Company v1 のRead-only FoundationとE2E Orchestratorがあります。
 
-## 現在の実装段階
+現在実装済み:
 
-AI Company v1のFoundationとして、以下を実装中です。
+- LM Studio OpenAI互換API接続
+- 同じQwen3-8Bを役職別Promptで利用
+- Directorによる初期Task委任
+- AgentからのStructured Delegation Request
+- Deterministic Task BrokerによるRoute / Depth / Task数 / Model Call数 / Retry制御
+- Auditor / Researcher / Improvement Planner / Reviewerの順次実行
+- Planner / Reviewerを必ず通す安定した外側Pipeline
+- 対象Repository専用Read-only Reader
+- `.env` / private key / credential系Fileの基本的なModel Context除外
+- Bounded Repository Context
+- JSON Schema相当の出力Validationと1回だけの修正再試行
+- Local Run Evidence保存
+- Node built-in test / GitHub Actions
 
-- Deterministic Task Broker
-- Delegation route / depth / task count / model call guard
-- Role definitions
-- Read-only local Repository reader
-- LM Studio OpenAI-compatible API client
-- Local runtime run store
-- Structured output validation
-- Node built-in test suite
+現在未実装:
 
-まだ自動監査のEnd-to-End orchestration、Web Research Tool、Published Evidence連携は未実装です。
+- 外部Web検索 / Web Research Tool
+- GitHub Read-only direct mode
+- Published Evidenceの自動連携
+- Engineer Agent / 自動修正
+- Single / Fixed Pipeline / Brokered Multi-Agentの本格Benchmark
 
-## Foundation CLI
+Researcherは現段階では**Repository内Evidenceの追加確認だけ**を行い、外部Web調査を行ったと偽らないContractになっています。
+
+## コマンド
 
 ### LM Studio接続確認
 
@@ -73,28 +78,67 @@ AI Company v1のFoundationとして、以下を実装中です。
 npm run doctor
 ```
 
-### ローカルRepositoryをRead-onlyで確認
+### RepositoryをRead-only確認
 
 ```powershell
-node src/index.mjs inspect --repo "D:\path\to\repository"
+npm run inspect -- --repo "D:\path\to\repo"
 ```
 
-文字検索もできます。
+Text検索もできます。
 
 ```powershell
-node src/index.mjs inspect --repo "D:\path\to\repository" --search "keyword"
+npm run inspect -- --repo "D:\path\to\repo" --search "TODO"
 ```
 
-### Task Brokerだけ動作確認
+### AI Companyを実行
+
+LM Studioで `qwen/qwen3-8b` をロードしてから実行します。
 
 ```powershell
-node src/index.mjs broker-demo
+npm run company -- --repo "D:\path\to\repo" --goal "このRepositoryの改善点と改善方法をEvidence付きで監査する"
 ```
+
+実行結果はDefaultで次へ保存されます。
+
+```text
+runtime-data/
+└─ runs/
+   └─ <run-id>/
+      ├─ run.json
+      ├─ tasks.json
+      ├─ findings.json
+      ├─ research.json
+      ├─ review.json
+      └─ summary.md
+```
+
+`runtime-data/` はGit管理対象外です。
 
 ### Test
 
 ```powershell
 npm test
 ```
+
+## 安全境界
+
+- 対象Repository用ReaderにはCreate / Update / Delete APIを持たせない
+- Agentが他Agentを直接起動せず、Task Brokerへ委任要求を返す
+- Model outputをPermission判定として使わない
+- Repository内容はUntrusted DataとしてPromptへ渡す
+- 明らかなCredential FileはModel Contextへ入れない
+- Agent間の長い自由会話ではなくStructured Resultを引き継ぐ
+- Task / Delegation / Model Callには上限を設ける
+- Audit結果は命令ではなくEvidence / Proposalとして扱う
+
+## 方針
+
+- Agentの自由な委任要求は許可する
+- 実際のTask配送・Permission・Loop防止はDeterministicなTask Brokerが管理する
+- 対象Repositoryはv1ではRead-only
+- Agent間の引き継ぎはStructured Dataを基本とする
+- Audit結果はCurrent Repository / Requirementsの第二Source of Truthにしない
+- Local保存をDefaultとし、外部Publishは明示操作で行う
+- Single Agent / Fixed Pipeline / Brokered Multi-Agentを実測比較する
 
 詳細は [`REQUIREMENTS.md`](REQUIREMENTS.md) を参照してください。

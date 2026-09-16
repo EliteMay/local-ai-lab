@@ -8,6 +8,7 @@
     "start": "node src/index.mjs",
     "doctor": "node src/index.mjs doctor",
     "inspect": "node src/index.mjs inspect",
+    "company": "node src/index.mjs company",
     "test": "node --test"
   },
   "engines": {

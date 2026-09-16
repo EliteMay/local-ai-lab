@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { validateDelegationRequest, validateTaskResult } from "../src/core/contracts.mjs";
+import { validateAgentResponse, validateDelegationRequest, validateTaskResult } from "../src/core/contracts.mjs";
 
 test("valid delegation request passes", () => {
   const result = validateDelegationRequest({
@@ -8,7 +8,7 @@ test("valid delegation request passes", () => {
     from: "auditor",
     to: "researcher",
     objective: "Research current navigation evidence",
-    reason: "Need external evidence",
+    reason: "Need additional evidence",
     priority: "normal"
   });
 
@@ -40,5 +40,31 @@ test("task result requires structured arrays and known status", () => {
   assert.equal(valid.ok, true);
 
   const invalid = validateTaskResult({ status: "done" });
+  assert.equal(invalid.ok, false);
+});
+
+test("reviewer response requires an explicit review decision", () => {
+  const valid = validateAgentResponse({
+    status: "completed",
+    summary: "Evidence supports the bounded proposal.",
+    findings: [],
+    evidence: [],
+    uncertainties: [],
+    recommendedNextActions: [],
+    delegations: [],
+    decision: "APPROVE"
+  }, { role: "reviewer" });
+  assert.equal(valid.ok, true);
+
+  const invalid = validateAgentResponse({
+    status: "completed",
+    summary: "Missing decision",
+    findings: [],
+    evidence: [],
+    uncertainties: [],
+    recommendedNextActions: [],
+    delegations: [],
+    decision: null
+  }, { role: "reviewer" });
   assert.equal(invalid.ok, false);
 });
