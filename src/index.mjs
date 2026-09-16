@@ -54,6 +54,7 @@ function modelUsageSuffix(meta) {
   if (Number.isInteger(prompt)) parts.push(`prompt=${prompt}`);
   if (Number.isInteger(completion)) parts.push(`completion=${completion}`);
   if (Number.isInteger(reasoning)) parts.push(`reasoning=${reasoning}`);
+  if (Number.isInteger(meta?.calls) && meta.calls > 1) parts.push(`calls=${meta.calls}`);
   return parts.length ? ` / ${parts.join(" ")}` : "";
 }
 
@@ -85,6 +86,8 @@ function printCoverageProgress(event) {
     console.log(`[Coverage] Resume ${event.runId}: ${event.completedBatches}/${event.totalBatches} batches already completed`);
   } else if (event.type === "coverage_batch_started") {
     console.log(`[Coverage] START ${event.batchId} / chunks=${event.chunks} / chars=${event.chars}`);
+  } else if (event.type === "coverage_batch_split") {
+    console.log(`[Coverage] SPLIT ${event.batchId} / ${event.leftChunks}+${event.rightChunks} chunks (output cap)`);
   } else if (event.type === "coverage_batch_retry") {
     console.log(`[Coverage] RETRY ${event.batchId}: ${event.error}`);
   } else if (event.type === "coverage_batch_completed") {
@@ -227,6 +230,7 @@ async function runCoverage(config, args) {
   await assertConfiguredModelLoaded(client, config);
   console.log(`Coverage audit model: ${config.model.model}`);
   console.log(`Batch budget: ${config.coverage?.maxBatchChars ?? 16000} chars / ${config.coverage?.batchMaxTokens ?? 1000} output tokens`);
+  console.log(`Adaptive single-chunk ceiling: ${config.coverage?.singleChunkMaxTokens ?? 1800} output tokens`);
 
   const orchestrator = new CoverageAuditOrchestrator({
     config,

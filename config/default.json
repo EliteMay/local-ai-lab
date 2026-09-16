@@ -25,6 +25,7 @@
     "maxChunkChars": 8000,
     "maxBatchChars": 16000,
     "batchMaxTokens": 1000,
+    "singleChunkMaxTokens": 1800,
     "batchTemperature": 0.1,
     "maxSynthesisChars": 24000
   },

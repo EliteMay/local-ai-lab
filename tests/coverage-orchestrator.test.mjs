@@ -27,18 +27,25 @@ function requiredChunkIds(user) {
 }
 
 class CoverageFakeModel {
-  constructor({ failBatchId = null } = {}) {
+  constructor({ failBatchId = null, outputCapBatchIds = [] } = {}) {
     this.failBatchId = failBatchId;
+    this.outputCapBatchIds = new Set(outputCapBatchIds);
     this.calls = [];
   }
 
-  async chatJsonDetailed({ system, user }) {
-    this.calls.push({ system, user });
+  async chatJsonDetailed({ system, user, maxTokens }) {
+    this.calls.push({ system, user, maxTokens });
 
     if (system.includes("Coverage Auditor")) {
-      const batchId = String(user).match(/Batch: (batch-\d+)/)?.[1];
+      const batchId = String(user).match(/Batch: ([^\n]+)/)?.[1]?.trim();
       if (batchId === this.failBatchId) {
         throw new Error(`simulated failure for ${batchId}`);
+      }
+      if (this.outputCapBatchIds.has(batchId)) {
+        const error = new Error(`simulated output cap for ${batchId}`);
+        error.code = "OUTPUT_TOKEN_LIMIT";
+        error.maxTokens = maxTokens;
+        throw error;
       }
       const chunks = requiredChunkIds(user);
       return {
@@ -46,10 +53,8 @@ class CoverageFakeModel {
           summary: `Audited ${chunks.length} chunks`,
           inspectedChunks: chunks,
           findings: chunks.length ? [{
-            id: "temp-id",
             severity: "medium",
             title: "Example evidence-backed issue",
-            explanation: "Fixture finding",
             confidence: "high",
             evidence: [{
               file: chunks[0].split("#L")[0],
@@ -99,6 +104,7 @@ const config = {
     maxChunkChars: 90,
     maxBatchChars: 130,
     batchMaxTokens: 300,
+    singleChunkMaxTokens: 500,
     batchTemperature: 0.1,
     maxSynthesisChars: 24000
   },
@@ -149,6 +155,35 @@ test("coverage audit processes every planned chunk, checkpoints results, and rea
   assert.equal(coverage.complete, true);
 });
 
+test("output token limit adaptively splits a multi-chunk batch instead of repeating it unchanged", async (t) => {
+  const { repo, runs } = await createFixture(t, "local-ai-lab-coverage-split-");
+  const splitConfig = {
+    ...config,
+    coverage: { ...config.coverage, maxBatchChars: 1000 }
+  };
+  const model = new CoverageFakeModel({ outputCapBatchIds: ["batch-0001"] });
+  const events = [];
+  const orchestrator = new CoverageAuditOrchestrator({
+    config: splitConfig,
+    modelClient: model,
+    runStore: new RunStore(runs),
+    onProgress: (event) => events.push(event)
+  });
+
+  const result = await orchestrator.run({
+    repoPath: repo,
+    goal: "Audit all source files",
+    runId: "coverage-split"
+  });
+
+  assert.equal(result.status, "COMPLETED");
+  assert.equal(result.coverage.coveragePercent, 100);
+  assert.ok(events.some((event) => event.type === "coverage_batch_split" && event.batchId === "batch-0001"));
+  const auditCalls = model.calls.filter((call) => call.system.includes("Coverage Auditor"));
+  assert.ok(auditCalls.some((call) => /Batch: batch-0001\.a/.test(call.user)));
+  assert.ok(auditCalls.some((call) => /Batch: batch-0001\.b/.test(call.user)));
+});
+
 test("partial coverage keeps successful checkpoints and resume skips completed batches", async (t) => {
   const { repo, runs } = await createFixture(t, "local-ai-lab-coverage-resume-");
   const store = new RunStore(runs);
@@ -182,4 +217,26 @@ test("partial coverage keeps successful checkpoints and resume skips completed b
   const resumedCoverageCalls = resumeModel.calls.filter((call) => call.system.includes("Coverage Auditor"));
   assert.equal(resumedCoverageCalls.length, 1);
   assert.match(resumedCoverageCalls[0].user, /Batch: batch-0002/);
+});
+
+test("resume refuses a changed batch layout even when repository files are unchanged", async (t) => {
+  const { repo, runs } = await createFixture(t, "local-ai-lab-coverage-plan-change-");
+  const store = new RunStore(runs);
+  const first = new CoverageAuditOrchestrator({ config, modelClient: new CoverageFakeModel(), runStore: store });
+  await first.run({ repoPath: repo, goal: "Audit all source files", runId: "coverage-plan-change" });
+
+  const changedConfig = {
+    ...config,
+    coverage: { ...config.coverage, maxBatchChars: 1000 }
+  };
+  const changed = new CoverageAuditOrchestrator({ config: changedConfig, modelClient: new CoverageFakeModel(), runStore: store });
+  await assert.rejects(
+    () => changed.run({
+      repoPath: repo,
+      goal: "Audit all source files",
+      runId: "coverage-plan-change",
+      resume: true
+    }),
+    /coverage batch plan changed/
+  );
 });

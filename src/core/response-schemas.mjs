@@ -70,7 +70,7 @@ export const COVERAGE_BATCH_SCHEMA = {
   type: "object",
   additionalProperties: false,
   properties: {
-    summary: { type: "string", minLength: 1 },
+    summary: { type: "string", minLength: 1, maxLength: 220 },
     inspectedChunks: {
       type: "array",
       items: { type: "string" }
@@ -81,14 +81,13 @@ export const COVERAGE_BATCH_SCHEMA = {
         type: "object",
         additionalProperties: false,
         properties: {
-          id: { type: "string", minLength: 1 },
           severity: { enum: ["low", "medium", "high", "critical"] },
-          title: { type: "string", minLength: 1 },
-          explanation: { type: "string", minLength: 1 },
+          title: { type: "string", minLength: 1, maxLength: 180 },
           confidence: { enum: ["low", "medium", "high"] },
           evidence: {
             type: "array",
             minItems: 1,
+            maxItems: 3,
             items: {
               type: "object",
               additionalProperties: false,
@@ -96,18 +95,18 @@ export const COVERAGE_BATCH_SCHEMA = {
                 file: { type: "string", minLength: 1 },
                 lineStart: { type: "integer", minimum: 1 },
                 lineEnd: { type: "integer", minimum: 1 },
-                claim: { type: "string", minLength: 1 }
+                claim: { type: "string", minLength: 1, maxLength: 220 }
               },
               required: ["file", "lineStart", "lineEnd", "claim"]
             }
           }
         },
-        required: ["id", "severity", "title", "explanation", "confidence", "evidence"]
+        required: ["severity", "title", "confidence", "evidence"]
       }
     },
     uncertainties: {
       type: "array",
-      items: { type: "string" }
+      items: { type: "string", maxLength: 220 }
     }
   },
   required: ["summary", "inspectedChunks", "findings", "uncertainties"]
