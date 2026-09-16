@@ -9,6 +9,30 @@ function serverRootFromBaseUrl(baseUrl) {
   return `${url.protocol}//${url.host}`;
 }
 
+function createLengthError(result, requestedMaxTokens) {
+  const promptTokens = result.usage?.prompt_tokens;
+  const completionTokens = result.usage?.completion_tokens;
+  const hasUsage = Number.isInteger(promptTokens) && Number.isInteger(completionTokens);
+  const total = hasUsage ? promptTokens + completionTokens : null;
+  const hitOutputCap = Number.isInteger(requestedMaxTokens)
+    && requestedMaxTokens > 0
+    && Number.isInteger(completionTokens)
+    && completionTokens >= requestedMaxTokens;
+
+  const details = hasUsage
+    ? ` (prompt=${promptTokens}, completion=${completionTokens}, total=${total})`
+    : "";
+  const error = new Error(hitOutputCap
+    ? `LM Studio reached max output tokens before structured JSON completed (max_tokens=${requestedMaxTokens})${details}`
+    : `LM Studio stopped at the context limit before structured JSON completed${details}`);
+  error.code = hitOutputCap ? "OUTPUT_TOKEN_LIMIT" : "CONTEXT_LIMIT";
+  error.promptTokens = promptTokens ?? null;
+  error.completionTokens = completionTokens ?? null;
+  error.totalTokens = total;
+  error.maxTokens = requestedMaxTokens ?? null;
+  return error;
+}
+
 export class LMStudioClient {
   constructor({ baseUrl, model, timeoutMs = 600000, maxTokens = 2048, temperature = 0.2 }) {
     this.baseUrl = String(baseUrl).replace(/\/$/, "");
@@ -119,15 +143,13 @@ export class LMStudioClient {
   }
 
   async chatJsonDetailed(input) {
+    const requestedMaxTokens = Number.isInteger(input.maxTokens) && input.maxTokens > 0
+      ? input.maxTokens
+      : this.maxTokens;
     const result = await this.chatDetailed({ ...input, json: true });
 
     if (result.finishReason === "length") {
-      const promptTokens = result.usage?.prompt_tokens;
-      const completionTokens = result.usage?.completion_tokens;
-      const tokenSummary = Number.isInteger(promptTokens) && Number.isInteger(completionTokens)
-        ? ` (prompt=${promptTokens}, completion=${completionTokens}, total=${promptTokens + completionTokens})`
-        : "";
-      throw new Error(`LM Studio stopped at the context/output limit before structured JSON completed${tokenSummary}`);
+      throw createLengthError(result, requestedMaxTokens);
     }
 
     try {
