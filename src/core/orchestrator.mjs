@@ -42,6 +42,10 @@ function makeSummary({ runId, goal, repositoryContext, brokerSnapshot, results, 
   return `# AI Company Run ${runId}\n\n## Goal\n\n${goal}\n\n## Result\n\n- Reviewer decision: ${decision}\n- Tasks: ${brokerSnapshot.taskCount}\n- Model calls: ${brokerSnapshot.modelCalls}\n- Completed task results: ${completed}\n- Failed task results: ${failed}\n- Blocked task results: ${blocked}\n- Findings produced: ${findings.length}\n- Rejected delegation requests: ${rejectedDelegations.length}\n\n## Repository context coverage\n\n- Manifest files: ${repositoryContext.coverage.manifestFiles}\n- Files supplied to model: ${repositoryContext.coverage.includedFiles}\n- Context characters: ${repositoryContext.coverage.includedChars}\n- Omitted candidate files: ${repositoryContext.coverage.omittedCandidateFiles}\n\n## Safety / capability status\n\n- Target repository access: read-only\n- External web research: not implemented in this phase\n- File mutation / shell mutation / git write: unavailable\n\n## Important note\n\nThis report is evidence/proposal output, not a Source of Truth and not an instruction to modify the target repository.\n`;
 }
 
+function isSuccessfulRecord(record) {
+  return !record.error && record.result?.status === "completed";
+}
+
 export class AICompanyOrchestrator {
   constructor({ config, modelClient = null, runStore = null } = {}) {
     if (!config) throw new Error("config is required");
@@ -94,7 +98,17 @@ export class AICompanyOrchestrator {
         const delegationCheck = runner.validateDelegations(result, runningTask.assignedTo);
         rejectedDelegations.push(...delegationCheck.rejected.map((item) => ({ taskId: runningTask.id, ...item })));
 
-        for (const delegation of delegationCheck.valid) {
+        let delegationsToApply = delegationCheck.valid;
+        if (runningTask.assignedTo === "reviewer" && result.decision !== "NEED_MORE_EVIDENCE" && delegationsToApply.length > 0) {
+          rejectedDelegations.push(...delegationsToApply.map((delegation) => ({
+            taskId: runningTask.id,
+            delegation,
+            errors: ["Reviewer delegation requires NEED_MORE_EVIDENCE decision"]
+          })));
+          delegationsToApply = [];
+        }
+
+        for (const delegation of delegationsToApply) {
           try {
             broker.requestDelegation({
               fromTaskId: runningTask.id,
@@ -127,6 +141,13 @@ export class AICompanyOrchestrator {
       }
     };
 
+    const drainPending = async (predicate = () => true) => {
+      let queue;
+      while ((queue = pendingTasks(broker).filter(predicate)).length > 0) {
+        await executeTask(queue[0]);
+      }
+    };
+
     try {
       const directorTask = broker.createTask({
         requestedBy: "user",
@@ -146,9 +167,7 @@ export class AICompanyOrchestrator {
         });
       }
 
-      while ((queue = pendingTasks(broker).filter((task) => !["improvement-planner", "reviewer"].includes(task.assignedTo))).length > 0) {
-        await executeTask(queue[0]);
-      }
+      await drainPending((task) => !["improvement-planner", "reviewer"].includes(task.assignedTo));
 
       const plannerTask = broker.createTask({
         requestedBy: "director",
@@ -156,23 +175,40 @@ export class AICompanyOrchestrator {
         objective: "Synthesize the accumulated validated findings into specific, minimally disruptive improvement proposals",
         inputs: { phase: "planning-improvements" }
       });
-      await executeTask(plannerTask);
-
-      while ((queue = pendingTasks(broker).filter((task) => task.assignedTo !== "reviewer")).length > 0) {
-        await executeTask(queue[0]);
+      const plannerRecord = await executeTask(plannerTask);
+      if (!isSuccessfulRecord(plannerRecord)) {
+        throw new Error(`Critical planner task did not complete successfully: ${plannerRecord.error ?? plannerRecord.result?.status ?? "unknown"}`);
       }
 
-      const reviewerTask = broker.createTask({
-        requestedBy: "director",
-        assignedTo: "reviewer",
-        objective: "Review the accumulated findings and improvement proposals for evidence quality, uncertainty, conflicts, duplication, and overreach",
-        inputs: { phase: "final-review" }
-      });
-      const finalReview = await executeTask(reviewerTask);
+      // Honor any model-requested support or review tasks before the authoritative final review.
+      await drainPending();
 
-      while ((queue = pendingTasks(broker)).length > 0) {
-        await executeTask(queue[0]);
+      const maxReviewPasses = this.config.orchestrator?.maxReviewPasses ?? 2;
+      let finalReview = null;
+
+      for (let pass = 1; pass <= maxReviewPasses; pass += 1) {
+        const reviewerTask = broker.createTask({
+          requestedBy: "director",
+          assignedTo: "reviewer",
+          objective: `Final review pass ${pass}: verify accumulated findings and proposals for evidence quality, uncertainty, conflicts, duplication, and overreach`,
+          inputs: { phase: "final-review", pass }
+        });
+        finalReview = await executeTask(reviewerTask);
+
+        if (!isSuccessfulRecord(finalReview)) {
+          throw new Error(`Critical reviewer task did not complete successfully: ${finalReview.error ?? finalReview.result?.status ?? "unknown"}`);
+        }
+
+        const supportTasks = pendingTasks(broker);
+        if (finalReview.result.decision !== "NEED_MORE_EVIDENCE" || supportTasks.length === 0 || pass === maxReviewPasses) {
+          break;
+        }
+
+        await drainPending();
       }
+
+      // If the last allowed review pass requested evidence, preserve those tasks/results even though no further review pass is allowed.
+      await drainPending();
 
       const brokerSnapshot = broker.snapshot();
       const findings = results.flatMap((item) => item.result?.findings ?? []);
@@ -224,6 +260,13 @@ export class AICompanyOrchestrator {
         contextCoverage: repositoryContext.coverage
       };
     } catch (error) {
+      const brokerSnapshot = broker.snapshot();
+      await this.runStore.writeJson(actualRunId, "tasks.json", {
+        broker: brokerSnapshot,
+        results,
+        rejectedDelegations,
+        failure: error.message
+      });
       await this.runStore.writeJson(actualRunId, "run.json", {
         runId: actualRunId,
         status: "FAILED",
@@ -237,7 +280,8 @@ export class AICompanyOrchestrator {
           mutation: false
         },
         contextCoverage: repositoryContext.coverage,
-        broker: broker.snapshot()
+        taskCount: brokerSnapshot.taskCount,
+        modelCalls: brokerSnapshot.modelCalls
       });
       throw error;
     }
