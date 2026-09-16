@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve, sep } from "node:path";
 
 const ALLOWED_FILES = new Set([
@@ -7,7 +7,11 @@ const ALLOWED_FILES = new Set([
   "findings.json",
   "research.json",
   "review.json",
-  "summary.md"
+  "summary.md",
+  "coverage-plan.json",
+  "batch-results.json",
+  "coverage.json",
+  "synthesis.json"
 ]);
 
 function isInside(root, target) {
@@ -35,6 +39,15 @@ export class RunStore {
     return runId;
   }
 
+  async hasRun(runId) {
+    try {
+      await access(resolve(this.root, runId, "run.json"));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async writeJson(runId, fileName, value) {
     if (!ALLOWED_FILES.has(fileName) || !fileName.endsWith(".json")) {
       throw new Error(`RunStore cannot write file: ${fileName}`);
@@ -42,6 +55,13 @@ export class RunStore {
     const path = this.#path(runId, fileName);
     await mkdir(resolve(this.root, runId), { recursive: true });
     await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  }
+
+  async readJson(runId, fileName) {
+    if (!ALLOWED_FILES.has(fileName) || !fileName.endsWith(".json")) {
+      throw new Error(`RunStore cannot read file: ${fileName}`);
+    }
+    return JSON.parse(await readFile(this.#path(runId, fileName), "utf8"));
   }
 
   async writeSummary(runId, markdown) {
@@ -53,6 +73,9 @@ export class RunStore {
   #path(runId, fileName) {
     if (typeof runId !== "string" || runId.trim() === "") {
       throw new Error("runId is required");
+    }
+    if (!ALLOWED_FILES.has(fileName)) {
+      throw new Error(`RunStore file is not allowed: ${fileName}`);
     }
     const target = resolve(this.root, runId, fileName);
     if (!isInside(this.root, target)) {
