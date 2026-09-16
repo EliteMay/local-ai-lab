@@ -21,9 +21,16 @@
     "maxFileChars": 6000,
     "maxPriorResultChars": 12000
   },
+  "coverage": {
+    "maxChunkChars": 8000,
+    "maxBatchChars": 16000,
+    "batchMaxTokens": 1000,
+    "batchTemperature": 0.1,
+    "maxSynthesisChars": 24000
+  },
   "repoReader": {
-    "maxFiles": 5000,
-    "maxFileBytes": 262144,
+    "maxFiles": 10000,
+    "maxFileBytes": 2097152,
     "excludedDirectories": [
       ".git",
       "node_modules",
