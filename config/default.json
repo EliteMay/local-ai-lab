@@ -27,7 +27,10 @@
     "batchMaxTokens": 1000,
     "singleChunkMaxTokens": 1800,
     "batchTemperature": 0.1,
-    "maxSynthesisChars": 24000
+    "maxSynthesisChars": 24000,
+    "reductionGroupChars": 9000,
+    "reductionMaxTokens": 900,
+    "maxSynthesisLevels": 6
   },
   "repoReader": {
     "maxFiles": 10000,
