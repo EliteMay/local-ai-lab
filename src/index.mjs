@@ -4,6 +4,8 @@ import { RepoReader } from "./security/repo-reader.mjs";
 import { TaskBroker } from "./core/task-broker.mjs";
 import { AICompanyOrchestrator } from "./core/orchestrator.mjs";
 import { CoverageAuditOrchestrator } from "./core/coverage-orchestrator.mjs";
+import { CoverageSynthesisService } from "./core/coverage-synthesis.mjs";
+import { RunStore } from "./core/run-store.mjs";
 
 async function loadConfig() {
   const url = new URL("../config/default.json", import.meta.url);
@@ -20,7 +22,7 @@ function hasFlag(args, name) {
 }
 
 function printHelp() {
-  console.log(`local-ai-lab\n\nCommands:\n  doctor\n      Check LM Studio API, loaded model, context length, and parallel setting.\n\n  inspect --repo <path> [--search <text>]\n      Read-only inspection of a local repository.\n\n  broker-demo\n      Exercise deterministic delegation without calling the model.\n\n  company --repo <path> --goal <text> [--run-id <id>]\n      Run the original brokered AI Company orchestration.\n\n  coverage --repo <path> --goal <text> [--run-id <id>] [--resume]\n      Audit every auditable text chunk with checkpoints and an explicit coverage ledger.\n      Use --resume with the same --run-id to continue a partial run when repository fingerprints still match.\n`);
+  console.log(`local-ai-lab\n\nCommands:\n  doctor\n      Check LM Studio API, loaded model, context length, and parallel setting.\n\n  inspect --repo <path> [--search <text>]\n      Read-only inspection of a local repository.\n\n  broker-demo\n      Exercise deterministic delegation without calling the model.\n\n  company --repo <path> --goal <text> [--run-id <id>]\n      Run the original brokered AI Company orchestration.\n\n  coverage --repo <path> --goal <text> [--run-id <id>] [--resume]\n      Audit every auditable text chunk with checkpoints and an explicit coverage ledger.\n      Use --resume with the same --run-id to continue a partial coverage run when repository fingerprints still match.\n\n  coverage-synthesize --run-id <id>\n      Hierarchically synthesize an existing 100% coverage evidence snapshot without re-reading the repository.\n`);
 }
 
 function roleLabel(role) {
@@ -99,6 +101,32 @@ function printCoverageProgress(event) {
   } else if (event.type === "coverage_run_completed") {
     console.log(`[Coverage] Run ${event.status} / coverage=${event.coverage.coveragePercent}% / findings=${event.findings}`);
     if (event.synthesisError) console.log(`[Coverage] Synthesis note: ${event.synthesisError}`);
+  }
+}
+
+function printSynthesisProgress(event) {
+  if (event.type === "synthesis_started") {
+    console.log(`[Synthesis] START / findings=${event.findings} / chars=${event.chars} / target<=${event.maxChars}`);
+  } else if (event.type === "synthesis_level_started") {
+    console.log(`[Synthesis] LEVEL ${event.level} / ${event.inputItems} items -> ${event.groups} groups / chars=${event.chars}`);
+  } else if (event.type === "synthesis_group_split") {
+    console.log(`[Synthesis] SPLIT ${event.groupId} / ${event.leftItems}+${event.rightItems} items (output cap)`);
+  } else if (event.type === "synthesis_group_retry") {
+    console.log(`[Synthesis] RETRY ${event.groupId}: ${event.error}`);
+  } else if (event.type === "synthesis_group_completed") {
+    console.log(`[Synthesis] DONE ${event.groupId} / ${event.inputItems}->${event.outputItems}${modelUsageSuffix(event.model)}`);
+  } else if (event.type === "synthesis_level_completed") {
+    console.log(`[Synthesis] LEVEL ${event.level} complete / ${event.inputItems}->${event.outputItems} / ${event.inputChars}->${event.outputChars} chars / calls=${event.modelCalls}`);
+  } else if (event.type === "synthesis_planner_started") {
+    console.log(`[Synthesis] Planner START / themes=${event.findings} / chars=${event.chars}`);
+  } else if (event.type === "synthesis_planner_completed") {
+    console.log(`[Synthesis] Planner DONE${modelUsageSuffix(event.model)}`);
+  } else if (event.type === "synthesis_reviewer_started") {
+    console.log(`[Synthesis] Reviewer START`);
+  } else if (event.type === "synthesis_reviewer_completed") {
+    console.log(`[Synthesis] Reviewer DONE / ${event.decision}${modelUsageSuffix(event.model)}`);
+  } else if (event.type === "synthesis_existing_run_completed") {
+    console.log(`[Synthesis] Run ${event.status} / raw=${event.rawFindings} / themes=${event.themes} / reviewer=${event.decision ?? "none"}`);
   }
 }
 
@@ -246,8 +274,41 @@ async function runCoverage(config, args) {
   console.log(`Reviewer decision: ${result.reviewer?.result?.decision ?? "none"}`);
   console.log(`Evidence/checkpoint: runtime-data/runs/${result.runId}`);
   if (result.status !== "COMPLETED") {
-    console.log(`Resume command: npm run coverage -- --repo "${repo}" --goal "${goal}" --run-id "${result.runId}" --resume`);
+    if (result.coverage.complete) {
+      console.log(`Synthesis command: npm run coverage-synthesize -- --run-id "${result.runId}"`);
+    } else {
+      console.log(`Resume command: npm run coverage -- --repo "${repo}" --goal "${goal}" --run-id "${result.runId}" --resume`);
+    }
   }
+}
+
+async function runCoverageSynthesize(config, args) {
+  const runId = getOption(args, "--run-id");
+  if (!runId) throw new Error("coverage-synthesize requires --run-id <id>");
+
+  const client = new LMStudioClient(config.model);
+  await assertConfiguredModelLoaded(client, config);
+  const runStore = new RunStore(config.runtimeData?.runsRoot ?? "runtime-data/runs");
+  const service = new CoverageSynthesisService({
+    config,
+    modelClient: client,
+    runStore,
+    onProgress: printSynthesisProgress
+  });
+
+  console.log(`Coverage synthesis model: ${config.model.model}`);
+  console.log(`Stored run: ${runId}`);
+  console.log(`Planner input target: <=${config.coverage?.maxSynthesisChars ?? 24000} chars`);
+  const result = await service.synthesizeExistingRun({ runId });
+
+  console.log(`Synthesis run: ${result.runId}`);
+  console.log(`Status: ${result.status}`);
+  console.log(`Coverage snapshot: ${result.coverage.coveragePercent}% (${result.coverage.completedChunks}/${result.coverage.totalChunks} chunks)`);
+  console.log(`Raw findings: ${result.findings.length}`);
+  console.log(`Final themes: ${result.reduction.finalThemes}`);
+  console.log(`Reduction levels: ${result.reduction.levels.length}`);
+  console.log(`Reviewer decision: ${result.reviewer?.result?.decision ?? "none"}`);
+  console.log(`Evidence/checkpoint: runtime-data/runs/${result.runId}`);
 }
 
 const args = process.argv.slice(2);
@@ -267,6 +328,8 @@ try {
     await runCompany(config, args);
   } else if (command === "coverage") {
     await runCoverage(config, args);
+  } else if (command === "coverage-synthesize") {
+    await runCoverageSynthesize(config, args);
   } else {
     throw new Error(`Unknown command: ${command}`);
   }
