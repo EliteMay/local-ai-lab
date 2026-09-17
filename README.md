@@ -9,7 +9,7 @@
 対象RepositoryをRead-onlyで監査し、Evidence付きの改善案を作ります。初期v1では複数RoleをTask Broker経由で動かす方式を実装しました。最初の実機Qwen3-8B検証を受け、v1.1では **監査可能な全Project Text Chunkを漏れなく処理するWhole Repository Audit** を優先モードとして追加しています。
 
 ```text
-Whole Repository Audit v1.1
+Whole Repository Audit
 
 Repository
   ↓
@@ -23,7 +23,9 @@ BatchごとにCheckpoint保存
   ↓
 Coverage Ledger
   ↓
-Evidence-backed Findings
+Evidence-backed Findings（原本を保存）
+  ↓
+Hierarchical Synthesis（必要な場合だけ段階圧縮）
   ↓
 Improvement Planner
   ↓
@@ -55,6 +57,7 @@ Run / Task / Evidence記録
 - 基本要件: [`REQUIREMENTS.md`](REQUIREMENTS.md)
 - Whole Repository Audit v1.1追加Contract: [`docs/ai-company-v1.1-contract.md`](docs/ai-company-v1.1-contract.md)
 - 実機失敗ログからのResearch: [`docs/ai-company-v1.1-research.md`](docs/ai-company-v1.1-research.md)
+- 次段階のResearch / Benchmark計画: [`docs/ai-company-v1.2-research.md`](docs/ai-company-v1.2-research.md)
 
 Web / Electron制作に関係する共通Ruleは `EliteMay/web-project-guide` のCurrent `main` をSource of Truthとして扱います。
 
@@ -80,9 +83,12 @@ Web / Electron制作に関係する共通Ruleは `EliteMay/web-project-guide` �
 - Whole Repository Coverage Plan
 - line番号を保持したChunk分割
 - 全Auditable ChunkをBounded Batchで処理
+- Output上限時のAdaptive Batch Split
 - BatchごとのCheckpoint保存
 - Repository fingerprint付きResume
 - Coverage Ledger
+- 原Findingを保持したまま行うHierarchical Synthesis
+- 既存100% Coverage RunをRepository再読込なしで要約するSynthesis-only mode
 - Planner / Reviewerによる最終統合
 - 従来のDirector / Task Broker / Agent delegation実験モード
 - Node built-in tests / GitHub Actions
@@ -91,8 +97,9 @@ Web / Electron制作に関係する共通Ruleは `EliteMay/web-project-guide` �
 
 - 外部Web検索 / Web Research Tool
 - GitHub Read-only direct mode
-- 巨大Finding集合向けの階層Synthesis
+- Import / Export / Config等を使ったCross-file Graph Validator
 - Speculative Decoding Benchmark
+- `parallel=1` / `parallel=4` Benchmark
 - Model別Benchmark
 - Engineer Agent / 自動修正
 - Published Evidenceの自動連携
@@ -142,11 +149,23 @@ npm run coverage -- --repo "D:\path\to\repo" --goal "このRepositoryの全監�
 
 実行中はBatch単位で進捗、所要時間、利用可能なToken Usageを表示します。各Batch完了後にCheckpointを保存します。
 
-途中失敗したRunは、表示されたRun IDを使って同じRepository fingerprintなら再開できます。
+Coverage途中で失敗したRunは、表示されたRun IDを使って同じRepository fingerprintなら再開できます。
 
 ```powershell
 npm run coverage -- --repo "D:\path\to\repo" --goal "このRepositoryの全監査対象ファイルを読み、改善点と改善方法をEvidence付きで提案する" --run-id "run-..." --resume
 ```
+
+### 100% Coverage後のHierarchical Synthesis
+
+Coverageが100%でもFinding集合がPlannerの安全Budgetを超えた場合、Repositoryを再監査せず、保存済み`findings.json`だけから段階的に要約できます。
+
+```powershell
+npm run coverage-synthesize -- --run-id "run-..."
+```
+
+この処理は原Findingを削除・置換しません。AIはFinding同士のTheme分類だけを行い、元Finding IDの完全Coverage、Severity / Confidence、代表Evidenceの引継ぎはNode.js側で決定的に管理します。
+
+Synthesis-only modeはCurrent Repositoryを再読込しないため、結果は指定Runの保存済みEvidence Snapshotに対するレポートです。Repositoryがその後変更されていても、過去RunのSynthesis自体は可能です。
 
 ### 比較研究用: Brokered AI Company
 
@@ -175,10 +194,13 @@ runtime-data/
       ├─ batch-results.json
       ├─ coverage.json
       ├─ findings.json
+      ├─ synthesis-reduction.json
       ├─ synthesis.json
       ├─ review.json
       └─ summary.md
 ```
+
+`findings.json`はCoverage Passで得た原Evidence Indexです。`synthesis-reduction.json`はPlannerへ安全に渡すための階層Theme Indexで、原Finding IDへの参照を保持します。
 
 Brokered v1 modeでは`tasks.json` / `research.json`等も使用します。`runtime-data/` はGit管理対象外です。
 
@@ -192,6 +214,7 @@ Brokered v1 modeでは`tasks.json` / `research.json`等も使用します。`run
 - Brokered modeではAgentが他Agentを直接起動せずTask Brokerへ委任要求を返す
 - Structured Resultを引き継ぐ
 - Context/Output上限による途中切れを成功扱いしない
+- Hierarchical Synthesisで元Finding IDを消失させない
 - Audit結果は命令ではなくEvidence / Proposalとして扱う
 - Audit EvidenceをCurrent Repository / Requirementsの第二Source of Truthにしない
 
@@ -199,6 +222,7 @@ Brokered v1 modeでは`tasks.json` / `research.json`等も使用します。`run
 
 - 全ファイル監査要件を、RAGによる一部File選択へ置き換えない
 - 大規模Repositoryは全件Batch Scan + Hierarchical Aggregationで扱う
+- CoverageとSynthesisを分離し、長時間の全件Scanを要約失敗でやり直さない
 - RetrievalはCross-file再確認の補助として将来利用できるがCoverageの代替にはしない
 - Agent数が多いほど良いと仮定しない
 - Single / Fixed Pipeline / Brokered / Full Coverageを実測比較する

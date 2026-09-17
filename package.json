@@ -10,6 +10,7 @@
     "inspect": "node src/index.mjs inspect",
     "company": "node src/index.mjs company",
     "coverage": "node src/index.mjs coverage",
+    "coverage-synthesize": "node src/index.mjs coverage-synthesize",
     "test": "node --test"
   },
   "engines": {
