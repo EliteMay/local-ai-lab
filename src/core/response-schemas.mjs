@@ -118,7 +118,7 @@ export const SYNTHESIS_REDUCTION_SCHEMA = {
   type: "object",
   additionalProperties: false,
   properties: {
-    sourceFindingIds: {
+    inputItemIds: {
       type: "array",
       items: { type: "string", minLength: 1 }
     },
@@ -130,24 +130,16 @@ export const SYNTHESIS_REDUCTION_SCHEMA = {
         type: "object",
         additionalProperties: false,
         properties: {
-          severity: { enum: ["low", "medium", "high", "critical"] },
           title: { type: "string", minLength: 1, maxLength: 160 },
-          confidence: { enum: ["low", "medium", "high"] },
-          sourceFindingIds: {
+          memberIds: {
             type: "array",
             minItems: 1,
             items: { type: "string", minLength: 1 }
-          },
-          evidence: {
-            type: "array",
-            minItems: 1,
-            maxItems: 2,
-            items: EVIDENCE_SCHEMA
           }
         },
-        required: ["severity", "title", "confidence", "sourceFindingIds", "evidence"]
+        required: ["title", "memberIds"]
       }
     }
   },
-  required: ["sourceFindingIds", "clusters"]
+  required: ["inputItemIds", "clusters"]
 };
