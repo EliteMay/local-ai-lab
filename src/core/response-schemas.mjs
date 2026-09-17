@@ -17,6 +17,18 @@ const LOOSE_OBJECT_SCHEMA = {
   additionalProperties: true
 };
 
+const EVIDENCE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    file: { type: "string", minLength: 1 },
+    lineStart: { type: "integer", minimum: 1 },
+    lineEnd: { type: "integer", minimum: 1 },
+    claim: { type: "string", minLength: 1, maxLength: 220 }
+  },
+  required: ["file", "lineStart", "lineEnd", "claim"]
+};
+
 function decisionSchema(role) {
   if (role === "reviewer") {
     return { enum: ["APPROVE", "REJECT", "NEED_MORE_EVIDENCE"] };
@@ -88,17 +100,7 @@ export const COVERAGE_BATCH_SCHEMA = {
             type: "array",
             minItems: 1,
             maxItems: 3,
-            items: {
-              type: "object",
-              additionalProperties: false,
-              properties: {
-                file: { type: "string", minLength: 1 },
-                lineStart: { type: "integer", minimum: 1 },
-                lineEnd: { type: "integer", minimum: 1 },
-                claim: { type: "string", minLength: 1, maxLength: 220 }
-              },
-              required: ["file", "lineStart", "lineEnd", "claim"]
-            }
+            items: EVIDENCE_SCHEMA
           }
         },
         required: ["severity", "title", "confidence", "evidence"]
@@ -110,4 +112,42 @@ export const COVERAGE_BATCH_SCHEMA = {
     }
   },
   required: ["summary", "inspectedChunks", "findings", "uncertainties"]
+};
+
+export const SYNTHESIS_REDUCTION_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    sourceFindingIds: {
+      type: "array",
+      items: { type: "string", minLength: 1 }
+    },
+    clusters: {
+      type: "array",
+      minItems: 1,
+      maxItems: 8,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          severity: { enum: ["low", "medium", "high", "critical"] },
+          title: { type: "string", minLength: 1, maxLength: 160 },
+          confidence: { enum: ["low", "medium", "high"] },
+          sourceFindingIds: {
+            type: "array",
+            minItems: 1,
+            items: { type: "string", minLength: 1 }
+          },
+          evidence: {
+            type: "array",
+            minItems: 1,
+            maxItems: 2,
+            items: EVIDENCE_SCHEMA
+          }
+        },
+        required: ["severity", "title", "confidence", "sourceFindingIds", "evidence"]
+      }
+    }
+  },
+  required: ["sourceFindingIds", "clusters"]
 };
