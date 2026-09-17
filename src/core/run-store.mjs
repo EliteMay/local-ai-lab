@@ -11,7 +11,8 @@ const ALLOWED_FILES = new Set([
   "coverage-plan.json",
   "batch-results.json",
   "coverage.json",
-  "synthesis.json"
+  "synthesis.json",
+  "synthesis-reduction.json"
 ]);
 
 function isInside(root, target) {
