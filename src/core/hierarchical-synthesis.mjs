@@ -110,12 +110,12 @@ function validatePartition(result, items) {
   }
 }
 
-function materializeClusters({ clusters, items, level, groupIndex }) {
+function materializeClusters({ clusters, items, idPrefix }) {
   const byId = new Map(items.map((item) => [item.id, item]));
   return clusters.map((cluster, clusterIndex) => {
     const members = cluster.memberIds.map((id) => byId.get(id)).filter(Boolean);
     return {
-      id: `synth-L${level}-G${String(groupIndex + 1).padStart(3, "0")}-C${String(clusterIndex + 1).padStart(2, "0")}`,
+      id: `synth-${idPrefix}-C${String(clusterIndex + 1).padStart(2, "0")}`,
       severity: highestSeverity(members),
       title: cluster.title,
       confidence: conservativeConfidence(members),
@@ -125,10 +125,11 @@ function materializeClusters({ clusters, items, level, groupIndex }) {
   });
 }
 
-async function reduceGroup({ modelClient, goal, level, groupIndex, items, maxTokens, temperature, onProgress, depth = 0 }) {
+async function reduceGroup({ modelClient, goal, level, groupIndex, items, maxTokens, temperature, onProgress, branch = "" }) {
   if (items.length === 1) return { items, calls: [] };
 
-  const groupId = `L${level}-G${String(groupIndex + 1).padStart(3, "0")}${depth ? `-D${depth}` : ""}`;
+  const branchSuffix = branch ? `-${branch}` : "";
+  const groupId = `L${level}-G${String(groupIndex + 1).padStart(3, "0")}${branchSuffix}`;
   let lastError = null;
 
   for (let attempt = 1; attempt <= 2; attempt += 1) {
@@ -142,7 +143,7 @@ async function reduceGroup({ modelClient, goal, level, groupIndex, items, maxTok
         temperature
       });
       validatePartition(detailed.value, items);
-      const reduced = materializeClusters({ clusters: detailed.value.clusters, items, level, groupIndex });
+      const reduced = materializeClusters({ clusters: detailed.value.clusters, items, idPrefix: groupId });
       onProgress?.({
         type: "synthesis_group_completed",
         level,
@@ -154,7 +155,7 @@ async function reduceGroup({ modelClient, goal, level, groupIndex, items, maxTok
       return { items: reduced, calls: [detailed.meta] };
     } catch (error) {
       lastError = error;
-      if (error?.code === "OUTPUT_TOKEN_LIMIT" && items.length > 2) {
+      if (error?.code === "OUTPUT_TOKEN_LIMIT" && items.length > 1) {
         const midpoint = Math.ceil(items.length / 2);
         onProgress?.({
           type: "synthesis_group_split",
@@ -165,10 +166,26 @@ async function reduceGroup({ modelClient, goal, level, groupIndex, items, maxTok
           reason: error.message
         });
         const left = await reduceGroup({
-          modelClient, goal, level, groupIndex, items: items.slice(0, midpoint), maxTokens, temperature, onProgress, depth: depth + 1
+          modelClient,
+          goal,
+          level,
+          groupIndex,
+          items: items.slice(0, midpoint),
+          maxTokens,
+          temperature,
+          onProgress,
+          branch: `${branch || "R"}A`
         });
         const right = await reduceGroup({
-          modelClient, goal, level, groupIndex, items: items.slice(midpoint), maxTokens, temperature, onProgress, depth: depth + 1
+          modelClient,
+          goal,
+          level,
+          groupIndex,
+          items: items.slice(midpoint),
+          maxTokens,
+          temperature,
+          onProgress,
+          branch: `${branch || "R"}B`
         });
         return { items: [...left.items, ...right.items], calls: [...left.calls, ...right.calls] };
       }
