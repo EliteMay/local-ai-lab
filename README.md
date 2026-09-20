@@ -244,6 +244,31 @@ npm run company -- --repo "D:\path\to\repo" --goal "このRepositoryの改善点
 npm test
 ```
 
+## Desktop Controller v0.1
+
+PowerShellで行っている日常操作を置き換えるElectron GUIを `desktop/` に追加します。
+
+主な機能:
+
+- Runtime / Model Profile状態の確認
+- Repository選択
+- Doctor / Inspect / Coverage / Synthesize / Testsの実行
+- Coverage進捗と実行Log表示
+- 結果の1 Button Copy
+- runtime-data/runs の履歴表示
+- Default Repository / Model Profileの保存
+
+起動:
+
+```powershell
+npm install
+npm run desktop
+```
+
+Desktop v0.1はlocal-ai-labの既存CLIを安全なAllowlist経由で呼び出します。自由ShellやTarget RepositoryへのWrite Capabilityは追加しません。
+
+詳細は [desktop/README.md](desktop/README.md) を参照してください。
+
 ## Runtime Evidence
 
 Default保存先:

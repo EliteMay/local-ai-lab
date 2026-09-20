@@ -1,7 +1,7 @@
 # Local AI Lab Requirements
 
 更新日: 2026-09-20
-Status: Ready for implementation
+Status: Desktop v0.1 implementation in progress
 
 ## 1. 目的
 
@@ -390,7 +390,47 @@ v1完成には最低限次を満たす。
 - Audit EvidenceをCurrent Project Stateの第二Source of Truthにしない
 - 未確認事項を確認済みとして扱わない
 
-## 19. Later Candidates
+## 19. Desktop Controller v0.1
+
+PowerShellで行っている日常操作を置き換えるWindows向けElectron Desktop Controllerを追加する。
+
+### Primary Goal
+
+- PowerShellへCommandを手入力せず local-ai-lab を操作できる
+- 実行結果を画面で確認し、1 ButtonでClipboardへCopyできる
+- 現在のRuntime / Model Profile / Repository / Run状態を確認できる
+- 過去Runを runtime-data から再表示できる
+- Default RepositoryとModel ProfileをGUIから保存できる
+
+### v0.1 Commands
+
+- doctor
+- inspect
+- coverage
+- coverage-synthesize
+- npm test
+
+### Desktop Security Contract
+
+- Electron Rendererで nodeIntegration を有効化しない
+- contextIsolation と sandbox を有効にする
+- RendererへNode / Electron APIを丸ごと公開しない
+- Main Process側で許可済みCommandだけを実行する
+- User入力をShell文字列へ連結せず、spawn argumentとして分離する
+- Target RepositoryへのWrite Capabilityは追加しない
+- Desktop設定はElectron userDataへ保存し、Project設定を暗黙に書き換えない
+
+### v0.1 Non-goals
+
+- 自由Terminal
+- Target Repositoryの自動修正
+- git commit / push
+- Runtime自動起動
+- Model download
+- LM Studio / PrismMLのModel Load / Unload自動化
+- Chat / RAG / Long-term Memory / MCP管理
+
+## 20. Later Candidates
 
 v1検証後に必要性が確認されたものだけ追加する。
 
@@ -404,11 +444,10 @@ v1検証後に必要性が確認されたものだけ追加する。
 - Parallel Agent execution
 - Scheduled audits
 - Discord integration
-- Dashboard / UI
 - Local/Remote model benchmark suite
 - LoRA / Fine-tuning experiments
 
-## 20. Implementation Handoff
+## 21. Implementation Handoff
 
 - Status: Ready for implementation
 - Requirements updated: 2026-09-16
