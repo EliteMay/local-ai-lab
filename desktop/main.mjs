@@ -116,7 +116,7 @@ async function readRunResult(runId){
 function createWindow(){
   mainWindow=new BrowserWindow({
     width:1320,height:840,minWidth:980,minHeight:680,backgroundColor:"#0b0d10",title:"Local AI Lab",
-    webPreferences:{preload:join(__dirname,"preload.mjs"),contextIsolation:true,nodeIntegration:false,sandbox:true}
+    webPreferences:{preload:join(__dirname,"preload.cjs"),contextIsolation:true,nodeIntegration:false,sandbox:true}
   });
   mainWindow.loadFile(join(__dirname,"renderer","index.html"));
   mainWindow.webContents.setWindowOpenHandler(()=>({action:"deny"}));
