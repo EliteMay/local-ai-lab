@@ -7,6 +7,7 @@ test("desktop Electron boundary keeps renderer isolated", async () => {
   assert.match(main, /contextIsolation:\s*true/);
   assert.match(main, /nodeIntegration:\s*false/);
   assert.match(main, /sandbox:\s*true/);
+  assert.match(main, /preload\.cjs/);
   assert.match(main, /setWindowOpenHandler/);
 });
 
@@ -17,8 +18,10 @@ test("desktop command runner is allowlisted and does not enable shell execution"
   assert.doesNotMatch(main, /exec\(/);
 });
 
-test("desktop preload exposes a narrow API instead of raw ipcRenderer", async () => {
-  const preload = await readFile(new URL("../desktop/preload.mjs", import.meta.url), "utf8");
+test("sandboxed desktop preload uses CommonJS and exposes only the narrow bridge", async () => {
+  const preload = await readFile(new URL("../desktop/preload.cjs", import.meta.url), "utf8");
+  assert.match(preload, /require\("electron"\)/);
+  assert.doesNotMatch(preload, /^\s*import\s/m);
   assert.match(preload, /contextBridge\.exposeInMainWorld\("localAI"/);
   assert.doesNotMatch(preload, /exposeInMainWorld\([^)]*ipcRenderer/);
 });
