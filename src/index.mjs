@@ -170,6 +170,7 @@ async function doctor(config) {
   console.log(`Available models: ${ids.length ? ids.join(", ") : "none"}`);
   console.log(`Configured model loaded: ${ids.includes(config.model.model) ? "yes" : "no"}`);
   console.log(`Request timeout: ${Math.round((config.model.timeoutMs ?? 600000) / 1000)} seconds`);
+  console.log(`HTTP transport: ${config.model.transport ?? "fetch"}`);
   console.log(`Max output tokens: ${config.model.maxTokens ?? 2048}`);
 
   try {
