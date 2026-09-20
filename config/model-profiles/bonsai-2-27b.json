@@ -14,6 +14,8 @@
   "coverage": {
     "batchMaxTokens": 1600,
     "singleChunkMaxTokens": 2400,
-    "reductionMaxTokens": 1200
+    "reductionMaxTokens": 1200,
+    "plannerMaxTokens": 2400,
+    "reviewerMaxTokens": 2800
   }
 }
