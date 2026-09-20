@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
+import { once } from "node:events";
 import { LMStudioClient } from "../src/model/lm-studio-client.mjs";
 
 test("chatJson uses LM Studio json_schema structured output and bounds output tokens", async (t) => {
@@ -269,4 +271,58 @@ test("chatJson accepts fenced JSON responses", async (t) => {
 
   const result = await client.chatJson({ system: "system", user: "user" });
   assert.deepEqual(result, { status: "completed" });
+});
+
+
+test("node-http transport waits for delayed local model responses without fetch", async (t) => {
+  const server = createServer((_request, response) => {
+    setTimeout(() => {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ data: [{ id: "bonsai-2-27b" }] }));
+    }, 60);
+  });
+
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  t.after(async () => {
+    await new Promise((resolve) => server.close(resolve));
+  });
+
+  const address = server.address();
+  const client = new LMStudioClient({
+    baseUrl: `http://127.0.0.1:${address.port}/v1`,
+    model: "bonsai-2-27b",
+    providerName: "PrismML llama.cpp",
+    transport: "node-http",
+    timeoutMs: 500
+  });
+
+  const models = await client.listModels();
+  assert.equal(models[0].id, "bonsai-2-27b");
+});
+
+test("node-http transport reports the configured timeout", async (t) => {
+  const server = createServer(() => {
+    // Intentionally leave the request open so the client timeout owns cancellation.
+  });
+
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  t.after(async () => {
+    await new Promise((resolve) => server.close(resolve));
+  });
+
+  const address = server.address();
+  const client = new LMStudioClient({
+    baseUrl: `http://127.0.0.1:${address.port}/v1`,
+    model: "bonsai-2-27b",
+    providerName: "PrismML llama.cpp",
+    transport: "node-http",
+    timeoutMs: 40
+  });
+
+  await assert.rejects(
+    () => client.listModels(),
+    /PrismML llama\.cpp request timed out after 0 seconds/
+  );
 });
