@@ -246,3 +246,27 @@ test("generic OpenAI-compatible runtime can disable LM Studio native model detai
 
   assert.equal(await client.listModelDetails(), null);
 });
+
+
+test("chatJson accepts fenced JSON responses", async (t) => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    choices: [{
+      message: { content: "\`\`\`json\\n{\\\"status\\\":\\\"completed\\\"}\\n\`\`\`" },
+      finish_reason: "stop"
+    }]
+  }), { status: 200, headers: { "content-type": "application/json" } });
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const client = new LMStudioClient({
+    baseUrl: "http://127.0.0.1:1234/v1",
+    model: "qwen/qwen3-8b"
+  });
+
+  const result = await client.chatJson({ system: "system", user: "user" });
+  assert.deepEqual(result, { status: "completed" });
+});
