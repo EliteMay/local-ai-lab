@@ -1,3 +1,86 @@
+import http from "node:http";
+import https from "node:https";
+
+function requestJsonWithNodeHttp(urlString, options, timeoutMs, providerName) {
+  const url = new URL(urlString);
+  const protocolClient = url.protocol === "https:"
+    ? https
+    : url.protocol === "http:"
+      ? http
+      : null;
+
+  if (!protocolClient) {
+    return Promise.reject(new Error(`Unsupported protocol for local model request: ${url.protocol}`));
+  }
+
+  const body = options.body == null
+    ? null
+    : typeof options.body === "string"
+      ? options.body
+      : String(options.body);
+  const headers = {
+    "content-type": "application/json",
+    ...(options.headers ?? {})
+  };
+  const hasContentLength = Object.keys(headers)
+    .some((key) => key.toLowerCase() === "content-length");
+  if (body !== null && !hasContentLength) {
+    headers["content-length"] = Buffer.byteLength(body);
+  }
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let timer = null;
+
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      fn(value);
+    };
+
+    const request = protocolClient.request(url, {
+      method: options.method ?? "GET",
+      headers
+    }, (response) => {
+      const chunks = [];
+      response.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+      response.on("error", (error) => finish(reject, error));
+      response.on("end", () => {
+        const text = Buffer.concat(chunks).toString("utf8");
+        const status = response.statusCode ?? 0;
+
+        if (status < 200 || status >= 300) {
+          finish(
+            reject,
+            new Error(`${providerName} request failed (${status}): ${text.slice(0, 500)}`)
+          );
+          return;
+        }
+
+        try {
+          finish(resolve, text ? JSON.parse(text) : {});
+        } catch (error) {
+          finish(reject, new Error(`${providerName} returned invalid JSON: ${error.message}`));
+        }
+      });
+    });
+
+    timer = setTimeout(() => {
+      const error = new Error(
+        `${providerName} request timed out after ${Math.round(timeoutMs / 1000)} seconds`
+      );
+      error.code = "REQUEST_TIMEOUT";
+      request.destroy(error);
+    }, timeoutMs);
+
+    request.on("error", (error) => finish(reject, error));
+
+    if (body !== null) request.write(body);
+    request.end();
+  });
+}
+
 function stripCodeFence(text) {
   const trimmed = text.trim();
   const match = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
@@ -42,7 +125,8 @@ export class LMStudioClient {
     temperature = 0.2,
     providerName = "LM Studio",
     structuredOutputStyle = "openai-json-schema",
-    nativeModelDetailsPath = "/api/v1/models"
+    nativeModelDetailsPath = "/api/v1/models",
+    transport = "fetch"
   }) {
     this.baseUrl = String(baseUrl).replace(/\/$/, "");
     this.serverRoot = serverRootFromBaseUrl(this.baseUrl);
@@ -53,9 +137,17 @@ export class LMStudioClient {
     this.providerName = providerName;
     this.structuredOutputStyle = structuredOutputStyle;
     this.nativeModelDetailsPath = nativeModelDetailsPath;
+    this.transport = transport;
   }
 
   async #requestUrl(url, options = {}) {
+    if (this.transport === "node-http") {
+      return requestJsonWithNodeHttp(url, options, this.timeoutMs, this.providerName);
+    }
+    if (this.transport !== "fetch") {
+      throw new Error(`Unknown model HTTP transport: ${this.transport}`);
+    }
+
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
 
