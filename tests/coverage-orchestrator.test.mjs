@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CoverageAuditOrchestrator } from "../src/core/coverage-orchestrator.mjs";
+import { CoverageSynthesisService } from "../src/core/coverage-synthesis.mjs";
 import { RunStore } from "../src/core/run-store.mjs";
 
 function roleResponse(overrides = {}) {
@@ -106,7 +107,9 @@ const config = {
     batchMaxTokens: 300,
     singleChunkMaxTokens: 500,
     batchTemperature: 0.1,
-    maxSynthesisChars: 24000
+    maxSynthesisChars: 24000,
+    plannerMaxTokens: 1700,
+    reviewerMaxTokens: 2300
   },
   repoReader: {
     maxFiles: 100,
@@ -144,6 +147,10 @@ test("coverage audit processes every planned chunk, checkpoints results, and rea
   assert.equal(result.coverage.coveragePercent, 100);
   assert.equal(result.coverage.completedChunks, result.coverage.totalChunks);
   assert.equal(result.reviewer.result.decision, "APPROVE");
+  const plannerCall = model.calls.find((call) => call.system.includes("Improvement Planner"));
+  const reviewerCall = model.calls.find((call) => call.system.includes("Reviewer"));
+  assert.equal(plannerCall.maxTokens, 1700);
+  assert.equal(reviewerCall.maxTokens, 2300);
 
   const plan = JSON.parse(await readFile(join(runs, "coverage-complete", "coverage-plan.json"), "utf8"));
   const batches = JSON.parse(await readFile(join(runs, "coverage-complete", "batch-results.json"), "utf8"));
@@ -239,4 +246,41 @@ test("resume refuses a changed batch layout even when repository files are uncha
     }),
     /coverage batch plan changed/
   );
+});
+
+
+test("synthesis-only mode respects profile planner and reviewer token budgets", async () => {
+  const model = new CoverageFakeModel();
+  const service = new CoverageSynthesisService({
+    config,
+    modelClient: model
+  });
+
+  const result = await service.synthesize({
+    goal: "Turn stored evidence into improvements",
+    coverage: {
+      complete: true,
+      coveragePercent: 100,
+      completedChunks: 1,
+      totalChunks: 1
+    },
+    findings: [{
+      id: "batch-0001-finding-01",
+      severity: "medium",
+      title: "Fixture issue",
+      confidence: "high",
+      evidence: [{
+        file: "config/default.json",
+        lineStart: 1,
+        lineEnd: 1,
+        claim: "Fixture evidence"
+      }]
+    }]
+  });
+
+  assert.equal(result.reviewer.result.decision, "APPROVE");
+  const plannerCall = model.calls.find((call) => call.system.includes("Improvement Planner"));
+  const reviewerCall = model.calls.find((call) => call.system.includes("Reviewer"));
+  assert.equal(plannerCall.maxTokens, 1700);
+  assert.equal(reviewerCall.maxTokens, 2300);
 });

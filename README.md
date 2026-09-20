@@ -132,6 +132,8 @@ Serverは `http://127.0.0.1:8080/v1` で待ち受けます。別PowerShellで `l
 
 Bonsai 2 27Bは低速なローカル推論で1リクエストが5分を超えることがあるため、このProfileではNode組み込み`fetch`ではなく`node:http` / `node:https` ベースの長時間Request transportを使用します。これにより、Node/Undici側の約5分のheader待ち制限より先に切断されることを避け、Profileの`timeoutMs`（現在900秒）を実際のRequest上限として使います。
 
+Bonsai 2 27BはStructured Outputが既定Role上限より長くなる場合があるため、このProfileではSynthesisのPlannerを2400 tokens、Reviewerを2800 tokensまで許可します。Coverageが100%完了した後にSynthesisだけ失敗した場合は、保存済みEvidenceを使って `npm run coverage-synthesize -- --model-profile bonsai-2-27b --run-id "<run-id>"` で再開でき、Repositoryの再監査は行いません。
+
 このProfileはModel downloadやServer起動を自動化しません。Runtimeを明示的に分離し、Qwen3-8Bへ戻す場合はProfile指定を外すだけにしています。
 
 ## 現在の実装
