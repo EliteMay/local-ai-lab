@@ -259,7 +259,7 @@ export class CoverageAuditOrchestrator {
       system: plannerRole.system,
       user: renderSynthesisPrompt({ goal, coverage, findings }),
       jsonSchema: getAgentResponseSchema("improvement-planner"),
-      maxTokens: plannerRole.maxTokens
+      maxTokens: this.config.coverage?.plannerMaxTokens ?? plannerRole.maxTokens
     });
 
     const reviewerRole = getRoleDefinition("reviewer");
@@ -267,7 +267,7 @@ export class CoverageAuditOrchestrator {
       system: reviewerRole.system,
       user: renderReviewPrompt({ goal, coverage, findings, planner: planner.value }),
       jsonSchema: getAgentResponseSchema("reviewer"),
-      maxTokens: reviewerRole.maxTokens
+      maxTokens: this.config.coverage?.reviewerMaxTokens ?? reviewerRole.maxTokens
     });
 
     return {
