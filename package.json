@@ -11,9 +11,13 @@
     "company": "node src/index.mjs company",
     "coverage": "node src/index.mjs coverage",
     "coverage-synthesize": "node src/index.mjs coverage-synthesize",
-    "test": "node --test"
+    "test": "node --test",
+    "desktop": "electron desktop/main.mjs"
   },
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "electron": "^44.4.3"
   }
 }
