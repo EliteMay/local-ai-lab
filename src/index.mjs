@@ -7,9 +7,38 @@ import { CoverageAuditOrchestrator } from "./core/coverage-orchestrator.mjs";
 import { CoverageSynthesisService } from "./core/coverage-synthesis.mjs";
 import { RunStore } from "./core/run-store.mjs";
 
-async function loadConfig() {
-  const url = new URL("../config/default.json", import.meta.url);
-  return JSON.parse(await readFile(url, "utf8"));
+function mergeConfig(base, override) {
+  const merged = { ...base, ...override };
+  for (const key of ["model", "limits", "orchestrator", "context", "coverage", "repoReader", "runtimeData"]) {
+    if (base[key] && override[key]) {
+      merged[key] = { ...base[key], ...override[key] };
+    }
+  }
+  return merged;
+}
+
+async function loadConfig(args = []) {
+  const defaultUrl = new URL("../config/default.json", import.meta.url);
+  const base = JSON.parse(await readFile(defaultUrl, "utf8"));
+  const profile = getOption(args, "--model-profile") ?? process.env.LOCAL_AI_MODEL_PROFILE;
+
+  if (!profile) {
+    return { ...base, activeModelProfile: "default" };
+  }
+  if (!/^[a-z0-9][a-z0-9-]*$/i.test(profile)) {
+    throw new Error(`Invalid model profile name: ${profile}`);
+  }
+
+  const profileUrl = new URL(`../config/model-profiles/${profile}.json`, import.meta.url);
+  try {
+    const override = JSON.parse(await readFile(profileUrl, "utf8"));
+    return { ...mergeConfig(base, override), activeModelProfile: profile };
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      throw new Error(`Unknown model profile: ${profile}`);
+    }
+    throw error;
+  }
 }
 
 function getOption(args, name) {
@@ -22,7 +51,7 @@ function hasFlag(args, name) {
 }
 
 function printHelp() {
-  console.log(`local-ai-lab\n\nCommands:\n  doctor\n      Check LM Studio API, loaded model, context length, and parallel setting.\n\n  inspect --repo <path> [--search <text>]\n      Read-only inspection of a local repository.\n\n  broker-demo\n      Exercise deterministic delegation without calling the model.\n\n  company --repo <path> --goal <text> [--run-id <id>]\n      Run the original brokered AI Company orchestration.\n\n  coverage --repo <path> --goal <text> [--run-id <id>] [--resume]\n      Audit every auditable text chunk with checkpoints and an explicit coverage ledger.\n      Use --resume with the same --run-id to continue a partial coverage run when repository fingerprints still match.\n\n  coverage-synthesize --run-id <id>\n      Hierarchically synthesize an existing 100% coverage evidence snapshot without re-reading the repository.\n`);
+  console.log(`local-ai-lab\n\nGlobal options:\n  --model-profile <name>\n      Load config/model-profiles/<name>.json over the default config.\n      You can also set LOCAL_AI_MODEL_PROFILE.\n\nCommands:\n  doctor\n      Check LM Studio API, loaded model, context length, and parallel setting.\n\n  inspect --repo <path> [--search <text>]\n      Read-only inspection of a local repository.\n\n  broker-demo\n      Exercise deterministic delegation without calling the model.\n\n  company --repo <path> --goal <text> [--run-id <id>]\n      Run the original brokered AI Company orchestration.\n\n  coverage --repo <path> --goal <text> [--run-id <id>] [--resume]\n      Audit every auditable text chunk with checkpoints and an explicit coverage ledger.\n      Use --resume with the same --run-id to continue a partial coverage run when repository fingerprints still match.\n\n  coverage-synthesize --run-id <id>\n      Hierarchically synthesize an existing 100% coverage evidence snapshot without re-reading the repository.\n`);
 }
 
 function roleLabel(role) {
@@ -135,7 +164,8 @@ async function doctor(config) {
   const models = await client.listModels();
   const ids = models.map((item) => item.id).filter(Boolean);
 
-  console.log(`LM Studio API: OK`);
+  console.log(`${client.providerName} API: OK`);
+  console.log(`Model profile: ${config.activeModelProfile ?? "default"}`);
   console.log(`Configured model: ${config.model.model}`);
   console.log(`Available models: ${ids.length ? ids.join(", ") : "none"}`);
   console.log(`Configured model loaded: ${ids.includes(config.model.model) ? "yes" : "no"}`);
@@ -144,6 +174,10 @@ async function doctor(config) {
 
   try {
     const details = await client.listModelDetails();
+    if (!Array.isArray(details)) {
+      console.log(`Loaded model details: not supported by ${client.providerName}`);
+      return;
+    }
     const model = details.find((item) => item.key === config.model.model || item.loaded_instances?.some((instance) => instance.id === config.model.model));
     const instance = model?.loaded_instances?.find((item) => item.id === config.model.model) ?? model?.loaded_instances?.[0];
     if (instance?.config) {
@@ -209,7 +243,7 @@ async function assertConfiguredModelLoaded(client, config) {
   const models = await client.listModels();
   const modelIds = models.map((item) => item.id).filter(Boolean);
   if (!modelIds.includes(config.model.model)) {
-    throw new Error(`Configured model is not loaded in LM Studio: ${config.model.model}`);
+    throw new Error(`Configured model is not loaded on ${client.providerName}: ${config.model.model}`);
   }
 }
 
@@ -315,7 +349,7 @@ const args = process.argv.slice(2);
 const command = args[0];
 
 try {
-  const config = await loadConfig();
+  const config = await loadConfig(args);
   if (!command || command === "help" || command === "--help" || command === "-h") {
     printHelp();
   } else if (command === "doctor") {
