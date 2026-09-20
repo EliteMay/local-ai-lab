@@ -253,7 +253,7 @@ test("chatJson accepts fenced JSON responses", async (t) => {
 
   globalThis.fetch = async () => new Response(JSON.stringify({
     choices: [{
-      message: { content: "\`\`\`json\\n{\\\"status\\\":\\\"completed\\\"}\\n\`\`\`" },
+      message: { content: "```json\n{\"status\":\"completed\"}\n```" },
       finish_reason: "stop"
     }]
   }), { status: 200, headers: { "content-type": "application/json" } });
