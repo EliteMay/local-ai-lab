@@ -65,9 +65,72 @@ Web / Electron制作に関係する共通Ruleは `EliteMay/web-project-guide` �
 
 - Windows
 - Node.js 20+
-- LM Studio
-- Qwen3-8B
+- Default Runtime: LM Studio
+- Default Model: Qwen3-8B
+- Optional Runtime: PrismML llama.cpp
+- Optional Model Profile: Bonsai 2 27B
 - 初期対象: PC上のローカルGit Repository
+
+## Model Profile切替
+
+Defaultは従来どおりLM Studio + Qwen3-8Bです。Bonsai 2 27Bは明示的にProfileを指定したときだけ使用します。
+
+Default確認:
+
+```powershell
+npm run doctor
+```
+
+Bonsai 2 27B確認:
+
+```powershell
+npm run doctor -- --model-profile bonsai-2-27b
+```
+
+Coverage Audit:
+
+```powershell
+npm run coverage -- --model-profile bonsai-2-27b --repo "." --goal "このRepositoryの全監査対象ファイルを読み、改善点と改善方法をEvidence付きで提案する"
+```
+
+環境変数でも固定できます。
+
+```powershell
+$env:LOCAL_AI_MODEL_PROFILE = "bonsai-2-27b"
+npm run doctor
+```
+
+解除:
+
+```powershell
+Remove-Item Env:LOCAL_AI_MODEL_PROFILE
+```
+
+### Bonsai 2 27B / Windows setup
+
+Bonsai 2 27Bは通常のLM Studio経路ではなく、PrismML公式Bonsai Demoが配布するllama.cpp runtimeを使います。Stock llama.cppではBonsai 2用のPTQ1_0 / PQ2_0を実行しません。
+
+```powershell
+git clone https://github.com/PrismML-Eng/Bonsai-demo.git
+cd Bonsai-demo
+
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+$env:BONSAI_OPENWEBUI = "0"
+$env:BONSAI_CODE_INTERPRETER = "0"
+.\setup.ps1
+```
+
+監査用途ではまずContextを16Kに固定し、Vision projectorをRAM側へ逃がしてVRAM余裕を作る構成から試します。
+
+```powershell
+$env:BONSAI_CTX = "16384"
+$env:BONSAI_MMPROJ_CPU = "1"
+.\scripts\start_llama_server.ps1 --alias bonsai-2-27b --reasoning-budget 512
+```
+
+Serverは `http://127.0.0.1:8080/v1` で待ち受けます。別PowerShellで `local-ai-lab` に戻り、`npm run doctor -- --model-profile bonsai-2-27b` が成功すれば切替準備完了です。
+
+このProfileはModel downloadやServer起動を自動化しません。Runtimeを明示的に分離し、Qwen3-8Bへ戻す場合はProfile指定を外すだけにしています。
 
 ## 現在の実装
 

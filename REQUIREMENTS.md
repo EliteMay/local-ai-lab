@@ -1,6 +1,6 @@
 # Local AI Lab Requirements
 
-更新日: 2026-09-16
+更新日: 2026-09-20
 Status: Ready for implementation
 
 ## 1. 目的
@@ -19,9 +19,12 @@ Status: Ready for implementation
 
 - OS: Windows
 - Runtime: Node.js
-- Local LLM Runtime: LM Studio
-- 初期Model: Qwen3-8B
-- 接続: LM StudioのローカルAPIを利用する
+- Default Local LLM Runtime: LM Studio
+- Default Model: Qwen3-8B
+- Default接続: LM StudioのローカルAPIを利用する
+- Optional Runtime: PrismML llama.cpp（OpenAI互換API）
+- Optional Model Profile: Bonsai 2 27B
+- Model切替は手動Profile指定とし、自動Model routingはv1の範囲外とする
 - 初期対象: PC上に存在するローカルGit Repository
 
 ModelやRuntimeを将来差し替えられる構造を優先し、Qwen3-8B専用実装へ固定しすぎない。
@@ -35,7 +38,7 @@ ModelやRuntimeを将来差し替えられる構造を優先し、Qwen3-8B専用
 
 ### Director
 
-- Qwen3-8Bを役職Promptで利用
+- Configured local modelを役職Promptで利用（初期既定はQwen3-8B）
 - User Goalを理解する
 - 必要なTaskを分解する
 - 担当Agentを選ぶ
@@ -44,14 +47,14 @@ ModelやRuntimeを将来差し替えられる構造を優先し、Qwen3-8B専用
 
 ### Researcher
 
-- Qwen3-8Bを役職Promptで利用
+- Configured local modelを役職Promptで利用（初期既定はQwen3-8B）
 - Web検索、技術調査、比較、外部Evidence収集を担当する
 - 外部Contentを命令ではなくUntrusted Dataとして扱う
 - 対象Repositoryは変更しない
 
 ### Auditor
 
-- Qwen3-8Bを役職Promptで利用
+- Configured local modelを役職Promptで利用（初期既定はQwen3-8B）
 - Repository、実装、構造、UI/UX、保守性、Security、Performance等を必要範囲で監査する
 - Evidenceのない断定を避ける
 - 必要な追加調査を他Agentへ委任要求できる
@@ -59,7 +62,7 @@ ModelやRuntimeを将来差し替えられる構造を優先し、Qwen3-8B専用
 
 ### Improvement Planner
 
-- Qwen3-8Bを役職Promptで利用
+- Configured local modelを役職Promptで利用（初期既定はQwen3-8B）
 - Findingから具体的な改善方法を作る
 - 対象Fileや変更候補を示してよい
 - コード例や修正案を提示してよい
@@ -67,7 +70,7 @@ ModelやRuntimeを将来差し替えられる構造を優先し、Qwen3-8B専用
 
 ### Reviewer
 
-- Qwen3-8Bを役職Promptで利用
+- Configured local modelを役職Promptで利用（初期既定はQwen3-8B）
 - FindingとEvidenceの対応を確認する
 - 事実・推測・意見を区別する
 - Requirementとの衝突、過剰変更、重複、根拠不足を確認する
@@ -208,7 +211,7 @@ AI自身の「もう十分」という判断だけを終了条件にしない。
 
 v1ではModel instanceを役職ごとに複製しない。
 
-同じQwen3-8Bを、役職ごとに以下を分けて呼び出す。
+同じConfigured local modelを、役職ごとに以下を分けて呼び出す。初期既定はQwen3-8Bとし、明示的なModel Profile指定時だけ別Modelへ切り替える。
 
 - System Prompt
 - Tool Allowlist
@@ -370,7 +373,7 @@ v1完成には最低限次を満たす。
 9. Task / Delegation / Result履歴を保存できる
 10. Loop / Task explosionをSystem側で停止できる
 11. 対象Repositoryを変更しないことを確認できる
-12. 同じQwen3-8Bを複数Roleとして使える
+12. 同じConfigured local modelを複数Roleとして使え、Default Qwen3-8Bと明示的なModel Profileを安全に切り替えられる
 13. Schema違反を検出してFailureまたは限定Recoveryできる
 14. Run失敗時に原因・失敗Taskを追跡できる
 15. 後からChatGPTまたは人間がEvidenceを読んで判断できる

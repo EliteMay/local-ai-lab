@@ -9,7 +9,7 @@ function serverRootFromBaseUrl(baseUrl) {
   return `${url.protocol}//${url.host}`;
 }
 
-function createLengthError(result, requestedMaxTokens) {
+function createLengthError(result, requestedMaxTokens, providerName) {
   const promptTokens = result.usage?.prompt_tokens;
   const completionTokens = result.usage?.completion_tokens;
   const hasUsage = Number.isInteger(promptTokens) && Number.isInteger(completionTokens);
@@ -23,8 +23,8 @@ function createLengthError(result, requestedMaxTokens) {
     ? ` (prompt=${promptTokens}, completion=${completionTokens}, total=${total})`
     : "";
   const error = new Error(hitOutputCap
-    ? `LM Studio reached max output tokens before structured JSON completed (max_tokens=${requestedMaxTokens})${details}`
-    : `LM Studio stopped at the context limit before structured JSON completed${details}`);
+    ? `${providerName} reached max output tokens before structured JSON completed (max_tokens=${requestedMaxTokens})${details}`
+    : `${providerName} stopped at the context limit before structured JSON completed${details}`);
   error.code = hitOutputCap ? "OUTPUT_TOKEN_LIMIT" : "CONTEXT_LIMIT";
   error.promptTokens = promptTokens ?? null;
   error.completionTokens = completionTokens ?? null;
@@ -34,13 +34,25 @@ function createLengthError(result, requestedMaxTokens) {
 }
 
 export class LMStudioClient {
-  constructor({ baseUrl, model, timeoutMs = 600000, maxTokens = 2048, temperature = 0.2 }) {
+  constructor({
+    baseUrl,
+    model,
+    timeoutMs = 600000,
+    maxTokens = 2048,
+    temperature = 0.2,
+    providerName = "LM Studio",
+    structuredOutputStyle = "openai-json-schema",
+    nativeModelDetailsPath = "/api/v1/models"
+  }) {
     this.baseUrl = String(baseUrl).replace(/\/$/, "");
     this.serverRoot = serverRootFromBaseUrl(this.baseUrl);
     this.model = model;
     this.timeoutMs = timeoutMs;
     this.maxTokens = maxTokens;
     this.temperature = temperature;
+    this.providerName = providerName;
+    this.structuredOutputStyle = structuredOutputStyle;
+    this.nativeModelDetailsPath = nativeModelDetailsPath;
   }
 
   async #requestUrl(url, options = {}) {
@@ -59,12 +71,12 @@ export class LMStudioClient {
 
       if (!response.ok) {
         const body = await response.text();
-        throw new Error(`LM Studio request failed (${response.status}): ${body.slice(0, 500)}`);
+        throw new Error(`${this.providerName} request failed (${response.status}): ${body.slice(0, 500)}`);
       }
       return await response.json();
     } catch (error) {
       if (error?.name === "AbortError") {
-        throw new Error(`LM Studio request timed out after ${Math.round(this.timeoutMs / 1000)} seconds`);
+        throw new Error(`${this.providerName} request timed out after ${Math.round(this.timeoutMs / 1000)} seconds`);
       }
       throw error;
     } finally {
@@ -82,7 +94,8 @@ export class LMStudioClient {
   }
 
   async listModelDetails() {
-    const data = await this.#requestUrl(`${this.serverRoot}/api/v1/models`, { method: "GET", headers: {} });
+    if (!this.nativeModelDetailsPath) return null;
+    const data = await this.#requestUrl(`${this.serverRoot}${this.nativeModelDetailsPath}`, { method: "GET", headers: {} });
     return data.models ?? [];
   }
 
@@ -108,13 +121,21 @@ export class LMStudioClient {
     }
 
     if (json) {
-      payload.response_format = {
-        type: "json_schema",
-        json_schema: {
-          name: "structured_response",
-          schema: jsonSchema ?? { type: "object" }
-        }
-      };
+      const schema = jsonSchema ?? { type: "object" };
+      if (this.structuredOutputStyle === "llama-cpp-json-schema") {
+        payload.response_format = {
+          type: "json_schema",
+          schema
+        };
+      } else {
+        payload.response_format = {
+          type: "json_schema",
+          json_schema: {
+            name: "structured_response",
+            schema
+          }
+        };
+      }
     }
 
     const data = await this.#request("/chat/completions", {
@@ -125,7 +146,7 @@ export class LMStudioClient {
     const choice = data.choices?.[0];
     const content = choice?.message?.content;
     if (typeof content !== "string") {
-      throw new Error("LM Studio returned no assistant content");
+      throw new Error(`${this.providerName} returned no assistant content`);
     }
 
     return {
@@ -149,7 +170,7 @@ export class LMStudioClient {
     const result = await this.chatDetailed({ ...input, json: true });
 
     if (result.finishReason === "length") {
-      throw createLengthError(result, requestedMaxTokens);
+      throw createLengthError(result, requestedMaxTokens, this.providerName);
     }
 
     try {

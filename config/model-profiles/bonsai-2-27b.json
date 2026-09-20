@@ -1,0 +1,18 @@
+{
+  "model": {
+    "runtime": "prism-llama.cpp",
+    "providerName": "PrismML llama.cpp",
+    "baseUrl": "http://127.0.0.1:8080/v1",
+    "model": "bonsai-2-27b",
+    "timeoutMs": 900000,
+    "maxTokens": 4096,
+    "temperature": 1.0,
+    "structuredOutputStyle": "llama-cpp-json-schema",
+    "nativeModelDetailsPath": null
+  },
+  "coverage": {
+    "batchMaxTokens": 1600,
+    "singleChunkMaxTokens": 2400,
+    "reductionMaxTokens": 1200
+  }
+}

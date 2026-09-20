@@ -194,3 +194,79 @@ test("request timeout reports an actionable LM Studio timeout error", async (t) 
     /LM Studio request timed out after 0 seconds/
   );
 });
+
+
+test("llama.cpp profile uses schema-constrained response_format without LM Studio nesting", async (t) => {
+  const originalFetch = globalThis.fetch;
+  let capturedBody = null;
+
+  globalThis.fetch = async (_url, options) => {
+    capturedBody = JSON.parse(options.body);
+    return new Response(JSON.stringify({
+      choices: [{ message: { content: "{\"status\":\"completed\"}" }, finish_reason: "stop" }]
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    });
+  };
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const client = new LMStudioClient({
+    baseUrl: "http://127.0.0.1:8080/v1",
+    model: "bonsai-2-27b",
+    providerName: "PrismML llama.cpp",
+    structuredOutputStyle: "llama-cpp-json-schema",
+    nativeModelDetailsPath: null
+  });
+
+  const schema = {
+    type: "object",
+    additionalProperties: false,
+    properties: { status: { const: "completed" } },
+    required: ["status"]
+  };
+  const result = await client.chatJson({ system: "system", user: "user", jsonSchema: schema });
+
+  assert.deepEqual(result, { status: "completed" });
+  assert.equal(capturedBody.response_format.type, "json_schema");
+  assert.deepEqual(capturedBody.response_format.schema, schema);
+  assert.equal("json_schema" in capturedBody.response_format, false);
+});
+
+test("generic OpenAI-compatible runtime can disable LM Studio native model details", async () => {
+  const client = new LMStudioClient({
+    baseUrl: "http://127.0.0.1:8080/v1",
+    model: "bonsai-2-27b",
+    providerName: "PrismML llama.cpp",
+    nativeModelDetailsPath: null
+  });
+
+  assert.equal(await client.listModelDetails(), null);
+});
+
+
+test("chatJson accepts fenced JSON responses", async (t) => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    choices: [{
+      message: { content: "```json\n{\"status\":\"completed\"}\n```" },
+      finish_reason: "stop"
+    }]
+  }), { status: 200, headers: { "content-type": "application/json" } });
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const client = new LMStudioClient({
+    baseUrl: "http://127.0.0.1:1234/v1",
+    model: "qwen/qwen3-8b"
+  });
+
+  const result = await client.chatJson({ system: "system", user: "user" });
+  assert.deepEqual(result, { status: "completed" });
+});
