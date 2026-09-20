@@ -30,7 +30,7 @@ Electronの設定はElectron userData配下の settings.json に保存され、P
 
 ## Security Boundary
 
-RendererではNode integrationを無効にし、context isolation / sandboxを有効にします。Rendererから利用できるIPCはRepository選択、許可済みCommand実行、履歴読込、Clipboard、Desktop設定に限定します。
+RendererではNode integrationを無効にし、context isolation / sandboxを有効にします。Sandboxed preloadはElectronの制約に合わせてCommonJS (`preload.cjs`) を使用します。Rendererから利用できるIPCはRepository選択、許可済みCommand実行、履歴読込、Clipboard、Desktop設定に限定します。
 
 任意Shell文字列は受け付けず、CLI引数はMain Process側で組み立てます。
 
