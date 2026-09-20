@@ -1,6 +1,6 @@
 function stripCodeFence(text) {
   const trimmed = text.trim();
-  const match = trimmed.match(/^\`\`\`(?:json)?\\s*([\\s\\S]*?)\\s*\`\`\`$/i);
+  const match = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
   return match ? match[1].trim() : trimmed;
 }
 
