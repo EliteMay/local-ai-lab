@@ -79,7 +79,7 @@ export class CoverageSynthesisService {
       system: plannerRole.system,
       user: renderSynthesisPrompt({ goal, coverage, findings: planningFindings }),
       jsonSchema: getAgentResponseSchema("improvement-planner"),
-      maxTokens: plannerRole.maxTokens
+      maxTokens: this.config.coverage?.plannerMaxTokens ?? plannerRole.maxTokens
     });
     this.#emit({ type: "synthesis_planner_completed", model: planner.meta });
 
@@ -89,7 +89,7 @@ export class CoverageSynthesisService {
       system: reviewerRole.system,
       user: renderReviewPrompt({ goal, coverage, findings: planningFindings, planner: planner.value }),
       jsonSchema: getAgentResponseSchema("reviewer"),
-      maxTokens: reviewerRole.maxTokens
+      maxTokens: this.config.coverage?.reviewerMaxTokens ?? reviewerRole.maxTokens
     });
     this.#emit({ type: "synthesis_reviewer_completed", decision: reviewer.value.decision, model: reviewer.meta });
 
