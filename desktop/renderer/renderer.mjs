@@ -1,4 +1,7 @@
 const MAX_RENDER_LOG_LINES = 800;
+const TELEMETRY_INTERVAL_MS = 5000;
+const RESPONSE_WAIT_SECONDS = 15;
+const LONG_WAIT_SECONDS = 600;
 
 const COMMAND_META = {
   doctor: { label: "接続確認", execute: "接続確認を実行" },
@@ -30,6 +33,12 @@ const state = {
   currentStage: "実行待ち",
   planFiles: 0,
   planChunks: 0,
+  lastOutputAt: null,
+  processAlive: null,
+  lastBatchDuration: null,
+  tokenRates: [],
+  telemetryTimerId: null,
+  systemMetrics: null,
   updateState: null,
   bonsaiStatus: null
 };
@@ -166,20 +175,212 @@ function parseDurationText(value) {
   return seconds || null;
 }
 
-function estimateRemainingText() {
+function average(values) {
+  if (!values.length) return null;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function estimateRemainingSeconds() {
   if (state.totalBatches > 0 && state.batchDurations.length > 0 && state.completedBatches < state.totalBatches) {
-    const average = state.batchDurations.reduce((sum, value) => sum + value, 0) / state.batchDurations.length;
-    const remaining = state.totalBatches - state.completedBatches;
-    return "約 " + formatDuration(average * remaining);
+    return average(state.batchDurations) * (state.totalBatches - state.completedBatches);
   }
+  return null;
+}
+
+function estimateRemainingText() {
+  const seconds = estimateRemainingSeconds();
+  if (seconds != null) return "約 " + formatDuration(seconds);
   if (state.running && state.totalBatches > 0 && state.completedBatches >= state.totalBatches) {
     return "監査完了・結果統合中";
   }
-  if (state.running && state.totalBatches > 0) {
-    return "最初の処理完了後に推定";
-  }
+  if (state.running && state.totalBatches > 0) return "最初の処理完了後に推定";
   if (state.running) return "計測中";
   return "—";
+}
+
+function formatClock(value, { seconds = false } = {}) {
+  if (!value) return "—";
+  try {
+    return new Intl.DateTimeFormat("ja-JP", {
+      hour: "2-digit",
+      minute: "2-digit",
+      ...(seconds ? { second: "2-digit" } : {})
+    }).format(new Date(value));
+  } catch {
+    return "—";
+  }
+}
+
+function finishEstimateText() {
+  const seconds = estimateRemainingSeconds();
+  return seconds == null ? "—" : `${formatClock(Date.now() + (seconds * 1000))}ごろ`;
+}
+
+function secondsSince(value) {
+  if (!value) return null;
+  return Math.max(0, (Date.now() - value) / 1000);
+}
+
+function lastUpdateText() {
+  const age = secondsSince(state.lastOutputAt);
+  if (age == null) return "—";
+  return `${formatClock(state.lastOutputAt, { seconds: true })}（${formatDuration(age)}前）`;
+}
+
+function runHealth() {
+  if (!state.running) return { text: "待機中", state: "idle" };
+  const silence = secondsSince(state.lastOutputAt) ?? 0;
+  if (state.processAlive === true && silence >= LONG_WAIT_SECONDS) {
+    return { text: "プロセス動作中・長時間応答待ち", state: "warning" };
+  }
+  if (state.processAlive === true && silence >= RESPONSE_WAIT_SECONDS) {
+    return { text: "プロセス動作中・応答待ち", state: "waiting" };
+  }
+  if (state.processAlive === false) {
+    return { text: "開始・終了処理中", state: "waiting" };
+  }
+  return { text: "処理中", state: "working" };
+}
+
+function updateSpeedMetrics() {
+  const batchAverage = average(state.batchDurations);
+  const tokenAverage = average(state.tokenRates);
+  setText("#averageBatch", batchAverage == null ? (state.running ? "計測中" : "—") : `${formatDuration(batchAverage)} / 処理`);
+  setText("#lastBatch", state.lastBatchDuration == null ? "—" : formatDuration(state.lastBatchDuration));
+  setText("#tokenRate", tokenAverage == null ? "—" : `約 ${tokenAverage.toFixed(1)} トークン/秒`);
+  const wait = state.running && state.lastOutputAt ? secondsSince(state.lastOutputAt) : null;
+  setText("#responseWait", wait == null ? "—" : formatDuration(wait));
+}
+
+function formatMemory(value) {
+  if (!Number.isFinite(value) || value < 0) return "—";
+  return `${(value / (1024 ** 3)).toFixed(1)} GB`;
+}
+
+function applySystemMetrics(metrics) {
+  if (!metrics) return;
+  state.systemMetrics = metrics;
+  setText("#cpuMetric", metrics.cpuPercent == null ? "計測中" : `${metrics.cpuPercent.toFixed(1)}%`);
+  setText(
+    "#memoryMetric",
+    metrics.memoryTotalBytes > 0
+      ? `${formatMemory(metrics.memoryUsedBytes)} / ${formatMemory(metrics.memoryTotalBytes)}`
+      : "取得不可"
+  );
+  setText("#gpuMetric", metrics.gpuPercent == null ? "取得不可" : `${metrics.gpuPercent.toFixed(1)}%`);
+  setText(
+    "#vramMetric",
+    metrics.vramTotalBytes > 0
+      ? `${formatMemory(metrics.vramUsedBytes)} / ${formatMemory(metrics.vramTotalBytes)}`
+      : "取得不可"
+  );
+}
+
+function updateOperationalMetrics() {
+  const health = runHealth();
+  setText("#finishEstimate", finishEstimateText());
+  setText("#lastUpdate", lastUpdateText());
+  setText("#runHealth", health.text);
+  $("#runHealth")?.setAttribute("data-state", health.state);
+  updateSpeedMetrics();
+}
+
+async function refreshTelemetry() {
+  const requests = [
+    window.localAI.getCommandStatus(),
+    window.localAI.getSystemMetrics()
+  ];
+  const [commandResult, metricsResult] = await Promise.allSettled(requests);
+
+  if (commandResult.status === "fulfilled") {
+    const status = commandResult.value || {};
+    state.processAlive = Boolean(status.processAlive);
+    if (status.lastOutputAt) state.lastOutputAt = Number(status.lastOutputAt);
+  }
+  if (metricsResult.status === "fulfilled") applySystemMetrics(metricsResult.value);
+  updateOperationalMetrics();
+  updateLiveResult();
+}
+
+function startTelemetryPolling() {
+  if (state.telemetryTimerId) clearInterval(state.telemetryTimerId);
+  void refreshTelemetry();
+  state.telemetryTimerId = setInterval(() => void refreshTelemetry(), TELEMETRY_INTERVAL_MS);
+}
+
+function clearRunOverview() {
+  $("#resultOverview")?.classList.add("hidden");
+  $("#topFindings").textContent = "";
+}
+
+function severityLabel(value) {
+  const labels = { critical: "重大", high: "高", medium: "中", low: "低" };
+  return labels[value] || value || "不明";
+}
+
+function renderRunOverview(overview) {
+  if (!overview) return;
+  $("#resultOverview").classList.remove("hidden");
+  setText("#resultCoverage", overview.coveragePercent == null ? "—" : `${overview.coveragePercent}%`);
+  const files = overview.auditableFiles == null ? "—" : overview.auditableFiles;
+  const excluded = overview.excludedFiles == null ? "—" : overview.excludedFiles;
+  setText("#resultFiles", `${files}（除外 ${excluded}）`);
+  setText("#resultFindings", String(overview.findingCount ?? 0));
+  setText("#resultReviewer", overview.reviewerDecision ? reviewerDecisionLabel(overview.reviewerDecision) : "—");
+  setText("#severityCritical", String(overview.severity?.critical ?? 0));
+  setText("#severityHigh", String(overview.severity?.high ?? 0));
+  setText("#severityMedium", String(overview.severity?.medium ?? 0));
+  setText("#severityLow", String(overview.severity?.low ?? 0));
+
+  const list = $("#topFindings");
+  list.textContent = "";
+  const findings = Array.isArray(overview.topFindings) ? overview.topFindings : [];
+  if (!findings.length) {
+    const empty = document.createElement("p");
+    empty.className = "subtle";
+    empty.textContent = "重要な指摘はありません。";
+    list.appendChild(empty);
+    return;
+  }
+
+  for (const finding of findings) {
+    const row = document.createElement("div");
+    row.className = "finding-summary";
+
+    const severity = document.createElement("span");
+    severity.className = "finding-severity";
+    severity.textContent = severityLabel(finding.severity);
+
+    const body = document.createElement("div");
+    const title = document.createElement("strong");
+    title.textContent = finding.title || "名称のない指摘";
+    body.appendChild(title);
+
+    if (finding.evidence?.file) {
+      const evidence = document.createElement("small");
+      const start = finding.evidence.lineStart;
+      const end = finding.evidence.lineEnd;
+      evidence.textContent = start
+        ? `${finding.evidence.file} · ${start === end ? `L${start}` : `L${start}-L${end}`}`
+        : finding.evidence.file;
+      body.appendChild(evidence);
+    }
+
+    row.append(severity, body);
+    list.appendChild(row);
+  }
+}
+
+async function loadRunOverview(runId) {
+  if (!runId || runId === "—") {
+    clearRunOverview();
+    return;
+  }
+  try {
+    renderRunOverview(await window.localAI.readRunOverview(runId));
+  } catch {
+    clearRunOverview();
+  }
 }
 
 function updateLiveResult() {
@@ -189,10 +390,12 @@ function updateLiveResult() {
     ? formatDuration((Date.now() - state.startedAt) / 1000)
     : "—";
   const estimate = estimateRemainingText();
+  const health = runHealth();
   const lines = [
     "実行中",
     `処理: ${COMMAND_META[state.selectedCommand]?.label || state.selectedCommand}`,
-    `現在の作業: ${state.currentStage || "開始準備中"}`
+    `現在の作業: ${state.currentStage || "開始準備中"}`,
+    `状態: ${health.text}`
   ];
 
   if (state.totalBatches > 0) {
@@ -209,6 +412,14 @@ function updateLiveResult() {
 
   lines.push(`経過時間: ${elapsed}`);
   lines.push(`推定残り: ${estimate}`);
+  lines.push(`終了予想: ${finishEstimateText()}`);
+  lines.push(`最終更新: ${lastUpdateText()}`);
+
+  const batchAverage = average(state.batchDurations);
+  if (batchAverage != null) lines.push(`平均処理時間: ${formatDuration(batchAverage)} / 処理`);
+  if (state.lastBatchDuration != null) lines.push(`直近処理時間: ${formatDuration(state.lastBatchDuration)}`);
+  const tokenAverage = average(state.tokenRates);
+  if (tokenAverage != null) lines.push(`生成速度: 約 ${tokenAverage.toFixed(1)} トークン/秒`);
 
   if (state.promptTokens || state.completionTokens || state.reasoningTokens) {
     const tokenParts = [`入力 ${state.promptTokens}`, `出力 ${state.completionTokens}`];
@@ -220,7 +431,10 @@ function updateLiveResult() {
   if (runId && runId !== "—") lines.push(`実行ID: ${runId}`);
 
   if (state.totalBatches > 0 && state.batchDurations.length > 0) {
-    lines.push("※ 推定残りは、完了済み処理の平均時間をもとにした目安です。");
+    lines.push("※ 推定残りと終了予想は、完了済み処理の平均時間をもとにした目安です。");
+  }
+  if (health.state === "warning") {
+    lines.push("※ 出力が長時間ありません。プロセスは動作中ですが、モデル応答を待っています。");
   }
 
   setText("#resultTitle", "実行中");
@@ -231,11 +445,13 @@ function updateTiming() {
   if (!state.startedAt) {
     setText("#elapsed", "—");
     setText("#estimate", "—");
+    updateOperationalMetrics();
     return;
   }
 
   setText("#elapsed", formatDuration((Date.now() - state.startedAt) / 1000));
   setText("#estimate", estimateRemainingText());
+  updateOperationalMetrics();
   updateLiveResult();
 }
 
@@ -263,10 +479,18 @@ function resetRunMetrics() {
   state.currentStage = "開始準備中";
   state.planFiles = 0;
   state.planChunks = 0;
+  state.lastOutputAt = Date.now();
+  state.processAlive = null;
+  state.lastBatchDuration = null;
+  state.tokenRates = [];
   setText("#batchMetric", "処理単位 —");
   setText("#tokenMetric", "使用トークン —");
   setText("#stage", "開始準備中");
   setText("#estimate", "計測中");
+  setText("#finishEstimate", "—");
+  setText("#lastUpdate", "—");
+  setText("#runHealth", "開始準備中");
+  updateSpeedMetrics();
 }
 
 function updateTokenMetric() {
@@ -319,7 +543,9 @@ function setRunning(value, title) {
   $("#cancel").classList.toggle("hidden", !value);
   $("#cancel").disabled = !value;
   setText("#runProtection", value ? "スリープ防止中" : "待機中");
+  if (!value) state.processAlive = false;
   if (title) setText("#runTitle", title);
+  updateOperationalMetrics();
 }
 
 function ensureRunOption(runId, label = runId) {
@@ -341,6 +567,8 @@ function setStage(value, { updateResult = true } = {}) {
 }
 
 function appendLog(payload) {
+  state.lastOutputAt = Date.now();
+  state.processAlive = true;
   const line = document.createElement("div");
   if (payload.channel === "stderr") line.className = "err";
   line.textContent = payload.line;
@@ -352,7 +580,11 @@ function appendLog(payload) {
   log.scrollTop = log.scrollHeight;
 
   const progress = payload.progress;
-  if (!progress) return;
+  if (!progress) {
+    updateOperationalMetrics();
+    updateLiveResult();
+    return;
+  }
 
   if (progress.type === "run-id") {
     setText("#runLabel", progress.runId);
@@ -384,7 +616,14 @@ function appendLog(payload) {
       state.completedBatchIds.add(progress.batchId);
       state.completedBatches += 1;
       const seconds = parseDurationText(progress.durationText);
-      if (seconds) state.batchDurations.push(seconds);
+      if (seconds) {
+        state.batchDurations.push(seconds);
+        state.lastBatchDuration = seconds;
+        if ((progress.completionTokens || 0) > 0) {
+          state.tokenRates.push(progress.completionTokens / seconds);
+          state.tokenRates = state.tokenRates.slice(-10);
+        }
+      }
       state.promptTokens += progress.promptTokens || 0;
       state.completionTokens += progress.completionTokens || 0;
       state.reasoningTokens += progress.reasoningTokens || 0;
@@ -490,6 +729,7 @@ async function run(command = state.selectedCommand, stateOverride = {}) {
   }
 
   $("#log").textContent = "";
+  clearRunOverview();
   setText("#resultTitle", "実行中");
   setText("#result", "開始準備中...");
   $("#copy").disabled = true;
@@ -525,6 +765,10 @@ async function run(command = state.selectedCommand, stateOverride = {}) {
       $("#copy").disabled = false;
       setText("#progress", "停止");
       setStage("手動停止", { updateResult: false });
+      const stoppedRunId = $("#runLabel").textContent?.trim();
+      if (["coverage", "coverage-synthesize"].includes(command) && stoppedRunId && stoppedRunId !== "—") {
+        void loadRunOverview(stoppedRunId);
+      }
     } else {
       succeeded = true;
       state.result = result.output || "完了しました。";
@@ -535,6 +779,10 @@ async function run(command = state.selectedCommand, stateOverride = {}) {
       setText("#progress", "完了");
       setStage(command === "doctor" ? "接続確認完了" : "処理完了", { updateResult: false });
       if (command === "doctor") applyDoctor(state.result);
+      const completedRunId = $("#runLabel").textContent?.trim() || payload.runId;
+      if (["coverage", "coverage-synthesize"].includes(command) && completedRunId && completedRunId !== "—") {
+        void loadRunOverview(completedRunId);
+      }
     }
   } catch (error) {
     state.result = friendlyError(error.message);
@@ -545,8 +793,8 @@ async function run(command = state.selectedCommand, stateOverride = {}) {
     setStage("エラー", { updateResult: false });
   } finally {
     stopTimer();
-    updateTiming();
     setRunning(false);
+    updateTiming();
     if (succeeded && command === "coverage") {
       state.resume = false;
       updateCoverageMode();
@@ -673,6 +921,7 @@ function createPanelMessage(text) {
 
 function prepareSynthesis(item) {
   showView("home");
+  void loadRunOverview(item.runId);
   selectCommand("coverage-synthesize");
   ensureRunOption(item.runId, `${item.runId} · 監査 ${item.coveragePercent ?? "—"}%`);
   state.result = `${item.runId} の保存済み監査結果から統合を再開する準備ができました。`;
@@ -689,6 +938,7 @@ function prepareCoverageResume(item) {
   }
 
   showView("home");
+  void loadRunOverview(item.runId);
   selectCommand("coverage");
   state.resume = true;
   state.repository = item.repoPath;
@@ -863,8 +1113,12 @@ async function loadHistory() {
       open.className = "ghost";
       open.textContent = "結果を見る";
       open.addEventListener("click", async () => {
-        const result = await window.localAI.readRunResult(item.runId);
+        const [result] = await Promise.all([
+          window.localAI.readRunResult(item.runId),
+          loadRunOverview(item.runId)
+        ]);
         state.result = result.content;
+        setText("#resultTitle", "結果");
         setText("#result", result.content);
         $("#copy").disabled = false;
         ensureRunOption(item.runId);
@@ -972,6 +1226,7 @@ async function init() {
   window.localAI.onBonsaiStatus(applyBonsaiStatus);
   applyUpdateState(await window.localAI.getUpdateState());
   if (isBonsaiProfile()) await refreshBonsaiStatus();
+  startTelemetryPolling();
   selectCommand("coverage");
   await loadHistory();
 }
