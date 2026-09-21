@@ -458,7 +458,7 @@ function createWindow() {
     minHeight: 680,
     backgroundColor: "#0b0d10",
     title: "Local AI Lab",
-    icon: join(__dirname, "assets", "icon.png"),
+    icon: join(__dirname, "assets", "generated", process.platform === "win32" ? "icon.ico" : "icon.png"),
     webPreferences: {
       preload: join(__dirname, "preload.cjs"),
       contextIsolation: true,
