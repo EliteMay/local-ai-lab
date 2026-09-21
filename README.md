@@ -259,7 +259,7 @@ https://github.com/EliteMay/local-ai-lab/releases/latest
 主な機能:
 
 - Runtime / Model Profile状態の確認
-- Bonsai 2 27B Runtimeの起動 / 状態確認 / 停止 / 任意の起動時自動起動
+- Bonsai 2 27B Runtimeの手動起動 / 状態確認 / 手動停止
 - Repository選択
 - Doctor / Inspect / Coverage / Synthesize / Tests
 - Coverage進捗、経過時間、Token使用量
