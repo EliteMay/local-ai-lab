@@ -1,3 +1,5 @@
+const MAX_RENDER_LOG_LINES = 800;
+
 const COMMAND_META = {
   doctor: { label: "接続確認", execute: "接続確認を実行" },
   inspect: { label: "フォルダ確認", execute: "フォルダ確認を実行" },
@@ -283,8 +285,12 @@ function appendLog(payload) {
   const line = document.createElement("div");
   if (payload.channel === "stderr") line.className = "err";
   line.textContent = payload.line;
-  $("#log").appendChild(line);
-  $("#log").scrollTop = $("#log").scrollHeight;
+  const log = $("#log");
+  log.appendChild(line);
+  while (log.childElementCount > MAX_RENDER_LOG_LINES) {
+    log.firstElementChild?.remove();
+  }
+  log.scrollTop = log.scrollHeight;
 
   const progress = payload.progress;
   if (!progress) return;
