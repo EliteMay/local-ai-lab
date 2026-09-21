@@ -84,7 +84,8 @@ test("windows build workflow verifies installer updater metadata and immutable v
     "actions/upload-artifact@v4",
     "ErrorActionPreference = 'SilentlyContinue'",
     "tagLookupExit",
-    "releaseLookupExit"
+    "releaseLookupExit",
+    "$global:LASTEXITCODE = 0"
   ]) {
     assert.ok(workflow.includes(marker), "missing workflow marker: " + marker);
   }
