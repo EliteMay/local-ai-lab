@@ -362,6 +362,10 @@ async function runCommand(input) {
 
   return new Promise((resolvePromise, rejectPromise) => {
     let output = "";
+    let outputTruncated = false;
+    let settled = false;
+    const pendingLines = { stdout: "", stderr: "" };
+
     const child = spawn(spec.file, spec.args, {
       cwd: projectRoot,
       windowsHide: true,
@@ -373,53 +377,148 @@ async function runCommand(input) {
         LOCAL_AI_RUNTIME_DATA_ROOT: runsRoot()
       }
     });
+
     activeProcess = child;
     activeProcessCommand = spec.command;
+    activeProcessCancelled = false;
+    pendingQuitAfterCancel = false;
+    startRunProtection();
+
+    const sendLine = (channel, line) => {
+      if (!line) return;
+      mainWindow?.webContents.send("command:log", {
+        channel,
+        line,
+        progress: parseProgress(line)
+      });
+    };
 
     const emit = (channel, chunk) => {
       const text = chunk.toString();
-      output += text;
-      for (const line of text.split(/\r?\n/).filter(Boolean)) {
-        mainWindow?.webContents.send("command:log", {
-          channel,
-          line,
-          progress: parseProgress(line)
-        });
+      const bounded = appendBoundedOutput(output, text);
+      output = bounded.text;
+      outputTruncated = outputTruncated || bounded.truncated;
+
+      const combined = pendingLines[channel] + text;
+      const lines = combined.split(/\r?\n/);
+      pendingLines[channel] = lines.pop() || "";
+      for (const line of lines) sendLine(channel, line);
+    };
+
+    const flushPendingLines = () => {
+      for (const channel of ["stdout", "stderr"]) {
+        const line = pendingLines[channel];
+        pendingLines[channel] = "";
+        if (line) sendLine(channel, line);
       }
+    };
+
+    const cleanup = () => {
+      if (activeProcess === child) {
+        activeProcess = null;
+        activeProcessCommand = null;
+      }
+      stopRunProtection();
+    };
+
+    const finishQuitIfRequested = () => {
+      if (!pendingQuitAfterCancel) return;
+      pendingQuitAfterCancel = false;
+      allowWindowClose = true;
+      setTimeout(() => app.quit(), 0);
     };
 
     child.stdout.on("data", (chunk) => emit("stdout", chunk));
     child.stderr.on("data", (chunk) => emit("stderr", chunk));
+
     child.on("error", async (error) => {
-      activeProcess = null;
-      activeProcessCommand = null;
+      if (settled) return;
+      settled = true;
+      flushPendingLines();
+      const cancelled = activeProcessCancelled;
+      cleanup();
+
+      if (cancelled) {
+        const result = {
+          ok: false,
+          cancelled: true,
+          code: null,
+          output: output.trim(),
+          outputTruncated,
+          elapsedMs: Date.now() - startedAt
+        };
+        await appendDiagnostic({
+          type: "command.cancelled",
+          command: spec.command,
+          profile: spec.profile,
+          elapsedMs: result.elapsedMs
+        });
+        resolvePromise(result);
+        finishQuitIfRequested();
+        return;
+      }
+
       await appendDiagnostic({
         type: "command.error",
         command: spec.command,
         profile: spec.profile,
         error: compactError(error)
       });
+      showCommandNotification(spec.command, false);
       rejectPromise(error);
+      finishQuitIfRequested();
     });
+
     child.on("close", async (code) => {
-      activeProcess = null;
-      activeProcessCommand = null;
+      if (settled) return;
+      settled = true;
+      flushPendingLines();
+
+      const cancelled = activeProcessCancelled;
+      const elapsedMs = Date.now() - startedAt;
+      cleanup();
+
+      const resultOutput = outputTruncated
+        ? "[ログ前半は長さ上限のため省略しました]\n" + output.trim()
+        : output.trim();
+
       const result = {
-        ok: code === 0,
+        ok: code === 0 && !cancelled,
+        cancelled,
         code,
-        output: output.trim(),
-        elapsedMs: Date.now() - startedAt
+        output: resultOutput,
+        outputTruncated,
+        elapsedMs
       };
+
+      if (cancelled) {
+        await appendDiagnostic({
+          type: "command.cancelled",
+          command: spec.command,
+          profile: spec.profile,
+          elapsedMs
+        });
+        resolvePromise(result);
+        finishQuitIfRequested();
+        return;
+      }
+
       await appendDiagnostic({
         type: "command.finished",
         command: spec.command,
         profile: spec.profile,
         ok: result.ok,
         code,
-        elapsedMs: result.elapsedMs
+        elapsedMs,
+        outputTruncated
       });
+
+      showCommandNotification(spec.command, result.ok);
+
       if (code === 0) resolvePromise(result);
       else rejectPromise(new Error(result.output || ("処理に失敗しました。終了コード: " + code)));
+
+      finishQuitIfRequested();
     });
   });
 }
