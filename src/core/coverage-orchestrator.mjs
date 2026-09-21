@@ -4,6 +4,7 @@ import { RunStore } from "./run-store.mjs";
 import { buildCoveragePlan, publicCoveragePlan } from "./coverage-plan.mjs";
 import { COVERAGE_BATCH_SCHEMA, getAgentResponseSchema } from "./response-schemas.mjs";
 import { getRoleDefinition } from "../roles/role-definitions.mjs";
+import { assertResumeIdentity, buildExecutionIdentity } from "./run-identity.mjs";
 
 function sameStringSet(left, right) {
   if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false;
@@ -284,6 +285,7 @@ export class CoverageAuditOrchestrator {
       throw new Error("resume requires an existing --run-id");
     }
 
+    const executionIdentity = buildExecutionIdentity(this.config);
     const reader = new RepoReader(repoPath, this.config.repoReader);
     await reader.assertRepositoryExists();
     const plan = await buildCoveragePlan(reader, this.config.coverage);
@@ -291,8 +293,11 @@ export class CoverageAuditOrchestrator {
 
     let actualRunId = runId;
     let batchResults = [];
+    let baseRun = null;
 
     if (resume) {
+      baseRun = await this.runStore.readJson(runId, "run.json");
+      assertResumeIdentity(baseRun.executionIdentity, executionIdentity);
       const savedPlan = await this.runStore.readJson(runId, "coverage-plan.json");
       if (fileFingerprint(savedPlan) !== fileFingerprint(publicPlan)) {
         throw new Error("Repository or coverage batch plan changed since the saved run; refusing unsafe resume");
@@ -304,6 +309,15 @@ export class CoverageAuditOrchestrator {
       }
       const completed = new Set(batchResults.filter((item) => item.status === "completed").map((item) => item.batchId));
       batchResults = batchResults.filter((item) => item.status === "completed");
+      await this.runStore.writeJson(runId, "run.json", {
+        ...baseRun,
+        status: "RUNNING",
+        resumedAt: new Date().toISOString(),
+        interruptedAt: null,
+        interruptionReason: null,
+        executionIdentity
+      });
+      baseRun = await this.runStore.readJson(runId, "run.json");
       this.#emit({ type: "coverage_run_resumed", runId, completedBatches: completed.size, totalBatches: plan.totalBatches });
     } else {
       actualRunId = await this.runStore.createRun({
@@ -312,8 +326,10 @@ export class CoverageAuditOrchestrator {
         mode: "full-coverage-audit",
         goal,
         repoPath,
+        executionIdentity,
         capabilities: { repository: "read-only", mutation: false }
       });
+      baseRun = await this.runStore.readJson(actualRunId, "run.json");
       await this.runStore.writeJson(actualRunId, "coverage-plan.json", publicPlan);
       await this.runStore.writeJson(actualRunId, "batch-results.json", []);
       this.#emit({
@@ -358,19 +374,21 @@ export class CoverageAuditOrchestrator {
     const status = coverage.complete && !synthesis.error ? "COMPLETED" : "PARTIAL";
     const completedAt = new Date().toISOString();
     await this.runStore.writeJson(actualRunId, "run.json", {
+      ...(baseRun ?? {}),
       runId: actualRunId,
       status,
       mode: "full-coverage-audit",
       completedAt,
       goal,
       repoPath,
+      executionIdentity,
       coverage,
       synthesisError: synthesis.error,
       reviewerDecision: synthesis.reviewer?.result?.decision ?? null,
       capabilities: { repository: "read-only", mutation: false }
     });
 
-    const summary = `# Full Coverage Audit ${actualRunId}\n\n- Status: ${status}\n- Auditable files: ${coverage.auditableFiles}\n- Excluded files: ${coverage.excludedFiles}\n- Completed chunks: ${coverage.completedChunks}/${coverage.totalChunks}\n- Coverage: ${coverage.coveragePercent}%\n- Findings: ${findings.length}\n- Reviewer: ${synthesis.reviewer?.result?.decision ?? "not available"}\n- Resume supported: yes (same repository fingerprint and batch plan required)\n\nTarget repository access remained read-only.\n`;
+    const summary = `# Full Coverage Audit ${actualRunId}\n\n- Status: ${status}\n- Auditable files: ${coverage.auditableFiles}\n- Excluded files: ${coverage.excludedFiles}\n- Completed chunks: ${coverage.completedChunks}/${coverage.totalChunks}\n- Coverage: ${coverage.coveragePercent}%\n- Findings: ${findings.length}\n- Reviewer: ${synthesis.reviewer?.result?.decision ?? "not available"}\n- Resume supported: yes (same repository fingerprint, model/profile, config hash, and prompt/schema version required)\n- App version: ${executionIdentity.appVersion}\n- Model: ${executionIdentity.model} (${executionIdentity.modelProfile})\n\nTarget repository access remained read-only.\n`;
     await this.runStore.writeSummary(actualRunId, summary);
 
     this.#emit({ type: "coverage_run_completed", runId: actualRunId, status, coverage, findings: findings.length, synthesisError: synthesis.error });
