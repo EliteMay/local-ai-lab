@@ -396,3 +396,28 @@ test("repository maintenance uses a bounded git subprocess and generic remote wo
   assert.match(html, /リモートから最新化/);
   assert.doesNotMatch(html, /GitHubから最新化/);
 });
+
+
+test("desktop exposes deterministic multi-model routing and safe catalog management", async () => {
+  const main = await readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8");
+  const preload = await readFile(new URL("../desktop/preload.cjs", import.meta.url), "utf8");
+  const html = await readFile(new URL("../desktop/renderer/index.html", import.meta.url), "utf8");
+  const renderer = await readFile(new URL("../desktop/renderer/renderer.mjs", import.meta.url), "utf8");
+  const manager = await readFile(new URL("../desktop/model-manager.mjs", import.meta.url), "utf8");
+
+  for (const marker of ["models:list", "models:download", "models:load", "models:unload"]) {
+    assert.ok(main.includes(marker) || manager.includes(marker), "missing model IPC: " + marker);
+  }
+  assert.match(preload, /listModels/);
+  assert.match(preload, /downloadModel/);
+  assert.match(preload, /loadModel/);
+  assert.match(preload, /unloadModel/);
+  assert.match(html, /id="modelRoutingMode"/);
+  assert.match(html, /id="autoManageModels"/);
+  assert.match(html, /id="modelCatalog"/);
+  assert.match(html, /id="currentRoutedModel"/);
+  assert.match(renderer, /model-route/);
+  assert.match(renderer, /model-fallback/);
+  assert.match(manager, /findCatalogModel/);
+  assert.doesNotMatch(preload, /modelUrl|downloadUrl|shellCommand/);
+});
