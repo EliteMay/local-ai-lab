@@ -450,6 +450,9 @@ PowerShellで行っている日常操作を置き換え、長時間Local AI Run�
 - 起動時Update確認は設定でON/OFFできる
 - Userの明示操作なしに長時間Runを中断して再起動しない
 - Update失敗時はCurrent Versionを継続利用でき、固定GitHub Releases URLへのManual fallbackを持つ
+- Updateは「Download」と「Install / Restart」を別Stateとして表示し、Download完了前に再起動処理へ進まない
+- `electron-updater` が返した検証済みDownloaded Installer Pathだけを、標準の `quitAndInstall` がApplication Quitへ進まない場合のFallback起動対象として扱う
+- UpdaterのDownload / Install / Error / FallbackはDiagnosticsへ記録し、User-facing Statusで現在段階を判別できるようにする
 - Setup.exe版のRuntime DataはProgram FilesではなくElectron userDataへ保存する
 - Code Signing未導入の間はSmartScreen警告の可能性をDocumentationへ明記する
 
