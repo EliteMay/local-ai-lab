@@ -245,3 +245,59 @@ test("desktop result panel shows detailed live work and remaining-time context",
   assert.match(renderer, /完了済み処理の平均時間/);
   assert.match(renderer, /最初の処理完了後に推定/);
 });
+
+
+test("desktop exposes long-run health ETA speed system load and deterministic result summary", async () => {
+  const main = await readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8");
+  const preload = await readFile(new URL("../desktop/preload.cjs", import.meta.url), "utf8");
+  const html = await readFile(new URL("../desktop/renderer/index.html", import.meta.url), "utf8");
+  const renderer = await readFile(new URL("../desktop/renderer/renderer.mjs", import.meta.url), "utf8");
+
+  assert.match(main, /command:status/);
+  assert.match(main, /system:metrics/);
+  assert.match(main, /history:overview/);
+  assert.match(preload, /getCommandStatus/);
+  assert.match(preload, /getSystemMetrics/);
+  assert.match(preload, /readRunOverview/);
+
+  for (const id of [
+    "finishEstimate",
+    "lastUpdate",
+    "runHealth",
+    "averageBatch",
+    "lastBatch",
+    "tokenRate",
+    "responseWait",
+    "cpuMetric",
+    "memoryMetric",
+    "gpuMetric",
+    "vramMetric",
+    "resultOverview",
+    "topFindings"
+  ]) {
+    assert.ok(html.includes(`id="${id}"`), "missing observability UI: " + id);
+  }
+
+  assert.match(renderer, /LONG_WAIT_SECONDS\s*=\s*600/);
+  assert.match(renderer, /プロセス動作中・長時間応答待ち/);
+  assert.match(renderer, /終了予想:/);
+  assert.match(renderer, /トークン\/秒/);
+  assert.match(renderer, /loadRunOverview/);
+  assert.match(renderer, /startTelemetryPolling/);
+});
+
+test("desktop command disabling uses the multi-element selector helper", async () => {
+  const renderer = await readFile(new URL("../desktop/renderer/renderer.mjs", import.meta.url), "utf8");
+  const setRunning = renderer.match(/function setRunning\(value, title\) \{([\s\S]*?)\n\}/)?.[1] || "";
+  assert.match(setRunning, /\$\$\("\.commands button"\)\.forEach/);
+  assert.ok(!setRunning.includes('  $(".commands button").forEach'));
+});
+
+
+test("desktop clears future ETA when a run is no longer active", async () => {
+  const renderer = await readFile(new URL("../desktop/renderer/renderer.mjs", import.meta.url), "utf8");
+  const estimate = renderer.match(/function estimateRemainingText\(\) \{([\s\S]*?)\n\}/)?.[1] || "";
+  const finish = renderer.match(/function finishEstimateText\(\) \{([\s\S]*?)\n\}/)?.[1] || "";
+  assert.match(estimate, /if \(!state\.running\) return "—";/);
+  assert.match(finish, /if \(!state\.running\) return "—";/);
+});

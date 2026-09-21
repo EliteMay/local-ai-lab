@@ -424,6 +424,21 @@ PowerShellで行っている日常操作を置き換え、長時間Local AI Run�
 - Repositoryは選択時に自動保存し、次回起動時に毎回Folder Pickerを要求しない。旧SettingsでPathが空の場合は、存在する最新Run履歴のRepository Pathから復元を試みる
 - 長時間LogはMain / Renderer両方で上限を持ち、進捗行がStream Chunk境界で分割されても解析を失わない
 
+### Long-running Run Observability Contract
+
+- 長時間Runでは「実行中」だけでなく、現在工程、最終出力時刻、経過時間、推定残り、終了予想時刻を表示する
+- Child Processの生存状態と最終出力時刻を別々に扱い、ログが静かなだけで停止と断定しない
+- 15秒以上新しい出力がない実行は「プロセス動作中・応答待ち」として区別する
+- 10分以上新しい出力がない実行は「長時間応答待ち」として警告するが、Processが生存している限り接続断と同一視しない
+- 実際のConnection Failure / Process Failureは既存Error経路で別状態として表示する
+- Coverage Batchの完了時間から平均 / 直近処理時間を表示し、Completion Tokenと所要時間が得られる場合は概算生成速度を表示する
+- 残り時間 / 終了予想は完了済みBatch平均から算出する目安であり、未計測時は架空の数値を出さない
+- PC負荷はCPU / Memoryを表示し、NVIDIA GPUが利用できる場合は固定read-only nvidia-smi QueryでGPU / VRAMも表示する
+- GPU計測Capabilityがない環境ではPrimary Runを失敗させず「取得不可」と表示する
+- System Metrics取得は固定Command / 固定Argumentに限定し、Rendererへ任意Shell Capabilityを追加しない
+- 監査結果概要は保存済みRun EvidenceからNode.js側で決定的に集計し、Finding重要度、Coverage、対象File数、Reviewer結果、上位Findingを表示する
+- 結果概要は原Finding / Evidence / Raw resultを置換せず、詳細結果へ到達できる補助表示とする
+
 ### Distribution / Update Contract
 
 - Desktop Versionの正本は `package.json#version`

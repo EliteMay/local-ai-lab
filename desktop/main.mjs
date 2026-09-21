@@ -6,6 +6,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawn } from "node:child_process";
 import { createUpdaterController } from "./updater.mjs";
 import { createBonsaiRuntimeController } from "./bonsai-runtime.mjs";
+import { createSystemMetricsSampler } from "./system-metrics.mjs";
+import { buildRunOverview } from "./run-overview.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(__dirname, "..");
@@ -34,6 +36,9 @@ let pendingQuitAfterCancel = false;
 let allowWindowClose = false;
 let updaterController = null;
 let bonsaiRuntimeController = null;
+let activeProcessStartedAt = null;
+let activeProcessLastOutputAt = null;
+const sampleSystemMetrics = createSystemMetricsSampler();
 
 function safeProfile(value) {
   const profile = String(value || "default");
@@ -332,6 +337,16 @@ async function cancelActiveCommand({ quitAfter = false } = {}) {
   return { cancelled: true };
 }
 
+function commandStatus() {
+  return {
+    running: Boolean(activeProcess),
+    command: activeProcessCommand,
+    startedAt: activeProcessStartedAt,
+    lastOutputAt: activeProcessLastOutputAt,
+    processAlive: Boolean(activeProcess && !activeProcess.killed)
+  };
+}
+
 async function openRunFolder(runId) {
   const id = safeRunId(runId);
   const directory = join(runsRoot(), id);
@@ -425,6 +440,8 @@ async function runCommand(input) {
 
     activeProcess = child;
     activeProcessCommand = spec.command;
+    activeProcessStartedAt = Date.now();
+    activeProcessLastOutputAt = Date.now();
     activeProcessCancelled = false;
     pendingQuitAfterCancel = false;
     startRunProtection();
@@ -439,6 +456,7 @@ async function runCommand(input) {
     };
 
     const emit = (channel, chunk) => {
+      activeProcessLastOutputAt = Date.now();
       const text = chunk.toString();
       const bounded = appendBoundedOutput(output, text);
       output = bounded.text;
@@ -462,6 +480,8 @@ async function runCommand(input) {
       if (activeProcess === child) {
         activeProcess = null;
         activeProcessCommand = null;
+        activeProcessStartedAt = null;
+        activeProcessLastOutputAt = null;
       }
       stopRunProtection();
     };
@@ -624,6 +644,38 @@ async function readRunResult(runId) {
     } catch {}
   }
   throw new Error("読み込める結果ファイルが見つかりません");
+}
+
+async function readOptionalRunJson(directory, name, fallback) {
+  try {
+    return JSON.parse(await readFile(join(directory, name), "utf8"));
+  } catch {
+    return fallback;
+  }
+}
+
+async function readRunOverview(runId) {
+  const id = safeRunId(runId);
+  const directory = join(runsRoot(), id);
+  let info;
+  try {
+    info = await stat(directory);
+  } catch {
+    throw new Error("この実行履歴が見つかりません");
+  }
+  if (!info.isDirectory()) throw new Error("実行履歴の保存先が不正です");
+
+  const [run, coverage, findings, synthesis] = await Promise.all([
+    readOptionalRunJson(directory, "run.json", {}),
+    readOptionalRunJson(directory, "coverage.json", {}),
+    readOptionalRunJson(directory, "findings.json", []),
+    readOptionalRunJson(directory, "synthesis.json", {})
+  ]);
+
+  return {
+    runId: id,
+    ...buildRunOverview({ run, coverage, findings, synthesis })
+  };
 }
 
 async function runGit(repoPath, args) {
@@ -793,8 +845,11 @@ if (hasSingleInstanceLock) {
   registerIpc("repository:update", (repoPath) => updateRepository(repoPath));
   registerIpc("command:run", (input) => runCommand(input));
   registerIpc("command:cancel", () => cancelActiveCommand());
+  registerIpc("command:status", () => commandStatus());
+  registerIpc("system:metrics", () => sampleSystemMetrics());
   registerIpc("history:list", () => listHistory());
   registerIpc("history:result", (id) => readRunResult(id));
+  registerIpc("history:overview", (id) => readRunOverview(id));
   registerIpc("history:open-folder", (id) => openRunFolder(id));
   registerIpc("diagnostics:list", () => readDiagnostics());
   registerIpc("diagnostics:clear", () => clearDiagnostics());

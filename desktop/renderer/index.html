@@ -125,7 +125,9 @@
             <div><span>現在工程</span><strong id="stage">実行待ち</strong></div>
             <div><span>経過時間</span><strong id="elapsed">—</strong></div>
             <div><span>推定残り</span><strong id="estimate">—</strong></div>
-            <div><span>実行保護</span><strong id="runProtection">待機中</strong></div>
+            <div><span>終了予想</span><strong id="finishEstimate">—</strong></div>
+            <div><span>最終更新</span><strong id="lastUpdate">—</strong></div>
+            <div><span>実行状態</span><strong id="runHealth">待機中</strong></div>
           </div>
 
           <div class="track" aria-label="実行進捗"><div id="bar"></div></div>
@@ -139,6 +141,28 @@
             <span id="tokenMetric">使用トークン —</span>
           </div>
 
+          <div class="runtime-insights">
+            <div class="insight-card">
+              <span class="insight-title">処理速度</span>
+              <div class="insight-grid">
+                <span>平均処理</span><strong id="averageBatch">—</strong>
+                <span>直近処理</span><strong id="lastBatch">—</strong>
+                <span>生成速度</span><strong id="tokenRate">—</strong>
+                <span>応答待ち</span><strong id="responseWait">—</strong>
+                <span>実行保護</span><strong id="runProtection">待機中</strong>
+              </div>
+            </div>
+            <div class="insight-card">
+              <span class="insight-title">PC負荷</span>
+              <div class="insight-grid">
+                <span>CPU</span><strong id="cpuMetric">取得中...</strong>
+                <span>メモリ</span><strong id="memoryMetric">取得中...</strong>
+                <span>GPU</span><strong id="gpuMetric">取得中...</strong>
+                <span>VRAM</span><strong id="vramMetric">取得中...</strong>
+              </div>
+            </div>
+          </div>
+
           <div id="log" class="log" aria-live="polite"></div>
         </section>
       </div>
@@ -147,6 +171,25 @@
         <div class="panel-head">
           <div><p class="label">結果</p><h2 id="resultTitle">結果</h2></div>
           <button id="copy" class="ghost" disabled>結果をコピー</button>
+        </div>
+        <div id="resultOverview" class="result-overview hidden" aria-label="監査結果の概要">
+          <div class="result-stat-grid">
+            <div><span>監査進捗</span><strong id="resultCoverage">—</strong></div>
+            <div><span>対象ファイル</span><strong id="resultFiles">—</strong></div>
+            <div><span>指摘</span><strong id="resultFindings">—</strong></div>
+            <div><span>レビュー</span><strong id="resultReviewer">—</strong></div>
+          </div>
+          <div class="severity-row" aria-label="重要度別の指摘数">
+            <span>重大 <strong id="severityCritical">0</strong></span>
+            <span>高 <strong id="severityHigh">0</strong></span>
+            <span>中 <strong id="severityMedium">0</strong></span>
+            <span>低 <strong id="severityLow">0</strong></span>
+          </div>
+          <div class="top-findings">
+            <h3>重要な指摘</h3>
+            <div id="topFindings"></div>
+          </div>
+          <p class="result-detail-label">詳細</p>
         </div>
         <pre id="result" aria-live="polite">まだ結果はありません。</pre>
       </section>

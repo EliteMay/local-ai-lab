@@ -182,3 +182,17 @@
 - Migration: 旧VersionでdefaultRepositoryが空でも、保存済みRun履歴から最後に使った存在するRepository Pathを復元する。
 - Boundary: Pathが削除・移動されていて復元できない場合だけ未選択に戻し、Userへ再選択を求める。
 - Regression Guard: Desktop Contract TestでRemember Toggleが存在しないこと、自動保存と履歴Fallbackが実装されていることを確認する。
+
+
+## PL-016 — 長時間Runでは「ログが静か」と「停止」を分ける
+
+- Date: 2026-09-21
+- Type: Reliability / UX
+- Status: Adopted
+- Problem: Bonsai 2 27Bのような低速Local Modelでは1 Request中に数分間Console Outputがないことがあり、「実行中」だけではProcessが止まったのかModel応答待ちなのか判断できなかった。
+- Decision: Child Process生存状態、最終出力時刻、応答待ち時間を別々に追跡し、15秒以上の沈黙は応答待ち、10分以上は長時間応答待ちとして表示する。実際のConnection / Process FailureはError経路のまま分離する。
+- Observability: 完了Batchから残り時間・終了予想・平均処理時間・概算Token速度を導出し、CPU / Memory / NVIDIA GPU / VRAMも補助Evidenceとして表示する。
+- Result UX: 保存済みFindingを決定的に集計したOverviewを先に表示し、Raw result / Evidenceは詳細として維持する。
+- Safety: System Metricsは固定read-only CommandだけをMain Processから実行し、Rendererへ任意Shell Capabilityを広げない。
+- Regression Guard: Desktop contract / system metrics / run overview tests。
+- Prevention: 長時間AI処理のUIではActivity、Liveness、Failureを1つの「実行中」表示へ潰さない。
