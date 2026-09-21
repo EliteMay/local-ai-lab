@@ -8,7 +8,10 @@
       "autoRoute": true,
       "useCase": "大量監査・要約・一般処理",
       "resourceNote": "8GB GPU向けの標準モデル",
-      "matchTerms": ["qwen3-8b", "qwen/qwen3-8b"],
+      "matchTerms": [
+        "qwen3-8b",
+        "qwen/qwen3-8b"
+      ],
       "download": {
         "model": "https://huggingface.co/lmstudio-community/Qwen3-8B-GGUF",
         "quantization": "Q4_K_M"
@@ -26,7 +29,10 @@
       "autoRoute": true,
       "useCase": "コード解析・実装監査",
       "resourceNote": "8GB GPUで使いやすいコード特化モデル",
-      "matchTerms": ["qwen2.5-coder-7b", "qwen2.5-coder-7b-instruct"],
+      "matchTerms": [
+        "qwen2.5-coder-7b",
+        "qwen2.5-coder-7b-instruct"
+      ],
       "download": {
         "model": "https://huggingface.co/lmstudio-community/Qwen2.5-Coder-7B-Instruct-GGUF",
         "quantization": "Q4_K_M"
@@ -44,7 +50,9 @@
       "autoRoute": true,
       "useCase": "推論・改善案・難しい判断",
       "resourceNote": "軽量な推論担当",
-      "matchTerms": ["phi-4-mini-reasoning"],
+      "matchTerms": [
+        "phi-4-mini-reasoning"
+      ],
       "download": {
         "model": "https://huggingface.co/lmstudio-community/Phi-4-mini-reasoning-GGUF",
         "quantization": "Q4_K_M"
@@ -62,7 +70,9 @@
       "autoRoute": true,
       "useCase": "高難度レビュー・最終確認",
       "resourceNote": "重い上位モデル。起動・停止は手動",
-      "matchTerms": ["bonsai-2-27b"],
+      "matchTerms": [
+        "bonsai-2-27b"
+      ],
       "connection": {
         "baseUrl": "http://127.0.0.1:8080/v1",
         "model": "bonsai-2-27b",
@@ -82,7 +92,10 @@
       "autoRoute": false,
       "useCase": "画像・UI理解（将来ルート用）",
       "resourceNote": "モデル管理には対応。現在の監査Pipelineは画像入力未対応",
-      "matchTerms": ["gemma-3-4b-it", "gemma-3-4b"],
+      "matchTerms": [
+        "gemma-3-4b-it",
+        "gemma-3-4b"
+      ],
       "download": {
         "model": "https://huggingface.co/lmstudio-community/gemma-3-4b-it-GGUF",
         "quantization": "Q4_K_M"
@@ -100,8 +113,12 @@
       "autoRoute": false,
       "useCase": "高度な推論・Agent / Tool利用",
       "resourceNote": "約16GBメモリ級。現在は任意の重いモデル",
-      "matchTerms": ["gpt-oss-20b"],
-      "download": { "model": "openai/gpt-oss-20b" },
+      "matchTerms": [
+        "gpt-oss-20b"
+      ],
+      "download": {
+        "model": "openai/gpt-oss-20b"
+      },
       "load": {
         "context_length": 16384,
         "flash_attention": true,
@@ -115,10 +132,72 @@
       "autoRoute": false,
       "useCase": "高度なCoding / Agentic Coding",
       "resourceNote": "Q3でも約15GB級。8GB GPUではRAM/CPU Offload前提",
-      "matchTerms": ["qwen3-coder-30b-a3b"],
+      "matchTerms": [
+        "qwen3-coder-30b-a3b"
+      ],
       "download": {
         "model": "https://huggingface.co/lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-GGUF",
         "quantization": "Q3_K_M"
+      },
+      "load": {
+        "context_length": 16384,
+        "flash_attention": true,
+        "offload_kv_cache_to_gpu": false
+      }
+    },
+    {
+      "id": "ministral-3-8b-reasoning",
+      "label": "Ministral 3 8B Reasoning",
+      "runtime": "lm-studio",
+      "autoRoute": true,
+      "useCase": "改善案・複雑な推論・最終レビューの軽量上位候補",
+      "resourceNote": "LM Studio公式で最低システムメモリ7GB。Reasoning / Vision / JSON / Tool use対応",
+      "matchTerms": [
+        "ministral-3-8b-reasoning",
+        "Ministral-3-8B-Reasoning"
+      ],
+      "download": {
+        "model": "mistralai/ministral-3-8b-reasoning"
+      },
+      "load": {
+        "context_length": 16384,
+        "flash_attention": true,
+        "offload_kv_cache_to_gpu": false
+      }
+    },
+    {
+      "id": "qwen3-4b",
+      "label": "Qwen3 4B",
+      "runtime": "lm-studio",
+      "autoRoute": true,
+      "useCase": "軽量Fallback・一般処理",
+      "resourceNote": "LM Studio公式で最低システムメモリ2GB。Reasoning対応の軽量Fallback",
+      "matchTerms": [
+        "qwen3-4b",
+        "qwen/qwen3-4b"
+      ],
+      "download": {
+        "model": "qwen/qwen3-4b"
+      },
+      "load": {
+        "context_length": 16384,
+        "flash_attention": true,
+        "offload_kv_cache_to_gpu": false
+      }
+    },
+    {
+      "id": "qwen3-vl-4b",
+      "label": "Qwen3-VL 4B",
+      "runtime": "lm-studio",
+      "autoRoute": false,
+      "useCase": "画像・UI・画面理解（Vision Pipeline用）",
+      "resourceNote": "Vision対応。現在のRepository監査Pipelineは画像入力未対応のため手動管理のみ",
+      "matchTerms": [
+        "qwen3-vl-4b",
+        "qwen/qwen3-vl-4b"
+      ],
+      "download": {
+        "model": "qwen/qwen3-vl-4b"
       },
       "load": {
         "context_length": 16384,
