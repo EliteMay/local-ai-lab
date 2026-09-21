@@ -1,4 +1,4 @@
-# Local AI Lab Desktop v0.2.11
+# Local AI Lab Desktop v0.3
 
 Local AI Labの監査・再統合・検証Runを、Windows向けElectron GUIから開始・監視・再開するDesktop Controllerです。
 
@@ -38,6 +38,22 @@ Windows配布では、コード署名を無効のままにしつつ `signAndEdit
 長時間Run中は、Model Profileや既定Repository等の設定保存とApp Update開始を無効化します。Current Runが使用中の設定と保存Settingsが途中で食い違わないようにするためです。
 
 Repositoryの更新はRemote ProviderをGitHubへ固定せず「リモートから最新化」と表示します。Git操作は固定Command、30秒Timeout、bounded outputで実行します。
+
+## 用途別モデル運用
+
+設定の「モデル運用」は次の3つの考え方を持ちます。
+
+- **自動振り分け**: Task種別に応じてCatalog内ModelをNode.js側の固定Ruleで選ぶ既定運用
+- **1モデル固定**: 従来のQwen3-8B / Bonsai Profileを固定利用
+- **役割ごとの指定**: 現時点ではRouting Config側で管理し、将来GUI編集へ拡張できる構造
+
+自動振り分けでは、Code比率が高いCoverageにQwen2.5 Coder 7B、一般CoverageにQwen3 8B、改善案にPhi-4 Mini Reasoning、最終Reviewに起動済みBonsai 2 27Bを優先します。候補が未導入・停止・Request Failureなら次候補へ限定Fallbackします。
+
+一度成功したModelはTaskごとのRun Pinとして保存されます。途中ResumeでPinned Modelが使えない場合は別ModelへSilent切替せず、復旧してから再開するよう停止します。
+
+設定画面の「用途別モデル」ではLM Studio Native REST APIを使い、Repository管理のModel CatalogからのみDownload / Load / Unloadできます。長時間Run中はModel管理とSettings変更をLockします。
+
+Run中は現在のTask / Model / Call回数 / Fallback回数を表示し、完了後は `model-usage.json` にModel別のCall数・成功・失敗・Token・所要時間を保存します。
 
 ## 配布
 
