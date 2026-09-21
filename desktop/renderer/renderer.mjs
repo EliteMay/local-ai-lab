@@ -25,7 +25,8 @@ const state = {
   resume: false,
   latestRecoverable: null,
   currentBatch: null,
-  updateState: null
+  updateState: null,
+  bonsaiStatus: null
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -35,6 +36,92 @@ function profileLabel(value) {
   if (value === "default") return "標準";
   if (value === "bonsai-2-27b") return "Bonsai 2 27B";
   return value || "不明";
+}
+
+function isBonsaiProfile(value = state.settings?.modelProfile) {
+  return value === "bonsai-2-27b";
+}
+
+function updateBonsaiVisibility(profile = state.settings?.modelProfile) {
+  const visible = isBonsaiProfile(profile);
+  $("#bonsaiRuntimeCard").classList.toggle("hidden", !visible);
+  $("#bonsaiSettings").classList.toggle("hidden", $("#settingsProfile").value !== "bonsai-2-27b");
+}
+
+function applyBonsaiStatus(next) {
+  if (!next) return;
+  state.bonsaiStatus = next;
+
+  const labels = {
+    stopped: "停止中",
+    starting: "起動中...",
+    running: "起動中",
+    "external-running": "外部で起動中",
+    stopping: "停止中...",
+    error: "エラー"
+  };
+  setText("#bonsaiRuntimeTitle", labels[next.status] || "状態不明");
+  setText("#bonsaiRuntimeMessage", next.message || "");
+
+  const active = next.status === "running" || next.status === "external-running";
+  $("#startBonsai").classList.toggle("hidden", active || next.status === "starting" || next.status === "stopping");
+  $("#stopBonsai").classList.toggle("hidden", !(next.status === "running" && next.managed));
+  $("#refreshBonsai").disabled = next.status === "starting" || next.status === "stopping";
+
+  if (isBonsaiProfile()) {
+    setText("#runtime", "PrismML llama.cpp");
+    setText("#model", "bonsai-2-27b");
+    setText("#connection", active ? "接続中" : next.status === "starting" ? "起動中" : "停止中");
+    $("#dot").classList.toggle("online", active);
+    $("#dot").classList.toggle("offline", !active);
+    setText("#runtimeMini", active ? "AI接続中" : "Bonsai停止中");
+  }
+}
+
+async function refreshBonsaiStatus() {
+  try {
+    applyBonsaiStatus(await window.localAI.getBonsaiStatus());
+  } catch (error) {
+    setText("#bonsaiRuntimeMessage", friendlyError(error.message));
+  }
+}
+
+async function startBonsaiRuntime() {
+  $("#startBonsai").disabled = true;
+  setText("#bonsaiRuntimeTitle", "起動中...");
+  setText("#bonsaiRuntimeMessage", "Bonsaiの起動を待っています。");
+  try {
+    applyBonsaiStatus(await window.localAI.startBonsai());
+    state.result = "Bonsaiを起動しました。";
+    setText("#result", state.result);
+  } catch (error) {
+    state.result = friendlyError(error.message);
+    setText("#result", state.result);
+    setText("#bonsaiRuntimeTitle", "起動失敗");
+    setText("#bonsaiRuntimeMessage", state.result);
+  } finally {
+    $("#startBonsai").disabled = false;
+  }
+}
+
+async function stopBonsaiRuntime() {
+  $("#stopBonsai").disabled = true;
+  try {
+    applyBonsaiStatus(await window.localAI.stopBonsai());
+    state.result = "Bonsaiを停止しました。";
+    setText("#result", state.result);
+  } catch (error) {
+    state.result = friendlyError(error.message);
+    setText("#result", state.result);
+  } finally {
+    $("#stopBonsai").disabled = false;
+  }
+}
+
+async function chooseBonsaiFolder() {
+  const path = await window.localAI.selectBonsaiFolder();
+  if (!path) return;
+  $("#bonsaiDemoPath").value = path;
 }
 
 function showView(name) {
@@ -165,6 +252,9 @@ function setRunning(value, title) {
   $("#chooseRepo").disabled = value;
   $("#updateRepo").disabled = value;
   $("#refresh").disabled = value;
+  $("#startBonsai").disabled = value;
+  $("#stopBonsai").disabled = value;
+  $("#refreshBonsai").disabled = value;
   $("#cancel").classList.toggle("hidden", !value);
   if (title) setText("#runTitle", title);
 }
@@ -275,8 +365,8 @@ function applyDoctor(text) {
 
 function friendlyError(message) {
   const text = String(message || "不明なエラー");
-  if (text.includes("ECONNREFUSED 127.0.0.1:8080")) {
-    return "Bonsaiの実行環境が起動していません。Bonsaiサーバーを起動してから「接続状態を更新」を実行してください。";
+  if (text.includes("ECONNREFUSED 127.0.0.1:8080") || (text.includes("fetch failed") && isBonsaiProfile())) {
+    return "Bonsaiが停止しているか、まだ起動が完了していません。「Bonsaiを起動」を押してから再実行してください。";
   }
   if (text.includes("ECONNREFUSED 127.0.0.1:1234")) {
     return "LM Studioのローカルサーバーへ接続できません。LM Studio側でサーバーとモデルを起動してください。";
@@ -314,6 +404,16 @@ async function run(command = state.selectedCommand, stateOverride = {}) {
     state.result = error.message;
     setText("#result", error.message);
     return;
+  }
+
+  if (isBonsaiProfile() && ["doctor", "coverage", "coverage-synthesize"].includes(command)) {
+    const runtime = await window.localAI.getBonsaiStatus();
+    applyBonsaiStatus(runtime);
+    if (!["running", "external-running"].includes(runtime.status)) {
+      state.result = "Bonsaiが停止中です。先に「Bonsaiを起動」を押してください。";
+      setText("#result", state.result);
+      return;
+    }
   }
 
   $("#log").textContent = "";
@@ -709,9 +809,14 @@ async function init() {
   setText("#profile", profileLabel(state.settings.modelProfile));
   $("#rememberRepo").checked = state.settings.rememberRepository;
   $("#autoCheckUpdates").checked = state.settings.autoCheckUpdates !== false;
+  $("#bonsaiDemoPath").value = state.settings.bonsaiDemoPath || "";
+  $("#autoStartBonsai").checked = state.settings.autoStartBonsai === true;
+  updateBonsaiVisibility();
   window.localAI.onLog(appendLog);
   window.localAI.onUpdateStatus(applyUpdateState);
+  window.localAI.onBonsaiStatus(applyBonsaiStatus);
   applyUpdateState(await window.localAI.getUpdateState());
+  if (isBonsaiProfile()) await refreshBonsaiStatus();
   selectCommand("coverage");
   await loadHistory();
 }
@@ -722,6 +827,11 @@ $("#execute").addEventListener("click", () => run(state.selectedCommand));
 $("#chooseRepo").addEventListener("click", () => chooseRepository(false));
 $("#updateRepo").addEventListener("click", updateRepositoryFromGitHub);
 $("#settingsRepoButton").addEventListener("click", () => chooseRepository(true));
+$("#bonsaiFolderButton").addEventListener("click", chooseBonsaiFolder);
+$("#startBonsai").addEventListener("click", startBonsaiRuntime);
+$("#stopBonsai").addEventListener("click", stopBonsaiRuntime);
+$("#refreshBonsai").addEventListener("click", refreshBonsaiStatus);
+$("#settingsProfile").addEventListener("change", () => updateBonsaiVisibility($("#settingsProfile").value));
 $("#refresh").addEventListener("click", () => run("doctor"));
 $("#reloadHistory").addEventListener("click", loadHistory);
 $("#cancel").addEventListener("click", () => window.localAI.cancelCommand());
@@ -747,12 +857,16 @@ $("#save").addEventListener("click", async () => {
       defaultRepository: $("#settingsRepo").value,
       modelProfile: $("#settingsProfile").value,
       rememberRepository: $("#rememberRepo").checked,
-      autoCheckUpdates: $("#autoCheckUpdates").checked
+      autoCheckUpdates: $("#autoCheckUpdates").checked,
+      bonsaiDemoPath: $("#bonsaiDemoPath").value,
+      autoStartBonsai: $("#autoStartBonsai").checked
     });
     state.settings = next;
     state.repository = next.defaultRepository;
     setText("#repoPath", state.repository || "未選択");
     setText("#profile", profileLabel(next.modelProfile));
+    updateBonsaiVisibility(next.modelProfile);
+    if (isBonsaiProfile(next.modelProfile)) await refreshBonsaiStatus();
     setText("#saveMessage", "保存しました");
     setTimeout(() => setText("#saveMessage", ""), 1500);
   } catch (error) {
