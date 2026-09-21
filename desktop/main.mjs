@@ -33,16 +33,16 @@ function safeRunId(value) {
 
 function safeGoal(value) {
   const goal = String(value || "").trim();
-  if (!goal) throw new Error("Coverage goal is required");
-  if (goal.length > MAX_GOAL_CHARS) throw new Error(`Coverage goal is too long (max ${MAX_GOAL_CHARS} chars)`);
+  if (!goal) throw new Error("監査目的を入力してください");
+  if (goal.length > MAX_GOAL_CHARS) throw new Error(`監査目的が長すぎます（最大${MAX_GOAL_CHARS}文字）`);
   return goal;
 }
 
 function validateRepository(repoPath) {
   const raw = String(repoPath || "").trim();
-  if (!raw) throw new Error("Repository path is required");
+  if (!raw) throw new Error("対象フォルダを選択してください");
   const target = resolve(raw);
-  if (!existsSync(target)) throw new Error("Repository path does not exist");
+  if (!existsSync(target)) throw new Error("対象フォルダが見つかりません");
   return target;
 }
 
@@ -145,7 +145,7 @@ async function clearDiagnostics() {
 function buildCommand(input) {
   if (!input || typeof input !== "object") throw new Error("Invalid command payload");
   const command = String(input.command || "");
-  if (!allowedCommands.has(command)) throw new Error("Command is not allowed");
+  if (!allowedCommands.has(command)) throw new Error("この処理は実行できません");
   const profile = safeProfile(input.modelProfile);
   const profileArgs = profile === "default" ? [] : ["--model-profile", profile];
 
@@ -291,7 +291,7 @@ async function runCommand(input) {
         elapsedMs: result.elapsedMs
       });
       if (code === 0) resolvePromise(result);
-      else rejectPromise(new Error(result.output || ("Command failed with code " + code)));
+      else rejectPromise(new Error(result.output || ("処理に失敗しました。終了コード: " + code)));
     });
   });
 }
@@ -375,11 +375,11 @@ async function runGit(repoPath, args) {
 }
 
 async function updateRepository(repoPath) {
-  if (activeProcess) throw new Error("Run実行中はRepositoryを更新できません。");
+  if (activeProcess) throw new Error("処理実行中は対象フォルダを更新できません。");
   const repository = validateRepository(repoPath);
 
   const inside = await runGit(repository, ["rev-parse", "--is-inside-work-tree"]);
-  if (inside.stdout !== "true") throw new Error("選択したFolderはGit Repositoryではありません。");
+  if (inside.stdout !== "true") throw new Error("選択したフォルダはGitリポジトリではありません。");
 
   const dirty = await runGit(repository, ["status", "--porcelain"]);
   if (dirty.stdout) {
