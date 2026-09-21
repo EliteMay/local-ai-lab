@@ -43,8 +43,11 @@
       <section class="panel runtime-card hidden" id="bonsaiRuntimeCard">
         <div>
           <p class="label">Bonsai実行環境</p>
-          <h2 id="bonsaiRuntimeTitle">停止中</h2>
-          <p id="bonsaiRuntimeMessage" class="subtle">アプリからBonsaiを起動できます。</p>
+          <div class="runtime-state-line">
+            <span id="bonsaiRuntimeDot" class="runtime-state-dot stopped" aria-hidden="true"></span>
+            <h2 id="bonsaiRuntimeTitle">停止中</h2>
+          </div>
+          <p id="bonsaiRuntimeMessage" class="subtle">必要なときに「Bonsaiを起動」を押してください。</p>
         </div>
         <div class="runtime-actions">
           <button id="startBonsai" class="primary">Bonsaiを起動</button>
@@ -187,12 +190,7 @@
             </div>
           </label>
 
-          <label class="check">
-            <input id="autoStartBonsai" type="checkbox">
-            <span>アプリ起動時にBonsaiも起動する</span>
-          </label>
-
-          <p class="option-note">例: D:\AI\Bonsai-demo。アプリが起動したBonsaiだけを停止できます。</p>
+          <p class="option-note">例: D:\AI\Bonsai-demo。起動・停止は自動では行わず、君がボタンを押した時だけ実行します。</p>
         </div>
 
         <label>
