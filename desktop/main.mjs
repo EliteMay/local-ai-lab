@@ -8,7 +8,7 @@ import { createUpdaterController } from "./updater.mjs";
 import { createBonsaiRuntimeController } from "./bonsai-runtime.mjs";
 import { createSystemMetricsSampler } from "./system-metrics.mjs";
 import { buildRunOverview } from "./run-overview.mjs";
-import { atomicWriteJson, readJsonWithBackup, readTextWithBackup } from "../src/core/atomic-file.mjs";
+import { atomicWriteJson, atomicWriteText, readJsonWithBackup, readTextWithBackup } from "../src/core/atomic-file.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(__dirname, "..");
@@ -367,6 +367,20 @@ async function openRunFolder(runId) {
   return { ok: true, runId: id };
 }
 
+function runIdFromOutput(text) {
+  const match = String(text || "").match(/(?:Coverage\] Run|Coverage run:|Synthesis run:|Stored run:)\s+(run-[\w.-]+)/);
+  return match?.[1] || null;
+}
+
+async function persistRunConsoleLog(text) {
+  const runId = runIdFromOutput(text);
+  if (!runId) return;
+  const id = safeRunId(runId);
+  const directory = join(runsRoot(), id);
+  if (!existsSync(directory)) return;
+  await atomicWriteText(join(directory, "desktop-log.txt"), String(text || ""));
+}
+
 function parseProgress(line) {
   const run = line.match(/(?:Coverage\] Run|Coverage run:|Synthesis run:|Stored run:)\s+(run-[\w.-]+)/);
   if (run) return { type: "run-id", runId: run[1] };
@@ -561,6 +575,16 @@ async function runCommand(input) {
         elapsedMs
       };
 
+      try {
+        await persistRunConsoleLog(resultOutput);
+      } catch (error) {
+        await appendDiagnostic({
+          type: "run.console-log.persist.error",
+          command: spec.command,
+          error: compactError(error)
+        });
+      }
+
       if (cancelled) {
         await appendDiagnostic({
           type: "command.cancelled",
@@ -679,7 +703,9 @@ async function readRunDetails(runId) {
   ]);
 
   let summary = "";
+  let consoleLog = "";
   try { summary = await readTextWithBackup(join(directory, "summary.md")); } catch {}
+  try { consoleLog = await readTextWithBackup(join(directory, "desktop-log.txt")); } catch {}
 
   return {
     runId: id,
@@ -692,7 +718,8 @@ async function readRunDetails(runId) {
     excluded: Array.isArray(plan?.excluded) ? plan.excluded : [],
     files: Array.isArray(plan?.files) ? plan.files : [],
     batchResults: Array.isArray(batches) ? batches : [],
-    summary
+    summary,
+    consoleLog
   };
 }
 
