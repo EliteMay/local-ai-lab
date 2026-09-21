@@ -593,6 +593,14 @@ async function runCommand(input) {
   });
 }
 
+async function readOptionalJsonFile(path, fallback) {
+  try {
+    return await readJsonWithBackup(path);
+  } catch {
+    return fallback;
+  }
+}
+
 async function listHistory() {
   const root = runsRoot();
   if (!existsSync(root)) return [];
@@ -603,22 +611,21 @@ async function listHistory() {
     if (!/^run-[a-zA-Z0-9._-]+$/.test(name)) continue;
     const directory = join(root, name);
     const info = await stat(directory);
-    let run = {};
-    let coverage = {};
-    let findings = [];
-    let synthesis = {};
-    try { run = JSON.parse(await readFile(join(directory, "run.json"), "utf8")); } catch {}
-    try { coverage = JSON.parse(await readFile(join(directory, "coverage.json"), "utf8")); } catch {}
-    try { findings = JSON.parse(await readFile(join(directory, "findings.json"), "utf8")); } catch {}
-    try { synthesis = JSON.parse(await readFile(join(directory, "synthesis.json"), "utf8")); } catch {}
+    const [run, coverage, findings, synthesis] = await Promise.all([
+      readOptionalJsonFile(join(directory, "run.json"), {}),
+      readOptionalJsonFile(join(directory, "coverage.json"), {}),
+      readOptionalJsonFile(join(directory, "findings.json"), []),
+      readOptionalJsonFile(join(directory, "synthesis.json"), {})
+    ]);
 
     const status = run.status || coverage.status || (coverage.complete ? "COMPLETED" : "UNKNOWN");
     const coveragePercent = coverage.coveragePercent ?? null;
     const synthesisError = run.synthesisError || synthesis.error || null;
+    const identity = run.executionIdentity || {};
     items.push({
       runId: name,
       createdAt: run.createdAt || info.birthtime?.toISOString?.() || info.mtime.toISOString(),
-      updatedAt: run.completedAt || info.mtime.toISOString(),
+      updatedAt: run.completedAt || run.interruptedAt || info.mtime.toISOString(),
       status,
       coveragePercent,
       coverageComplete: coverage.complete === true,
@@ -629,7 +636,11 @@ async function listHistory() {
       reviewerDecision: run.reviewerDecision || synthesis.reviewer?.result?.decision || null,
       repoPath: typeof run.repoPath === "string" ? run.repoPath : "",
       repoName: typeof run.repoPath === "string" && run.repoPath ? basename(run.repoPath) : "",
-      goal: typeof run.goal === "string" ? run.goal : ""
+      goal: typeof run.goal === "string" ? run.goal : "",
+      model: identity.model || "",
+      modelProfile: identity.modelProfile || "",
+      appVersion: identity.appVersion || "",
+      interruptionReason: run.interruptionReason || ""
     });
   }
 
@@ -644,19 +655,49 @@ async function readRunResult(runId) {
       return {
         runId: id,
         fileName: name,
-        content: await readFile(join(directory, name), "utf8")
+        content: await readTextWithBackup(join(directory, name))
       };
     } catch {}
   }
   throw new Error("読み込める結果ファイルが見つかりません");
 }
 
+async function readRunDetails(runId) {
+  const id = safeRunId(runId);
+  const directory = join(runsRoot(), id);
+  const info = await stat(directory).catch(() => null);
+  if (!info?.isDirectory()) throw new Error("この実行履歴が見つかりません");
+
+  const [run, coverage, findings, synthesis, review, plan, batches] = await Promise.all([
+    readOptionalJsonFile(join(directory, "run.json"), {}),
+    readOptionalJsonFile(join(directory, "coverage.json"), {}),
+    readOptionalJsonFile(join(directory, "findings.json"), []),
+    readOptionalJsonFile(join(directory, "synthesis.json"), {}),
+    readOptionalJsonFile(join(directory, "review.json"), {}),
+    readOptionalJsonFile(join(directory, "coverage-plan.json"), {}),
+    readOptionalJsonFile(join(directory, "batch-results.json"), [])
+  ]);
+
+  let summary = "";
+  try { summary = await readTextWithBackup(join(directory, "summary.md")); } catch {}
+
+  return {
+    runId: id,
+    run,
+    coverage,
+    findings: Array.isArray(findings) ? findings : (findings.findings || []),
+    planner: synthesis?.planner?.result || synthesis?.planner || null,
+    reviewer: synthesis?.reviewer?.result || review?.result || synthesis?.reviewer || review || null,
+    reduction: synthesis?.reduction || null,
+    excluded: Array.isArray(plan?.excluded) ? plan.excluded : [],
+    files: Array.isArray(plan?.files) ? plan.files : [],
+    batchResults: Array.isArray(batches) ? batches : [],
+    summary
+  };
+}
+
 async function readOptionalRunJson(directory, name, fallback) {
-  try {
-    return JSON.parse(await readFile(join(directory, name), "utf8"));
-  } catch {
-    return fallback;
-  }
+  return readOptionalJsonFile(join(directory, name), fallback);
 }
 
 async function readRunOverview(runId) {
