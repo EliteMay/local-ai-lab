@@ -13,16 +13,25 @@ Userが直接見る画面は日本語を基本にします。
 
 ## アプリアイコン
 
-Local AI Lab専用のアイコンを使用します。
+Local AI Lab専用のアイコンを、小さいWindows表示でも判別できる形で使用します。
 
 - 濃紺の角丸背景
-- 青いAIチップ
-- 中央に `AI`
-- 下部にシアンの波形
+- 太い青い `L`
+- 右上にシアンの状態点
+- 小サイズで潰れる文字・細線・波形は使わない
 
-Sourceは `desktop/assets/icon.svg`、Windows/Electron用Assetは `desktop/assets/icon.png` です。Windowsの実行ファイル、タスクバー、Desktop / Start Menu Shortcut、開発起動Windowで同じIdentityを使用します。
+編集する正本は `desktop/assets/icon.svg` だけです。
 
-Windows配布では、コード署名を無効のままにしつつ `signAndEditExecutable: true` で実行ファイルのResource編集を有効にします。ここを `false` にするとIcon埋め込みも止まるため使用しません。
+`npm run icon:build` が次を自動生成します。
+
+```text
+16 / 24 / 32 / 48 / 64 / 128 / 256 / 512 px PNG
+Windows用 multi-size icon.ico
+```
+
+Windows packageとTitlebarは `desktop/assets/generated/icon.ico`、非Windows Window用には生成済み `icon.png` を使用します。生成物はGit管理せず、Desktop起動前とWindows Build前に毎回生成します。
+
+Windows配布では、コード署名を無効のままにしつつ `signAndEditExecutable: true` で実行ファイルのResource編集を有効にします。
 
 ## 配布
 
