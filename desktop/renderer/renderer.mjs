@@ -1,9 +1,9 @@
 const COMMAND_META = {
-  doctor: { label: "Doctor", execute: "Doctorを実行" },
-  inspect: { label: "Inspect", execute: "Inspectを実行" },
-  coverage: { label: "Coverage Audit", execute: "Coverage Auditを実行" },
-  "coverage-synthesize": { label: "Synthesize", execute: "Synthesisを実行" },
-  test: { label: "Tests", execute: "Testsを実行" }
+  doctor: { label: "接続確認", execute: "接続確認を実行" },
+  inspect: { label: "フォルダ確認", execute: "フォルダ確認を実行" },
+  coverage: { label: "全体監査", execute: "全体監査を実行" },
+  "coverage-synthesize": { label: "結果を統合", execute: "結果の統合を実行" },
+  test: { label: "テスト", execute: "テストを実行" }
 };
 
 const state = {
@@ -109,28 +109,28 @@ function resetRunMetrics() {
   state.completionTokens = 0;
   state.reasoningTokens = 0;
   state.currentBatch = null;
-  setText("#batchMetric", "Batch —");
-  setText("#tokenMetric", "Tokens —");
+  setText("#batchMetric", "処理単位 —");
+  setText("#tokenMetric", "使用トークン —");
   setText("#stage", "開始準備中");
   setText("#estimate", "計測中");
 }
 
 function updateTokenMetric() {
   const parts = [
-    `Prompt ${state.promptTokens}`,
-    `Completion ${state.completionTokens}`
+    `入力 ${state.promptTokens}`,
+    `出力 ${state.completionTokens}`
   ];
-  if (state.reasoningTokens > 0) parts.push(`Reasoning ${state.reasoningTokens}`);
+  if (state.reasoningTokens > 0) parts.push(`推論 ${state.reasoningTokens}`);
   setText("#tokenMetric", parts.join(" · "));
 }
 
 function updateCoverageMode() {
   if (state.selectedCommand !== "coverage") return;
   if (state.resume) {
-    setText("#coverageMode", `保存済みRun ${$("#runId").value || ""} の未完了Batchから再開します。`);
-    setText("#execute", "Coverageを再開");
+    setText("#coverageMode", `保存済みの実行 ${$("#runId").value || ""} の未完了部分から再開します。`);
+    setText("#execute", "全体監査を再開");
   } else {
-    setText("#coverageMode", "新しいCoverage Auditとして実行します。");
+    setText("#coverageMode", "新しい全体監査として実行します。");
     setText("#execute", COMMAND_META.coverage.execute);
   }
 }
@@ -198,8 +198,8 @@ function appendLog(payload) {
   if (progress.type === "plan") {
     state.totalBatches = progress.batches;
     state.completedBatches = 0;
-    setStage("Coverage計画作成済み");
-    setText("#progress", `0 / ${progress.batches} batches · ${progress.files} files · ${progress.chunks} chunks`);
+    setStage("監査計画を作成しました");
+    setText("#progress", `0 / ${progress.batches} 処理 · ${progress.files} ファイル · ${progress.chunks} 分割`);
     updateTiming();
     return;
   }
@@ -207,7 +207,7 @@ function appendLog(payload) {
   if (progress.type === "batch-start") {
     state.currentBatch = progress.batchId;
     setStage(`${progress.batchId} 監査中`);
-    setText("#batchMetric", `${progress.batchId} · ${progress.chunks} chunks · ${progress.chars} chars`);
+    setText("#batchMetric", `${progress.batchId} · ${progress.chunks} 分割 · ${progress.chars} 文字`);
     return;
   }
 
@@ -229,12 +229,12 @@ function appendLog(payload) {
     setText(
       "#progress",
       state.totalBatches
-        ? `${state.completedBatches} / ${state.totalBatches} batches`
-        : "Coverage処理中"
+        ? `${state.completedBatches} / ${state.totalBatches} 処理`
+        : "全体監査を処理中"
     );
     setText(
       "#batchMetric",
-      `${progress.batchId} 完了 · ${progress.durationText}${progress.findings == null ? "" : ` · Findings ${progress.findings}`}`
+      `${progress.batchId} 完了 · ${progress.durationText}${progress.findings == null ? "" : ` · 指摘 ${progress.findings}`}`
     );
     updateTokenMetric();
     updateTiming();
@@ -243,13 +243,13 @@ function appendLog(payload) {
 
   if (progress.type === "coverage") {
     $("#bar").style.width = Math.max(0, Math.min(100, progress.percent)) + "%";
-    setText("#progress", `Coverage ${progress.percent}%`);
+    setText("#progress", `監査進捗 ${progress.percent}%`);
     return;
   }
 
   if (progress.type === "stage") {
     setStage(progress.stage);
-    if (progress.stage.includes("Synthesis") || progress.stage.includes("Planner") || progress.stage.includes("Reviewer")) {
+    if (progress.stage.includes("統合") || progress.stage.includes("改善案") || progress.stage.includes("レビュー")) {
       $("#bar").style.width = "100%";
     }
   }
@@ -261,19 +261,19 @@ function applyDoctor(text) {
   const loaded = text.match(/^Configured model loaded:\s*(.+)$/m)?.[1] || "不明";
   setText("#runtime", provider);
   setText("#model", model);
-  setText("#connection", loaded === "yes" ? "接続中" : "Model未Load");
+  setText("#connection", loaded === "yes" ? "接続中" : "モデル未読み込み");
   $("#dot").classList.toggle("online", loaded === "yes");
   $("#dot").classList.toggle("offline", loaded !== "yes");
-  setText("#runtimeMini", loaded === "yes" ? "Runtime 接続中" : "Runtime 要確認");
+  setText("#runtimeMini", loaded === "yes" ? "AI接続中" : "接続要確認");
 }
 
 function friendlyError(message) {
   const text = String(message || "不明なエラー");
   if (text.includes("ECONNREFUSED 127.0.0.1:8080")) {
-    return "Bonsai Runtimeが起動していません。Bonsai serverを起動してから「接続状態を更新」を実行してください。";
+    return "Bonsaiの実行環境が起動していません。Bonsaiサーバーを起動してから「接続状態を更新」を実行してください。";
   }
   if (text.includes("ECONNREFUSED 127.0.0.1:1234")) {
-    return "LM StudioのLocal Serverへ接続できません。LM Studio側でServerとModelを起動してください。";
+    return "LM Studioのローカルサーバーへ接続できません。LM Studio側でサーバーとモデルを起動してください。";
   }
   if (text.includes("Another command is already running")) {
     return "別の処理が実行中です。完了または停止してから実行してください。";
@@ -289,13 +289,13 @@ function friendlyError(message) {
 
 function validateBeforeRun(command) {
   if ((command === "inspect" || command === "coverage") && !state.repository) {
-    throw new Error("対象Repositoryを選択してください。");
+    throw new Error("対象フォルダを選択してください。");
   }
   if (command === "coverage" && !$("#goal").value.trim()) {
     throw new Error("監査目的を入力してください。");
   }
   if (command === "coverage-synthesize" && !$("#runId").value.trim()) {
-    throw new Error("Synthesis対象Runを選択してください。");
+    throw new Error("統合する実行履歴を選択してください。");
   }
 }
 
@@ -363,7 +363,7 @@ async function run(command = state.selectedCommand, stateOverride = {}) {
 async function updateRepositoryFromGitHub() {
   if (state.running) return;
   if (!state.repository) {
-    setText("#repoUpdateStatus", "先に対象Repositoryを選択してください。");
+    setText("#repoUpdateStatus", "先に対象フォルダを選択してください。");
     return;
   }
 
@@ -447,11 +447,20 @@ function formatDate(value) {
   }
 }
 
+function reviewerDecisionLabel(value) {
+  const labels = {
+    APPROVE: "承認",
+    REJECT: "差し戻し",
+    NEED_MORE_EVIDENCE: "追加の根拠が必要"
+  };
+  return labels[value] ?? value;
+}
+
 function createStatusBadge(item) {
   const badge = document.createElement("span");
   badge.className = "badge " + String(item.status || "UNKNOWN").toLowerCase();
   if (item.status === "PARTIAL" && item.coverageComplete) {
-    badge.textContent = "Synthesis待ち";
+    badge.textContent = "統合待ち";
   } else if (item.status === "PARTIAL") {
     badge.textContent = "途中";
   } else if (item.status === "COMPLETED") {
@@ -472,15 +481,15 @@ function createPanelMessage(text) {
 function prepareSynthesis(item) {
   showView("home");
   selectCommand("coverage-synthesize");
-  ensureRunOption(item.runId, `${item.runId} · Coverage ${item.coveragePercent ?? "—"}%`);
-  state.result = `${item.runId} の保存済みEvidenceからSynthesisを再開する準備ができました。`;
+  ensureRunOption(item.runId, `${item.runId} · 監査 ${item.coveragePercent ?? "—"}%`);
+  state.result = `${item.runId} の保存済み監査結果から統合を再開する準備ができました。`;
   setText("#result", state.result);
   setText("#runLabel", item.runId);
 }
 
 function prepareCoverageResume(item) {
   if (!item.repoPath || !item.goal) {
-    state.result = "このRunには再開に必要なRepositoryまたはGoal情報がありません。";
+    state.result = "この実行履歴には再開に必要な対象フォルダまたは監査目的の情報がありません。";
     setText("#result", state.result);
     showView("home");
     return;
@@ -492,10 +501,10 @@ function prepareCoverageResume(item) {
   state.repository = item.repoPath;
   setText("#repoPath", item.repoPath);
   $("#goal").value = item.goal;
-  ensureRunOption(item.runId, `${item.runId} · Coverage ${item.coveragePercent ?? "—"}%`);
+  ensureRunOption(item.runId, `${item.runId} · 監査 ${item.coveragePercent ?? "—"}%`);
   setText("#runLabel", item.runId);
   updateCoverageMode();
-  state.result = `${item.runId} の未完了Coverageから再開する準備ができました。`;
+  state.result = `${item.runId} の未完了の全体監査から再開する準備ができました。`;
   setText("#result", state.result);
 }
 
@@ -509,19 +518,19 @@ function updateResumeCard() {
 
   card.classList.remove("hidden");
   if (item.coverageComplete) {
-    setText("#resumeTitle", "Coverage 100% · Synthesisを再開できます");
+    setText("#resumeTitle", "監査完了 · 結果の統合を再開できます");
     setText(
       "#resumeDescription",
-      `${item.runId} · Findings ${item.findingCount}${item.synthesisError ? " · 前回のSynthesisで停止" : ""}`
+      `${item.runId} · 指摘 ${item.findingCount}${item.synthesisError ? " · 前回は統合処理で停止" : ""}`
     );
-    setText("#resumeAction", "Synthesis再開準備");
+    setText("#resumeAction", "統合の再開準備");
   } else {
-    setText("#resumeTitle", "途中のCoverageがあります");
+    setText("#resumeTitle", "途中の全体監査があります");
     setText(
       "#resumeDescription",
-      `${item.runId} · Coverage ${item.coveragePercent ?? "—"}% · ${item.completedChunks ?? "—"}/${item.totalChunks ?? "—"} chunks`
+      `${item.runId} · 監査 ${item.coveragePercent ?? "—"}% · ${item.completedChunks ?? "—"}/${item.totalChunks ?? "—"} 分割`
     );
-    setText("#resumeAction", "Coverage再開準備");
+    setText("#resumeAction", "監査の再開準備");
   }
 }
 
@@ -532,14 +541,14 @@ function populateRunSelect(items) {
 
   const placeholder = document.createElement("option");
   placeholder.value = "";
-  placeholder.textContent = "履歴からRunを選択してください";
+  placeholder.textContent = "履歴から実行を選択してください";
   select.appendChild(placeholder);
 
   for (const item of items.filter((entry) => entry.coverageComplete)) {
     const option = document.createElement("option");
     option.value = item.runId;
-    const stateLabel = item.status === "COMPLETED" ? "完了" : "Synthesis待ち";
-    option.textContent = `${item.runId} · ${stateLabel} · Findings ${item.findingCount}`;
+    const stateLabel = item.status === "COMPLETED" ? "完了" : "統合待ち";
+    option.textContent = `${item.runId} · ${stateLabel} · 指摘 ${item.findingCount}`;
     select.appendChild(option);
   }
 
@@ -566,7 +575,7 @@ async function loadHistory() {
 
     list.textContent = "";
     if (!items.length) {
-      list.appendChild(createPanelMessage("まだ保存済みRunはありません。"));
+      list.appendChild(createPanelMessage("まだ保存済みの実行履歴はありません。"));
       return;
     }
 
@@ -586,10 +595,10 @@ async function loadHistory() {
       meta.className = "history-meta";
       const metaValues = [
         formatDate(item.updatedAt || item.createdAt),
-        item.repoName || "Repository不明",
-        `Coverage ${item.coveragePercent ?? "—"}%`,
-        `Findings ${item.findingCount}`,
-        item.reviewerDecision ? `Reviewer ${item.reviewerDecision}` : null
+        item.repoName || "対象フォルダ不明",
+        `監査 ${item.coveragePercent ?? "—"}%`,
+        `指摘 ${item.findingCount}`,
+        item.reviewerDecision ? `レビュー ${reviewerDecisionLabel(item.reviewerDecision)}` : null
       ].filter(Boolean);
 
       for (const value of metaValues) {
@@ -601,7 +610,7 @@ async function loadHistory() {
       if (item.synthesisError) {
         const note = document.createElement("p");
         note.className = "history-context warning";
-        note.textContent = "Synthesis未完了: " + item.synthesisError;
+        note.textContent = "結果の統合が未完了: " + item.synthesisError;
         left.append(heading, meta, note);
       } else {
         left.append(heading, meta);
@@ -627,21 +636,21 @@ async function loadHistory() {
       if (item.status === "PARTIAL" && item.coverageComplete) {
         const resume = document.createElement("button");
         resume.className = "primary";
-        resume.textContent = "Synthesis再開";
+        resume.textContent = "統合を再開";
         resume.addEventListener("click", () => prepareSynthesis(item));
         actions.appendChild(resume);
       } else if (item.status === "PARTIAL" && !item.coverageComplete) {
         const resume = document.createElement("button");
         resume.className = "primary";
-        resume.textContent = "Coverage再開";
+        resume.textContent = "監査を再開";
         resume.disabled = !item.repoPath || !item.goal;
-        resume.title = resume.disabled ? "このRunには再開情報が不足しています" : "";
+        resume.title = resume.disabled ? "この実行履歴には再開情報が不足しています" : "";
         resume.addEventListener("click", () => prepareCoverageResume(item));
         actions.appendChild(resume);
       } else if (item.status === "COMPLETED" && item.coverageComplete) {
         const synth = document.createElement("button");
         synth.className = "ghost";
-        synth.textContent = "再Synthesis";
+        synth.textContent = "再統合";
         synth.addEventListener("click", () => prepareSynthesis(item));
         actions.appendChild(synth);
       }
