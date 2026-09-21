@@ -386,12 +386,14 @@ async function openRunFolder(runId) {
 }
 
 function parseProgress(line) {
-  if (line.startsWith("[Model] ROUTE ") || line.startsWith("[Model] FALLBACK ")) {
+  if (line.startsWith("[Model] PREPARE ") || line.startsWith("[Model] ROUTE ") || line.startsWith("[Model] FALLBACK ")) {
+    const prepare = line.startsWith("[Model] PREPARE ");
     const fallback = line.startsWith("[Model] FALLBACK ");
-    const raw = line.slice(fallback ? "[Model] FALLBACK ".length : "[Model] ROUTE ".length);
+    const prefix = prepare ? "[Model] PREPARE " : fallback ? "[Model] FALLBACK " : "[Model] ROUTE ";
+    const raw = line.slice(prefix.length);
     try {
       const payload = JSON.parse(raw);
-      return { type: fallback ? "model-fallback" : "model-route", ...payload };
+      return { type: prepare ? "model-prepare" : fallback ? "model-fallback" : "model-route", ...payload };
     } catch {
       return null;
     }
