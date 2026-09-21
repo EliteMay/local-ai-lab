@@ -1,9 +1,10 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain } from "electron";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawn } from "node:child_process";
+import { createUpdaterController } from "./updater.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(__dirname, "..");
@@ -15,6 +16,7 @@ const MAX_DIAGNOSTIC_EVENTS = 100;
 let mainWindow = null;
 let activeProcess = null;
 let activeProcessCommand = null;
+let updaterController = null;
 
 function safeProfile(value) {
   const profile = String(value || "default");
@@ -60,15 +62,26 @@ function settingsPath() {
   return join(app.getPath("userData"), "settings.json");
 }
 
+function runsRoot() {
+  return app.isPackaged
+    ? join(app.getPath("userData"), "runtime-data", "runs")
+    : join(projectRoot, "runtime-data", "runs");
+}
+
+function cliScriptPath() {
+  return join(projectRoot, "src", "index.mjs");
+}
+
 function diagnosticsPath() {
   return join(app.getPath("userData"), "diagnostics.json");
 }
 
 async function readSettings() {
   const defaults = {
-    defaultRepository: projectRoot,
+    defaultRepository: app.isPackaged ? "" : projectRoot,
     modelProfile: "default",
-    rememberRepository: true
+    rememberRepository: true,
+    autoCheckUpdates: true
   };
   try {
     return { ...defaults, ...JSON.parse(await readFile(settingsPath(), "utf8")) };
@@ -78,10 +91,12 @@ async function readSettings() {
 }
 
 async function saveSettings(input) {
+  const requestedRepository = String(input?.defaultRepository || "").trim();
   const next = {
-    defaultRepository: validateRepository(input?.defaultRepository || projectRoot),
+    defaultRepository: requestedRepository ? validateRepository(requestedRepository) : "",
     modelProfile: safeProfile(input?.modelProfile),
-    rememberRepository: input?.rememberRepository !== false
+    rememberRepository: input?.rememberRepository !== false,
+    autoCheckUpdates: input?.autoCheckUpdates !== false
   };
   await mkdir(dirname(settingsPath()), { recursive: true });
   await writeFile(settingsPath(), JSON.stringify(next, null, 2) + "\n", "utf8");
@@ -133,10 +148,16 @@ function buildCommand(input) {
   const profileArgs = profile === "default" ? [] : ["--model-profile", profile];
 
   if (command === "test") {
-    return { command, profile, file: process.platform === "win32" ? "npm.cmd" : "npm", args: ["test"] };
+    return {
+      command,
+      profile,
+      file: process.execPath,
+      args: ["--test"],
+      nodeMode: true
+    };
   }
 
-  const args = ["src/index.mjs", command, ...profileArgs];
+  const args = [cliScriptPath(), command, ...profileArgs];
   if (command === "inspect") {
     args.push("--repo", validateRepository(input.repoPath));
   }
@@ -148,7 +169,7 @@ function buildCommand(input) {
   if (command === "coverage-synthesize") {
     args.push("--run-id", safeRunId(input.runId));
   }
-  return { command, profile, file: "node", args };
+  return { command, profile, file: process.execPath, args, nodeMode: true };
 }
 
 function parseProgress(line) {
@@ -215,7 +236,12 @@ async function runCommand(input) {
       cwd: projectRoot,
       windowsHide: true,
       shell: false,
-      env: { ...process.env, FORCE_COLOR: "0" }
+      env: {
+        ...process.env,
+        FORCE_COLOR: "0",
+        ...(spec.nodeMode ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
+        LOCAL_AI_RUNTIME_DATA_ROOT: runsRoot()
+      }
     });
     activeProcess = child;
     activeProcessCommand = spec.command;
@@ -269,7 +295,7 @@ async function runCommand(input) {
 }
 
 async function listHistory() {
-  const root = join(projectRoot, "runtime-data", "runs");
+  const root = runsRoot();
   if (!existsSync(root)) return [];
   const names = await readdir(root);
   const items = [];
@@ -313,7 +339,7 @@ async function listHistory() {
 
 async function readRunResult(runId) {
   const id = safeRunId(runId);
-  const directory = join(projectRoot, "runtime-data", "runs", id);
+  const directory = join(runsRoot(), id);
   for (const name of ["summary.md", "synthesis.json", "review.json", "findings.json", "coverage.json"]) {
     try {
       return {
@@ -324,6 +350,98 @@ async function readRunResult(runId) {
     } catch {}
   }
   throw new Error("No readable result file found");
+}
+
+async function runGit(repoPath, args) {
+  const cwd = validateRepository(repoPath);
+  return new Promise((resolvePromise, rejectPromise) => {
+    let stdout = "";
+    let stderr = "";
+    const child = spawn("git", ["-C", cwd, ...args], {
+      windowsHide: true,
+      shell: false
+    });
+    child.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
+    child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
+    child.on("error", rejectPromise);
+    child.on("close", (code) => {
+      const result = { code, stdout: stdout.trim(), stderr: stderr.trim() };
+      if (code === 0) resolvePromise(result);
+      else rejectPromise(new Error(result.stderr || result.stdout || `git exited with code ${code}`));
+    });
+  });
+}
+
+async function updateRepository(repoPath) {
+  if (activeProcess) throw new Error("Run実行中はRepositoryを更新できません。");
+  const repository = validateRepository(repoPath);
+
+  const inside = await runGit(repository, ["rev-parse", "--is-inside-work-tree"]);
+  if (inside.stdout !== "true") throw new Error("選択したFolderはGit Repositoryではありません。");
+
+  const dirty = await runGit(repository, ["status", "--porcelain"]);
+  if (dirty.stdout) {
+    throw new Error("未コミットの変更があるため更新を中止しました。変更をCommit・退避・破棄してから再実行してください。");
+  }
+
+  const branch = await runGit(repository, ["symbolic-ref", "--short", "HEAD"]);
+  if (!branch.stdout) throw new Error("Detached HEADでは安全に更新できません。");
+
+  const before = (await runGit(repository, ["rev-parse", "HEAD"])).stdout;
+  await runGit(repository, ["fetch", "--prune", "origin"]);
+  const pull = await runGit(repository, ["pull", "--ff-only", "origin", branch.stdout]);
+  const after = (await runGit(repository, ["rev-parse", "HEAD"])).stdout;
+  const updated = before !== after;
+
+  await appendDiagnostic({
+    type: "repository.updated",
+    updated,
+    branch: branch.stdout,
+    before: before.slice(0, 12),
+    after: after.slice(0, 12)
+  });
+
+  return {
+    ok: true,
+    updated,
+    branch: branch.stdout,
+    before,
+    after,
+    message: updated
+      ? `GitHubの最新版へ更新しました（${before.slice(0, 7)} → ${after.slice(0, 7)}）。`
+      : "すでに最新版です。",
+    detail: pull.stdout
+  };
+}
+
+async function isLocalAiLabRepository(repoPath) {
+  if (!repoPath) return false;
+  try {
+    const pkg = JSON.parse(await readFile(join(repoPath, "package.json"), "utf8"));
+    return pkg?.name === "local-ai-lab";
+  } catch {
+    return false;
+  }
+}
+
+async function migrateLegacyRunsIfNeeded() {
+  if (!app.isPackaged) return { migrated: false };
+  const destination = runsRoot();
+  try {
+    const existing = await readdir(destination);
+    if (existing.length) return { migrated: false };
+  } catch {}
+
+  const settings = await readSettings();
+  if (!(await isLocalAiLabRepository(settings.defaultRepository))) return { migrated: false };
+
+  const source = join(settings.defaultRepository, "runtime-data", "runs");
+  if (!existsSync(source)) return { migrated: false };
+
+  await mkdir(dirname(destination), { recursive: true });
+  await cp(source, destination, { recursive: true, errorOnExist: false, force: false });
+  await appendDiagnostic({ type: "runtime-data.migrated", source: "legacy-local-ai-lab-repository" });
+  return { migrated: true };
 }
 
 function createWindow() {
@@ -349,13 +467,15 @@ function createWindow() {
   });
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  await migrateLegacyRunsIfNeeded();
   registerIpc("settings:get", () => readSettings());
   registerIpc("settings:save", (input) => saveSettings(input));
   registerIpc("repository:select", async () => {
     const result = await dialog.showOpenDialog(mainWindow, { properties: ["openDirectory"] });
     return result.canceled ? null : result.filePaths[0];
   });
+  registerIpc("repository:update", (repoPath) => updateRepository(repoPath));
   registerIpc("command:run", (input) => runCommand(input));
   registerIpc("command:cancel", async () => {
     if (!activeProcess) return false;
@@ -374,7 +494,15 @@ app.whenReady().then(() => {
     clipboard.writeText(text);
     return true;
   });
+  updaterController = createUpdaterController({
+    registerIpc,
+    readSettings,
+    appendDiagnostic,
+    getMainWindow: () => mainWindow,
+    isBusy: () => Boolean(activeProcess)
+  });
   createWindow();
+  await updaterController.scheduleAutoCheck();
 });
 
 app.on("window-all-closed", () => {
