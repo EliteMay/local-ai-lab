@@ -2,6 +2,7 @@ import { getAgentResponseSchema } from "./response-schemas.mjs";
 import { getRoleDefinition } from "../roles/role-definitions.mjs";
 import { reduceFindingsHierarchically } from "./hierarchical-synthesis.mjs";
 import { buildExecutionIdentity } from "./run-identity.mjs";
+import { mergeModelUsageSnapshots } from "../model/model-router.mjs";
 
 function renderSynthesisPrompt({ goal, coverage, findings }) {
   return `Goal:\n${goal}\n\nThe whole-repository coverage pass is complete. Turn the evidence-backed audit themes below into specific, minimally disruptive improvement proposals. Each theme keeps sourceFindingIds that point back to the immutable findings.json evidence index. Do not invent repository facts. Do not request another role unless supplied evidence is insufficient.\n\nCoverage:\n${JSON.stringify(coverage)}\n\nAudit themes:\n${JSON.stringify(findings)}\n\nReturn the required structured role response. Keep it concise and prioritize related changes together.\n\n/no_think`;
@@ -12,13 +13,18 @@ function renderReviewPrompt({ goal, coverage, findings, planner }) {
 }
 
 export class CoverageSynthesisService {
-  constructor({ config, modelClient, runStore = null, onProgress = null } = {}) {
+  constructor({ config, modelClient = null, modelRouter = null, runStore = null, onProgress = null } = {}) {
     if (!config) throw new Error("config is required");
-    if (!modelClient) throw new Error("modelClient is required");
+    if (!modelClient && !modelRouter) throw new Error("modelClient or modelRouter is required");
     this.config = config;
     this.modelClient = modelClient;
+    this.modelRouter = modelRouter;
     this.runStore = runStore;
     this.onProgress = typeof onProgress === "function" ? onProgress : () => {};
+  }
+
+  #clientFor(taskType) {
+    return this.modelRouter ? this.modelRouter.clientFor(taskType) : this.modelClient;
   }
 
   #emit(event) {
@@ -48,7 +54,7 @@ export class CoverageSynthesisService {
     });
 
     const reduction = await reduceFindingsHierarchically({
-      modelClient: this.modelClient,
+      modelClient: this.#clientFor("synthesis-reduction"),
       goal,
       findings,
       targetChars: maxSynthesisChars,
@@ -76,7 +82,7 @@ export class CoverageSynthesisService {
 
     const plannerRole = getRoleDefinition("improvement-planner");
     this.#emit({ type: "synthesis_planner_started", findings: planningFindings.length, chars: planningChars });
-    const planner = await this.modelClient.chatJsonDetailed({
+    const planner = await this.#clientFor("planner").chatJsonDetailed({
       system: plannerRole.system,
       user: renderSynthesisPrompt({ goal, coverage, findings: planningFindings }),
       jsonSchema: getAgentResponseSchema("improvement-planner"),
@@ -86,7 +92,7 @@ export class CoverageSynthesisService {
 
     const reviewerRole = getRoleDefinition("reviewer");
     this.#emit({ type: "synthesis_reviewer_started" });
-    const reviewer = await this.modelClient.chatJsonDetailed({
+    const reviewer = await this.#clientFor("reviewer").chatJsonDetailed({
       system: reviewerRole.system,
       user: renderReviewPrompt({ goal, coverage, findings: planningFindings, planner: planner.value }),
       jsonSchema: getAgentResponseSchema("reviewer"),
@@ -116,6 +122,13 @@ export class CoverageSynthesisService {
     }
 
     const run = await this.runStore.readJson(runId, "run.json");
+    let previousModelUsage = run.modelRouting ?? null;
+    try {
+      previousModelUsage = await this.runStore.readJson(runId, "model-usage.json");
+    } catch {}
+    if (this.modelRouter) {
+      this.modelRouter.importPins(run.modelRouting?.pins ?? previousModelUsage?.pins ?? {});
+    }
     const coverage = await this.runStore.readJson(runId, "coverage.json");
     const findings = await this.runStore.readJson(runId, "findings.json");
     if (!coverage.complete || coverage.coveragePercent !== 100) {
@@ -132,6 +145,10 @@ export class CoverageSynthesisService {
 
     await this.runStore.writeJson(runId, "synthesis.json", synthesis);
     await this.runStore.writeJson(runId, "review.json", synthesis.reviewer ?? {});
+    const modelUsage = this.modelRouter
+      ? mergeModelUsageSnapshots(previousModelUsage, this.modelRouter.snapshot())
+      : previousModelUsage;
+    if (modelUsage) await this.runStore.writeJson(runId, "model-usage.json", modelUsage);
 
     const status = synthesis.error ? "PARTIAL" : "COMPLETED";
     const completedAt = new Date().toISOString();
@@ -143,6 +160,7 @@ export class CoverageSynthesisService {
       synthesisError: synthesis.error,
       reviewerDecision: synthesis.reviewer?.result?.decision ?? null,
       synthesisIdentity,
+      modelRouting: modelUsage,
       synthesisFromStoredEvidence: true
     });
 
