@@ -77,6 +77,15 @@ export function buildRunOverview({
       : null,
     findingCount: list.length,
     severity,
+    modelUsage: Array.isArray(run.modelRouting?.models)
+      ? run.modelRouting.models.map((item) => ({
+          modelId: item.modelId ?? null,
+          label: item.label ?? item.modelId ?? "不明",
+          calls: Number(item.calls) || 0,
+          failures: Number(item.failures) || 0,
+          durationMs: Number(item.durationMs) || 0
+        }))
+      : [],
     topFindings,
     reviewerDecision:
       run.reviewerDecision ||
