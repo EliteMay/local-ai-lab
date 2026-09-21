@@ -81,7 +81,10 @@ test("windows build workflow verifies installer updater metadata and immutable v
     "gh release view",
     "already exists",
     "gh release create",
-    "actions/upload-artifact@v4"
+    "actions/upload-artifact@v4",
+    "ErrorActionPreference = 'SilentlyContinue'",
+    "tagLookupExit",
+    "releaseLookupExit"
   ]) {
     assert.ok(workflow.includes(marker), "missing workflow marker: " + marker);
   }
