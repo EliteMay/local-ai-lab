@@ -23,7 +23,7 @@ test("desktop distribution uses NSIS GitHub Releases auto update", async () => {
   assert.equal(pkg.build?.win?.signExecutable, false);
 });
 
-test("auto updater has fixed release provider and one-click install flow", async () => {
+test("auto updater has fixed provider and staged download/restart recovery flow", async () => {
   const updater = await read("../desktop/updater.mjs");
   for (const marker of [
     "https://github.com/EliteMay/local-ai-lab/releases/latest",
@@ -37,7 +37,8 @@ test("auto updater has fixed release provider and one-click install flow", async
     "update:check",
     "update:install",
     "update:open-release",
-    "今すぐ更新"
+    "ダウンロード",
+    "再起動して更新"
   ]) {
     assert.ok(updater.includes(marker), "missing updater marker: " + marker);
   }
