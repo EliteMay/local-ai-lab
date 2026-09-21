@@ -1,6 +1,6 @@
 {
   "name": "local-ai-lab",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "private": true,
   "type": "module",
   "description": "Local AI repository audit lab with a Windows Electron run controller.",
