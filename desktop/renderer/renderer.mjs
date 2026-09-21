@@ -277,10 +277,15 @@ function renderModelCatalog(snapshot) {
         actions.appendChild(createModelButton("読み込み", "ghost", async () => {
           await modelAction(() => window.localAI.loadModel(model.id));
         }, state.running));
-      } else {
+      } else if (model.installed === false) {
         actions.appendChild(createModelButton("ダウンロード", "primary", async () => {
           await modelAction(() => window.localAI.downloadModel(model.id));
         }, state.running || snapshot.providerAvailable === false));
+      } else {
+        const unavailable = document.createElement("span");
+        unavailable.className = "mini-status";
+        unavailable.textContent = "LM Studio接続待ち";
+        actions.appendChild(unavailable);
       }
     } else {
       const note = document.createElement("span");
@@ -798,6 +803,8 @@ function appendLog(payload) {
     const label = state.currentRoutedModel;
     state.modelUsageCounts[label] = (state.modelUsageCounts[label] || 0) + 1;
     setText("#model", label);
+    const taskLabel = MODEL_TASK_LABELS[state.currentModelTask] || state.currentModelTask || "処理";
+    setStage(label + " で" + taskLabel + "を処理中", { updateResult: false });
     updateModelRoutingMetrics();
     updateLiveResult();
     return;
