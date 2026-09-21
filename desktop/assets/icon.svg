@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect x="36" y="36" width="440" height="440" rx="110" fill="#0D121C"/>
+  <rect x="63" y="63" width="386" height="386" rx="85" fill="#121A28"/>
+  <rect x="130" y="130" width="252" height="252" rx="48" fill="#202D46" stroke="#5D97FF" stroke-width="14"/>
+  <g fill="#5D97FF">
+    <rect x="95" y="161" width="35" height="18" rx="8"/><rect x="382" y="161" width="35" height="18" rx="8"/>
+    <rect x="95" y="215" width="35" height="18" rx="8"/><rect x="382" y="215" width="35" height="18" rx="8"/>
+    <rect x="95" y="269" width="35" height="18" rx="8"/><rect x="382" y="269" width="35" height="18" rx="8"/>
+    <rect x="95" y="323" width="35" height="18" rx="8"/><rect x="382" y="323" width="35" height="18" rx="8"/>
+    <rect x="161" y="95" width="18" height="35" rx="8"/><rect x="161" y="382" width="18" height="35" rx="8"/>
+    <rect x="215" y="95" width="18" height="35" rx="8"/><rect x="215" y="382" width="18" height="35" rx="8"/>
+    <rect x="269" y="95" width="18" height="35" rx="8"/><rect x="269" y="382" width="18" height="35" rx="8"/>
+    <rect x="323" y="95" width="18" height="35" rx="8"/><rect x="323" y="382" width="18" height="35" rx="8"/>
+  </g>
+  <text x="256" y="305" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="130" font-weight="800" fill="#EBF2FF">AI</text>
+  <polyline points="165,340 198,340 213,315 233,364 256,325 276,340 347,340"
+    fill="none" stroke="#5AE1D2" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

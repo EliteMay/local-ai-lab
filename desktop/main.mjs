@@ -458,6 +458,7 @@ function createWindow() {
     minHeight: 680,
     backgroundColor: "#0b0d10",
     title: "Local AI Lab",
+    icon: join(__dirname, "assets", "icon.png"),
     webPreferences: {
       preload: join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -474,6 +475,9 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  if (process.platform === "win32") {
+    app.setAppUserModelId("local.elitemay.localailab");
+  }
   await migrateLegacyRunsIfNeeded();
   registerIpc("settings:get", () => readSettings());
   registerIpc("settings:save", (input) => saveSettings(input));

@@ -11,6 +11,17 @@ Userが直接見る画面は日本語を基本にします。
 - Local AI Lab、GitHub、LM Studio、Qwen3-8B、Bonsai 2 27B等の固有名詞はそのまま表示できる
 - Debug LogやModel/API由来のRaw出力は診断目的で英語を含む場合があるが、主要操作の理解をRaw Logへ依存させない
 
+## アプリアイコン
+
+Local AI Lab専用のアイコンを使用します。
+
+- 濃紺の角丸背景
+- 青いAIチップ
+- 中央に `AI`
+- 下部にシアンの波形
+
+Sourceは `desktop/assets/icon.svg`、Windows/Electron用Assetは `desktop/assets/icon.png` です。Windowsの実行ファイル、タスクバー、Desktop / Start Menu Shortcut、開発起動Windowで同じIdentityを使用します。
+
 ## 配布
 
 Windows利用ではGitHub ReleasesのSetup.exeを基本導線にします。

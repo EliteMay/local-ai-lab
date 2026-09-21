@@ -101,6 +101,18 @@
 - Problem: Bonsai利用のたびにUserがPowerShellを開いて固定Commandを実行する必要があり、Desktop ControllerだけでPrimary Flowが完結しなかった。
 - Decision: Bonsai 2 27Bだけを対象に、既知の `start_llama_server.ps1` を固定Environment / 固定Argumentで起動する専用Runtime ControllerをMain Processへ追加する。
 - Safety: Rendererへ任意Shell Capabilityを渡さず、Desktopが起動したProcessだけをStop対象とする。外部起動Serverは検出だけしてKillしない。
-- Lifecycle: Desktop終了時はDesktop管理Processを終了する。Auto StartはUser Opt-inだけ。
+- Lifecycle: Start / StopはUserの明示Button操作だけで行う。Desktop起動時・終了時に自動Start / Stopしない。
 - Regression Guard: Bonsai start spec unit test + Desktop IPC/security contract test。
 - Prevention: Local Runtime起動をGUI化するときは、User convenienceのためにGeneric Terminal / Generic Shell Capabilityへ広げない。
+
+
+## PL-009 — Electron標準Iconを配布AppのIdentityに使わない
+
+- Date: 2026-09-21
+- Type: UX / Distribution
+- Status: Adopted
+- Problem: Electron標準Iconのままだと、他Electron AppとTaskbar / Desktop Shortcut上で見分けにくい。
+- Decision: Local AI Lab専用IconをRepository Assetとして管理し、Electron WindowとWindows packageの両方へ同じIconを設定する。
+- Asset: `desktop/assets/icon.svg` を編集用Source、`desktop/assets/icon.png` を配布用Rasterとして使用する。
+- Regression Guard: Distribution testでVersion / Windows icon path / BrowserWindow icon / AppUserModelId / Binary Asset existenceを確認する。
+- Prevention: Desktop AppをSetup.exe配布する段階で、Default framework iconのままReleaseしない。
