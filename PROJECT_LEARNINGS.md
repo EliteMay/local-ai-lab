@@ -231,3 +231,16 @@
 - Decision: Git subprocessへ30秒Timeoutとbounded stdout/stderr、Local LLM Responseへ16MB上限を設定する。Fetchとnode:httpの両Transportで同じBoundaryを持つ。
 - Regression Guard: Desktop Contract Test / LM Studio Client Test。
 - Prevention: Local-only ServiceやRead-only Commandも無制限な待ち時間・Response sizeを安全とは扱わない。
+
+
+## PL-020 — 複数Model RoutingはAI判断ではなく決定的Controllerで行う
+
+- Date: 2026-09-22
+- Type: Architecture / Reliability / Local AI
+- Status: Adopted
+- Problem: Coverage / Planner / Reviewerで同じModelだけを使うと、大量処理には重すぎるModel、難しいReviewには弱すぎるModelというTrade-offが生じる。一方、AI自身の自由文へModel選択を任せると再現性・Resume・Permission境界が不安定になる。
+- Decision: Task種別、Role、RepositoryのCode比率をNode.js側で判定し、Version管理されたModel Catalog / Routing Configから候補Modelを決定する。
+- Stability: 同じTaskで最初に成功したModelをRun Pinとして保存し、Resume中は同じPinを要求する。Pinned Modelが利用不可なら別ModelへSilent切替せず停止して復旧を求める。
+- Safety: LM Studioの自動Load / UnloadはCatalog管理Modelだけに限定する。Rendererへ任意Model URL / Shell Commandを公開しない。Bonsai RuntimeのStart / StopはUser明示操作のままにする。
+- Observability: Model別Call数 / Failure / Token / Duration、Catalog Hash、Routing Hash、Task PinをRun Evidenceへ保存する。
+- Prevention: 「複数Modelを使える」と「AIへRouting権限を渡す」を同一視しない。RoutingはDeterministic Controllerの責務として維持する。
