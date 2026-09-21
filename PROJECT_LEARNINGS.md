@@ -91,3 +91,16 @@
 - Release Contract: package version / Setup.exe / latest.yml / blockmapを同Versionで生成し、同じReleaseへ公開する。同じVersion Releaseが既に存在する場合は後からAssetを差し替えない。
 - Failure Fallback: Update失敗時はCurrent Versionを継続利用し、固定GitHub Releases URLをManual fallbackにする。
 - Remaining Risk: Code Signing未導入のためSmartScreen警告が出る可能性がある。
+
+
+## PL-008 — Runtime Process管理は任意Shellと分離する
+
+- Date: 2026-09-21
+- Type: Security / UX
+- Status: Adopted
+- Problem: Bonsai利用のたびにUserがPowerShellを開いて固定Commandを実行する必要があり、Desktop ControllerだけでPrimary Flowが完結しなかった。
+- Decision: Bonsai 2 27Bだけを対象に、既知の `start_llama_server.ps1` を固定Environment / 固定Argumentで起動する専用Runtime ControllerをMain Processへ追加する。
+- Safety: Rendererへ任意Shell Capabilityを渡さず、Desktopが起動したProcessだけをStop対象とする。外部起動Serverは検出だけしてKillしない。
+- Lifecycle: Desktop終了時はDesktop管理Processを終了する。Auto StartはUser Opt-inだけ。
+- Regression Guard: Bonsai start spec unit test + Desktop IPC/security contract test。
+- Prevention: Local Runtime起動をGUI化するときは、User convenienceのためにGeneric Terminal / Generic Shell Capabilityへ広げない。
