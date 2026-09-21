@@ -48,6 +48,20 @@ jobs:
         with:
           node-version: 24
 
+      - name: Refuse reusing an already published version
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = node -p "require('./package.json').version"
+          $tag = "v$version"
+          $tagSha = gh api "repos/$env:GITHUB_REPOSITORY/git/ref/tags/$tag" --jq ".object.sha" 2>$null
+          if ($LASTEXITCODE -eq 0 -and $tagSha -ne $env:GITHUB_SHA) {
+            throw "Version $version is already published from $tagSha. Bump package.json before publishing a different main commit."
+          }
+
       - name: Install dependencies
         run: npm install
 
@@ -168,7 +182,11 @@ jobs:
           $tag = "v$env:APP_VERSION"
           gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
           if ($LASTEXITCODE -eq 0) {
-            Write-Host "Release $tag already exists. Keeping the published version immutable; skipping publish."
+            $tagSha = gh api "repos/$env:GITHUB_REPOSITORY/git/ref/tags/$tag" --jq ".object.sha"
+            if ($tagSha -ne $env:GITHUB_SHA) {
+              throw "Release $tag already points to $tagSha, not current main $env:GITHUB_SHA."
+            }
+            Write-Host "Release $tag already exists for this exact commit; skipping duplicate publish."
             exit 0
           }
 
