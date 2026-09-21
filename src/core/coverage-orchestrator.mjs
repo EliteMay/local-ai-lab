@@ -5,6 +5,7 @@ import { buildCoveragePlan, publicCoveragePlan } from "./coverage-plan.mjs";
 import { COVERAGE_BATCH_SCHEMA, getAgentResponseSchema } from "./response-schemas.mjs";
 import { getRoleDefinition } from "../roles/role-definitions.mjs";
 import { classifyCoveragePlan } from "../model/model-catalog.mjs";
+import { mergeModelUsageSnapshots } from "../model/model-router.mjs";
 
 function sameStringSet(left, right) {
   if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false;
@@ -306,6 +307,7 @@ export class CoverageAuditOrchestrator {
 
     let actualRunId = runId;
     let batchResults = [];
+    let previousModelUsage = null;
 
     if (resume) {
       const savedPlan = await this.runStore.readJson(runId, "coverage-plan.json");
@@ -317,6 +319,9 @@ export class CoverageAuditOrchestrator {
       } catch {
         batchResults = [];
       }
+      try {
+        previousModelUsage = await this.runStore.readJson(runId, "model-usage.json");
+      } catch {}
       const completed = new Set(batchResults.filter((item) => item.status === "completed").map((item) => item.batchId));
       batchResults = batchResults.filter((item) => item.status === "completed");
       this.#emit({ type: "coverage_run_resumed", runId, completedBatches: completed.size, totalBatches: plan.totalBatches });
@@ -369,7 +374,9 @@ export class CoverageAuditOrchestrator {
     }
     await this.runStore.writeJson(actualRunId, "synthesis.json", synthesis);
     await this.runStore.writeJson(actualRunId, "review.json", synthesis.reviewer ?? {});
-    const modelUsage = this.modelRouter ? this.modelRouter.snapshot() : null;
+    const modelUsage = this.modelRouter
+      ? mergeModelUsageSnapshots(previousModelUsage, this.modelRouter.snapshot())
+      : null;
     if (modelUsage) await this.runStore.writeJson(actualRunId, "model-usage.json", modelUsage);
 
     const status = coverage.complete && !synthesis.error ? "COMPLETED" : "PARTIAL";
