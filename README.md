@@ -256,7 +256,23 @@ Windows Releaseは同じVersion Tagを別のmain Commitへ再利用しないCont
 
 このfollow-upでも、Target Repositoryへの監査はRead-onlyのままです。
 
-## Desktop Controller v0.2
+## v0.3.0 multi-model routing
+
+v0.3.0では、1回のRunで1つのModelを固定するだけでなく、作業種類に応じてLocal Modelを切り替えられます。Model選択はAIへ委任せず、Version管理されたCatalog / Routing RuleをNode.js側で決定します。
+
+既定の自動振り分け:
+- 一般監査 / 大量処理: Qwen3 8B
+- Code-heavy監査: Qwen2.5 Coder 7B
+- 改善案 / 推論: Phi-4 Mini Reasoning
+- 最終Reviewer: Bonsai 2 27Bを優先し、利用不可なら限定Fallback
+
+設定画面の「用途別モデル」から、LM Studio Native REST APIでCatalog固定ModelのDownload / Load / Unloadを管理できます。任意URL・任意ShellはRendererへ渡しません。
+
+Run中は現在のTask / Model / Fallback / Model別Call数を表示し、保存済みRunへ `model-usage.json` とRouting Pinを残します。同じTaskで一度成功したModelはRun内でPinされ、Resume中に別ModelへSilent切替しません。
+
+Gemma 3 4B / gpt-oss-20b / Qwen3 Coder 30B-A3BもCatalogへ登録しますが、重さや未実装Capabilityのため初期Auto Routeには入れません。
+
+## Desktop Controller v0.3
 
 WindowsではGitHub ReleasesのSetup.exe版をPrimary Distributionにします。
 
@@ -266,7 +282,8 @@ https://github.com/EliteMay/local-ai-lab/releases/latest
 
 主な機能:
 
-- Runtime / Model Profile状態の確認
+- Runtime / Model Profile / 自動Model Routing状態の確認
+- 用途別Model Catalog管理、LM Studio ModelのDownload / Load / Unload
 - Bonsai 2 27B Runtimeの手動起動 / 状態確認 / 手動停止
 - 前回選択Repositoryの自動復元 / 必要なときだけRepository変更
 - Doctor / Inspect / Coverage / Synthesize / Tests
@@ -278,7 +295,7 @@ https://github.com/EliteMay/local-ai-lab/releases/latest
 - 監査完了後のCoverage / 重要度別指摘数 / 重要な指摘 / Reviewer結果の概要表示
 - 10分以上新しい出力がない場合の長時間応答待ち表示（接続エラーとは別状態）
 - PARTIAL Run / Synthesisの履歴再開
-- 選択Repositoryの「GitHubから最新化」
+- 選択Repositoryの「リモートから最新化」
 - GitHub Releases経由のアプリ内更新（ダウンロード → 再起動して更新を明示分離）
 - Settings / Run履歴 / DiagnosticsのuserData保存
 - 長時間Run中の自動Sleep防止と誤終了Guard
