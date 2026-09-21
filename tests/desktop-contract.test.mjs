@@ -290,7 +290,7 @@ test("desktop command disabling uses the multi-element selector helper", async (
   const renderer = await readFile(new URL("../desktop/renderer/renderer.mjs", import.meta.url), "utf8");
   const setRunning = renderer.match(/function setRunning\(value, title\) \{([\s\S]*?)\n\}/)?.[1] || "";
   assert.match(setRunning, /\$\$\("\.commands button"\)\.forEach/);
-  assert.doesNotMatch(setRunning, /\$\("\.commands button"\)\.forEach/);
+  assert.ok(!setRunning.includes('  $(".commands button").forEach'));
 });
 
 
