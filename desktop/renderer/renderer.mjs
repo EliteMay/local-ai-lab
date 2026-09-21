@@ -801,12 +801,18 @@ function setRunning(value, title) {
   $("#startBonsai").disabled = value;
   $("#stopBonsai").disabled = value;
   $("#refreshBonsai").disabled = value;
+  $("#settingsProfile").disabled = value;
+  $("#settingsRepoButton").disabled = value;
+  $("#bonsaiFolderButton").disabled = value;
+  $("#autoCheckUpdates").disabled = value;
+  $("#save").disabled = value;
   $("#cancel").classList.toggle("hidden", !value);
   $("#cancel").disabled = !value;
   setText("#runProtection", value ? "スリープ防止中" : "待機中");
   if (!value) state.processAlive = false;
   if (title) setText("#runTitle", title);
   updateOperationalMetrics();
+  applyUpdateState(state.updateState);
   restartTelemetryPolling();
 }
 
@@ -1073,7 +1079,7 @@ async function updateRepositoryFromGitHub() {
   }
 
   $("#updateRepo").disabled = true;
-  setText("#repoUpdateStatus", "GitHubの最新版を確認しています...");
+  setText("#repoUpdateStatus", "リモートの最新版を確認しています...");
   try {
     const result = await window.localAI.updateRepository(state.repository);
     setText("#repoUpdateStatus", result.message);
@@ -1112,6 +1118,7 @@ function applyUpdateState(next) {
     state.updateState.state === "downloading" ||
     state.updateState.state === "installing";
   $("#checkUpdate").disabled =
+    state.running ||
     state.updateState.state === "checking" ||
     state.updateState.state === "downloading" ||
     state.updateState.state === "installing";

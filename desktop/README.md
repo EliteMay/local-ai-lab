@@ -1,4 +1,4 @@
-# Local AI Lab Desktop v0.2
+# Local AI Lab Desktop v0.2.11
 
 Local AI Labの監査・再統合・検証Runを、Windows向けElectron GUIから開始・監視・再開するDesktop Controllerです。
 
@@ -32,6 +32,12 @@ Windows用 multi-size icon.ico
 Windows packageとTitlebarは `desktop/assets/generated/icon.ico`、非Windows Window用には生成済み `icon.png` を使用します。生成物はGit管理せず、Desktop起動前とWindows Build前に毎回生成します。
 
 Windows配布では、コード署名を無効のままにしつつ `signAndEditExecutable: true` で実行ファイルのResource編集を有効にします。
+
+## 実行中の変更制限
+
+長時間Run中は、Model Profileや既定Repository等の設定保存とApp Update開始を無効化します。Current Runが使用中の設定と保存Settingsが途中で食い違わないようにするためです。
+
+Repositoryの更新はRemote ProviderをGitHubへ固定せず「リモートから最新化」と表示します。Git操作は固定Command、30秒Timeout、bounded outputで実行します。
 
 ## 配布
 

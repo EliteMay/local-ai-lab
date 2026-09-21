@@ -326,3 +326,68 @@ test("node-http transport reports the configured timeout", async (t) => {
     /PrismML llama\.cpp request timed out after 0 seconds/
   );
 });
+
+
+test("fetch transport rejects responses larger than the configured safety limit", async (t) => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response("x".repeat(1024), {
+    status: 200,
+    headers: { "content-type": "application/json", "content-length": "1024" }
+  });
+  t.after(() => { globalThis.fetch = originalFetch; });
+
+  const client = new LMStudioClient({
+    baseUrl: "http://127.0.0.1:1234/v1",
+    model: "qwen/qwen3-8b",
+    maxResponseBytes: 128
+  });
+
+  await assert.rejects(
+    async () => {
+      try {
+        await client.listModels();
+      } catch (error) {
+        assert.equal(error.code, "RESPONSE_TOO_LARGE");
+        throw error;
+      }
+    },
+    /response exceeded/
+  );
+});
+
+test("node-http transport aborts oversized local model responses", async (t) => {
+  const server = createServer((_request, response) => {
+    const body = JSON.stringify({ data: [{ id: "x".repeat(1024) }] });
+    response.writeHead(200, {
+      "content-type": "application/json",
+      "content-length": String(Buffer.byteLength(body))
+    });
+    response.end(body);
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  t.after(async () => {
+    await new Promise((resolve) => server.close(resolve));
+  });
+
+  const address = server.address();
+  const client = new LMStudioClient({
+    baseUrl: `http://127.0.0.1:${address.port}/v1`,
+    model: "bonsai-2-27b",
+    providerName: "PrismML llama.cpp",
+    transport: "node-http",
+    maxResponseBytes: 128
+  });
+
+  await assert.rejects(
+    async () => {
+      try {
+        await client.listModels();
+      } catch (error) {
+        assert.equal(error.code, "RESPONSE_TOO_LARGE");
+        throw error;
+      }
+    },
+    /response exceeded/
+  );
+});

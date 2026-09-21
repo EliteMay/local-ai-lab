@@ -367,3 +367,32 @@ test("desktop Bonsai health check verifies model identity and stop completion", 
   assert.match(runtime, /bonsai\.stop\.failed/);
   assert.match(runtime, /停止確認に失敗/);
 });
+
+
+test("desktop blocks mutable settings and update actions while a run is active", async () => {
+  const main = await readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8");
+  const renderer = await readFile(new URL("../desktop/renderer/renderer.mjs", import.meta.url), "utf8");
+
+  assert.match(main, /処理実行中は設定を変更できません/);
+  for (const selector of [
+    "#settingsProfile",
+    "#settingsRepoButton",
+    "#bonsaiFolderButton",
+    "#autoCheckUpdates",
+    "#save"
+  ]) {
+    assert.ok(renderer.includes(`${selector}").disabled = value`), "missing active-run setting lock: " + selector);
+  }
+  assert.match(renderer, /\$\("#checkUpdate"\)\.disabled =\s*state\.running\s*\|\|/);
+});
+
+test("repository maintenance uses a bounded git subprocess and generic remote wording", async () => {
+  const main = await readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8");
+  const html = await readFile(new URL("../desktop/renderer/index.html", import.meta.url), "utf8");
+
+  assert.match(main, /async function runGit\(repoPath, args, \{ timeoutMs = 30000 \}/);
+  assert.match(main, /error\.code = "GIT_TIMEOUT"/);
+  assert.match(main, /slice\(-200000\)/);
+  assert.match(html, /リモートから最新化/);
+  assert.doesNotMatch(html, /GitHubから最新化/);
+});

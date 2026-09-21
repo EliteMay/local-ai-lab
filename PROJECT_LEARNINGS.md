@@ -210,3 +210,24 @@
 - Recovery: 旧v0.2.7自体のUpdaterが動かない環境では、v0.2.9 Setup.exeを配布ページから1回上書きInstallする。
 - Regression Guard: Distribution Contract Testで段階State、Downloaded Installer Path、quitAndInstall、fixed-path fallback、Renderer labelを確認する。
 - Prevention: 「新版を検出できた」をAuto Update E2E成功と見なさず、Download / Restart / New Version起動を別々に検証する。
+
+
+## PL-018 — 公開済みVersionへ別main Commitを重ねない
+
+- Date: 2026-09-22
+- Type: Distribution / Reliability
+- Status: Adopted
+- Problem: 同じpackage versionのままmainへ追加変更すると、既存Releaseをimmutable扱いでskipするだけでは「mainと配布物が同じVersion名なのに内容が違う」状態を作れる。
+- Decision: main build時にCurrent Version Tagが既に存在し、そのTag CommitがCurrent main Commitと異なる場合はCIをFailする。追加変更は必ずVersionを上げる。
+- Regression Guard: Windows release workflowのtag SHA確認。
+- Prevention: Releaseの存在確認を「skip条件」だけでなくVersion reuse errorとして扱う。
+
+## PL-019 — Local subprocess / HTTPもMemoryと時間の上限を持つ
+
+- Date: 2026-09-22
+- Type: Reliability
+- Status: Adopted
+- Problem: Git Network/Auth待ちやLocal LLMの異常に大きいHTTP Responseは、Read-only処理でもDesktopを長時間停止・Memory圧迫させる可能性がある。
+- Decision: Git subprocessへ30秒Timeoutとbounded stdout/stderr、Local LLM Responseへ16MB上限を設定する。Fetchとnode:httpの両Transportで同じBoundaryを持つ。
+- Regression Guard: Desktop Contract Test / LM Studio Client Test。
+- Prevention: Local-only ServiceやRead-only Commandも無制限な待ち時間・Response sizeを安全とは扱わない。
