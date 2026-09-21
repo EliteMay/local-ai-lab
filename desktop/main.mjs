@@ -21,13 +21,13 @@ let updaterController = null;
 function safeProfile(value) {
   const profile = String(value || "default");
   if (profile === "default") return profile;
-  if (!/^[a-z0-9][a-z0-9-]*$/i.test(profile)) throw new Error("Invalid model profile");
+  if (!/^[a-z0-9][a-z0-9-]*$/i.test(profile)) throw new Error("モデル設定の値が不正です");
   return profile;
 }
 
 function safeRunId(value) {
   const runId = String(value || "");
-  if (!/^run-[a-zA-Z0-9._-]+$/.test(runId)) throw new Error("Invalid run id");
+  if (!/^run-[a-zA-Z0-9._-]+$/.test(runId)) throw new Error("実行IDが不正です");
   return runId;
 }
 
@@ -143,7 +143,7 @@ async function clearDiagnostics() {
 }
 
 function buildCommand(input) {
-  if (!input || typeof input !== "object") throw new Error("Invalid command payload");
+  if (!input || typeof input !== "object") throw new Error("実行内容が不正です");
   const command = String(input.command || "");
   if (!allowedCommands.has(command)) throw new Error("この処理は実行できません");
   const profile = safeProfile(input.modelProfile);
@@ -351,7 +351,7 @@ async function readRunResult(runId) {
       };
     } catch {}
   }
-  throw new Error("No readable result file found");
+  throw new Error("読み込める結果ファイルが見つかりません");
 }
 
 async function runGit(repoPath, args) {
@@ -369,7 +369,7 @@ async function runGit(repoPath, args) {
     child.on("close", (code) => {
       const result = { code, stdout: stdout.trim(), stderr: stderr.trim() };
       if (code === 0) resolvePromise(result);
-      else rejectPromise(new Error(result.stderr || result.stdout || `git exited with code ${code}`));
+      else rejectPromise(new Error(result.stderr || result.stdout || `Git処理に失敗しました。終了コード: ${code}`));
     });
   });
 }
@@ -383,11 +383,11 @@ async function updateRepository(repoPath) {
 
   const dirty = await runGit(repository, ["status", "--porcelain"]);
   if (dirty.stdout) {
-    throw new Error("未コミットの変更があるため更新を中止しました。変更をCommit・退避・破棄してから再実行してください。");
+    throw new Error("未コミットの変更があるため更新を中止しました。変更を保存・退避・破棄してから再実行してください。");
   }
 
   const branch = await runGit(repository, ["symbolic-ref", "--short", "HEAD"]);
-  if (!branch.stdout) throw new Error("Detached HEADでは安全に更新できません。");
+  if (!branch.stdout) throw new Error("現在のGit状態では安全に更新できません。通常のブランチへ戻してから再実行してください。");
 
   const before = (await runGit(repository, ["rev-parse", "HEAD"])).stdout;
   await runGit(repository, ["fetch", "--prune", "origin"]);
@@ -492,7 +492,7 @@ app.whenReady().then(async () => {
   registerIpc("diagnostics:clear", () => clearDiagnostics());
   registerIpc("clipboard:write", (value) => {
     const text = String(value || "");
-    if (text.length > MAX_CLIPBOARD_CHARS) throw new Error("Clipboard payload is too large");
+    if (text.length > MAX_CLIPBOARD_CHARS) throw new Error("コピーする内容が大きすぎます");
     clipboard.writeText(text);
     return true;
   });
