@@ -125,6 +125,7 @@
             <div><span>現在工程</span><strong id="stage">実行待ち</strong></div>
             <div><span>経過時間</span><strong id="elapsed">—</strong></div>
             <div><span>推定残り</span><strong id="estimate">—</strong></div>
+            <div><span>実行保護</span><strong id="runProtection">待機中</strong></div>
           </div>
 
           <div class="track" aria-label="実行進捗"><div id="bar"></div></div>
@@ -160,6 +161,13 @@
         </div>
         <button id="reloadHistory" class="ghost">再読み込み</button>
       </header>
+      <section class="panel history-toolbar">
+        <label for="historyFilter">
+          <span>履歴を検索</span>
+          <input id="historyFilter" type="search" placeholder="実行ID・フォルダ名・監査目的で検索">
+        </label>
+        <span id="historyCount" class="mini-status">読み込み中...</span>
+      </section>
       <div id="historyList" class="history"></div>
     </section>
 
