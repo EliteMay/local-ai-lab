@@ -109,7 +109,7 @@ Command CardのクリックはTask選択だけを行い、その場では実行�
 
 ## Repositoryを最新化
 
-対象Repository Panelの「GitHubから最新化」は、選択したLocal Git Repositoryを明示操作で更新します。
+対象Repository Panelの「リモートから最新化」は、選択したLocal Git Repositoryを明示操作で更新します。
 
 ```text
 Git Repository確認
@@ -133,11 +133,12 @@ Before / After SHAを確認
 
 これはAI CompanyのRead-only Audit Capabilityとは別の、Userが明示的に押すLocal Repository Maintenance操作です。
 
-## v0.2 Scope
+## v0.3 Scope
 
-- Runtime / Model Profile状態の確認
+- Runtime / Model Profile / 自動Model Routing状態の確認
+- 用途別Model Catalog管理、LM Studio ModelのDownload / Load / Unload
 - 前回Repositoryの自動復元 / 必要時のRepository変更
-- Repositoryの安全なGitHub最新化
+- Repositoryの安全なリモート最新化
 - doctor
 - inspect
 - coverage
@@ -202,7 +203,7 @@ start_llama_server.ps1
 - 起動・停止はUserがButtonを押した場合だけ行い、Desktopの起動・終了では自動実行しない
 - 「Bonsaiを停止」はDesktop自身が起動したProcessだけを対象にする
 - 別PowerShellで起動済みなら「外部で起動中」と表示し、DesktopからKillしない
-- Bonsai停止中の監査は開始前に止め、起動が必要であることを日本語で案内する
+- Bonsai固定Profileでは停止中の監査を開始前に止める。自動振り分けではBonsaiが利用不可ならRouteに定義した次候補へ限定Fallbackする
 
 BonsaiのModel download、`setup.ps1`、PrismML Binary setupは自動化しません。すでにSetup済みのBonsai-demoをDesktopから管理する機能です。
 
@@ -244,8 +245,9 @@ Prompt本文、Repository File本文、Credential等は保存しません。
 
 ## Current Limitations
 
-- LM Studio / PrismML Runtime自体の起動は自動化しない
-- Model download / Load / Unloadは自動化しない
+- LM Studio Server自体の起動は自動化しない
+- Catalog外ModelのDownload / Load / Unloadは自動化しない
+- PrismML / Bonsai RuntimeのStart / StopはUser明示操作のまま
 - 長時間ProcessはAppを閉じると継続管理できない
 - 残り時間はBatch平均からの概算
 - Installer Code Signingは未導入
