@@ -67,7 +67,8 @@ test("repository update is explicit clean-tree fast-forward only", async () => {
   assert.match(main, /未コミットの変更があるため更新を中止/);
   assert.match(preload, /updateRepository/);
   assert.match(renderer, /updateRepositoryFromGitHub/);
-  assert.match(html, /GitHubから最新化/);
+  assert.match(html, /リモートから最新化/);
+  assert.doesNotMatch(html, /GitHubから最新化/);
 });
 
 test("windows build workflow verifies installer updater metadata and immutable version release", async () => {
