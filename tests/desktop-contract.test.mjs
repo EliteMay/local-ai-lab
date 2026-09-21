@@ -292,3 +292,12 @@ test("desktop command disabling uses the multi-element selector helper", async (
   assert.match(setRunning, /\$\$\("\.commands button"\)\.forEach/);
   assert.doesNotMatch(setRunning, /\$\("\.commands button"\)\.forEach/);
 });
+
+
+test("desktop clears future ETA when a run is no longer active", async () => {
+  const renderer = await readFile(new URL("../desktop/renderer/renderer.mjs", import.meta.url), "utf8");
+  const estimate = renderer.match(/function estimateRemainingText\(\) \{([\s\S]*?)\n\}/)?.[1] || "";
+  const finish = renderer.match(/function finishEstimateText\(\) \{([\s\S]*?)\n\}/)?.[1] || "";
+  assert.match(estimate, /if \(!state\.running\) return "—";/);
+  assert.match(finish, /if \(!state\.running\) return "—";/);
+});
