@@ -248,6 +248,14 @@ npm run company -- --repo "D:\path\to\repo" --goal "このRepositoryの改善点
 npm test
 ```
 
+## v0.2.11 reliability follow-up
+
+v0.2.11ではv0.2.10の監査信頼性基盤に加え、実行中のSettings / Update操作を明示的にLockし、Repository syncのGit subprocessへ30秒TimeoutとOutput上限を追加しました。Local LLM HTTP Responseは16MBを上限とし、異常に大きいResponseでDesktop/CLI Memoryを圧迫しないようにします。
+
+Windows Releaseは同じVersion Tagを別のmain Commitへ再利用しないContractをCIで検証します。既に公開したVersionへ別Commitを重ねず、変更時は必ずVersionを上げます。
+
+このfollow-upでも、Target Repositoryへの監査はRead-onlyのままです。
+
 ## Desktop Controller v0.2
 
 WindowsではGitHub ReleasesのSetup.exe版をPrimary Distributionにします。
