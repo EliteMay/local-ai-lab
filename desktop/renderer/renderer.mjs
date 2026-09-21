@@ -41,7 +41,9 @@ const state = {
   telemetryTimerId: null,
   systemMetrics: null,
   updateState: null,
-  bonsaiStatus: null
+  bonsaiStatus: null,
+  currentRunDetails: null,
+  currentResultTab: "issues"
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -325,6 +327,10 @@ function restartTelemetryPolling() {
 function clearRunOverview() {
   $("#resultOverview")?.classList.add("hidden");
   $("#topFindings").textContent = "";
+  $("#resultTabs")?.classList.add("hidden");
+  $("#resultDetailView")?.classList.add("hidden");
+  if ($("#resultDetailView")) $("#resultDetailView").textContent = "";
+  state.currentRunDetails = null;
 }
 
 function severityLabel(value) {
@@ -394,6 +400,247 @@ async function loadRunOverview(runId) {
     renderRunOverview(await window.localAI.readRunOverview(runId));
   } catch {
     clearRunOverview();
+  }
+}
+
+function appendDetailMessage(container, text, className = "subtle") {
+  const paragraph = document.createElement("p");
+  paragraph.className = className;
+  paragraph.textContent = text;
+  container.appendChild(paragraph);
+}
+
+function appendDetailKeyValue(container, label, value) {
+  const row = document.createElement("div");
+  row.className = "detail-kv-row";
+  const key = document.createElement("span");
+  key.textContent = label;
+  const data = document.createElement("strong");
+  data.textContent = value == null || value === "" ? "—" : String(value);
+  row.append(key, data);
+  container.appendChild(row);
+}
+
+function renderFindingList(container, findings) {
+  if (!findings.length) {
+    appendDetailMessage(container, "保存されている指摘はありません。");
+    return;
+  }
+
+  for (const finding of findings) {
+    const card = document.createElement("article");
+    card.className = "result-detail-card";
+
+    const head = document.createElement("div");
+    head.className = "result-detail-card-head";
+    const severity = document.createElement("span");
+    severity.className = "finding-severity";
+    severity.textContent = severityLabel(finding.severity);
+    const title = document.createElement("strong");
+    title.textContent = finding.title || "名称のない指摘";
+    head.append(severity, title);
+    card.appendChild(head);
+
+    const confidence = document.createElement("p");
+    confidence.className = "detail-meta";
+    confidence.textContent = "確度: " + (finding.confidence || "不明");
+    card.appendChild(confidence);
+
+    for (const evidence of Array.isArray(finding.evidence) ? finding.evidence : []) {
+      const evidenceBox = document.createElement("div");
+      evidenceBox.className = "evidence-box";
+      const location = document.createElement("code");
+      const start = evidence.lineStart;
+      const end = evidence.lineEnd;
+      location.textContent = start
+        ? `${evidence.file || "不明"} · ${start === end ? `L${start}` : `L${start}-L${end}`}`
+        : (evidence.file || "不明");
+      const claim = document.createElement("p");
+      claim.textContent = evidence.claim || "根拠説明なし";
+      evidenceBox.append(location, claim);
+      card.appendChild(evidenceBox);
+    }
+    container.appendChild(card);
+  }
+}
+
+function renderEvidenceList(container, findings) {
+  const evidenceItems = [];
+  for (const finding of findings) {
+    for (const evidence of Array.isArray(finding.evidence) ? finding.evidence : []) {
+      evidenceItems.push({ finding, evidence });
+    }
+  }
+  if (!evidenceItems.length) {
+    appendDetailMessage(container, "保存されている根拠はありません。");
+    return;
+  }
+
+  for (const item of evidenceItems) {
+    const card = document.createElement("article");
+    card.className = "result-detail-card";
+    const title = document.createElement("strong");
+    title.textContent = item.finding.title || "名称のない指摘";
+    const location = document.createElement("code");
+    const start = item.evidence.lineStart;
+    const end = item.evidence.lineEnd;
+    location.textContent = start
+      ? `${item.evidence.file || "不明"} · ${start === end ? `L${start}` : `L${start}-L${end}`}`
+      : (item.evidence.file || "不明");
+    const claim = document.createElement("p");
+    claim.textContent = item.evidence.claim || "根拠説明なし";
+    card.append(title, location, claim);
+    container.appendChild(card);
+  }
+}
+
+function renderAgentResult(container, value, emptyMessage) {
+  if (!value || typeof value !== "object" || Object.keys(value).length === 0) {
+    appendDetailMessage(container, emptyMessage);
+    return;
+  }
+
+  if (value.decision) appendDetailKeyValue(container, "判定", reviewerDecisionLabel(value.decision));
+  if (value.status) appendDetailKeyValue(container, "状態", value.status);
+  if (value.summary) appendDetailMessage(container, value.summary, "detail-summary");
+
+  const findings = Array.isArray(value.findings) ? value.findings : [];
+  if (findings.length) {
+    const heading = document.createElement("h3");
+    heading.textContent = "提案・指摘";
+    container.appendChild(heading);
+    for (const item of findings) {
+      const card = document.createElement("article");
+      card.className = "result-detail-card";
+      const text = document.createElement("pre");
+      text.className = "structured-json";
+      text.textContent = JSON.stringify(item, null, 2);
+      card.appendChild(text);
+      container.appendChild(card);
+    }
+  }
+
+  const uncertainties = Array.isArray(value.uncertainties) ? value.uncertainties : [];
+  if (uncertainties.length) {
+    const heading = document.createElement("h3");
+    heading.textContent = "未確定事項";
+    container.appendChild(heading);
+    for (const item of uncertainties) appendDetailMessage(container, item);
+  }
+
+  const actions = Array.isArray(value.recommendedNextActions) ? value.recommendedNextActions : [];
+  if (actions.length) {
+    const heading = document.createElement("h3");
+    heading.textContent = "次の行動";
+    container.appendChild(heading);
+    const list = document.createElement("ul");
+    for (const item of actions) {
+      const li = document.createElement("li");
+      li.textContent = item;
+      list.appendChild(li);
+    }
+    container.appendChild(list);
+  }
+}
+
+function renderResultTab(tabName) {
+  const details = state.currentRunDetails;
+  const view = $("#resultDetailView");
+  if (!details || !view) return;
+
+  state.currentResultTab = tabName;
+  view.textContent = "";
+  $("#resultTabs .result-tab").forEach((button) => {
+    const active = button.dataset.resultTab === tabName;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", active ? "true" : "false");
+  });
+
+  const findings = Array.isArray(details.findings) ? details.findings : [];
+  if (tabName === "issues") {
+    renderFindingList(view, findings);
+    return;
+  }
+  if (tabName === "evidence") {
+    renderEvidenceList(view, findings);
+    return;
+  }
+  if (tabName === "planner") {
+    renderAgentResult(view, details.planner, "保存されている改善案はありません。");
+    return;
+  }
+  if (tabName === "reviewer") {
+    renderAgentResult(view, details.reviewer, "保存されているレビュー結果はありません。");
+    return;
+  }
+  if (tabName === "excluded") {
+    const excluded = Array.isArray(details.excluded) ? details.excluded : [];
+    if (!excluded.length) {
+      appendDetailMessage(view, "除外されたファイルはありません。");
+      return;
+    }
+    for (const item of excluded) {
+      const card = document.createElement("article");
+      card.className = "result-detail-card";
+      const path = document.createElement("code");
+      path.textContent = item.path || "不明";
+      const reason = document.createElement("strong");
+      reason.textContent = "理由: " + (item.reason || "不明");
+      const detail = document.createElement("p");
+      detail.textContent = item.detail || "";
+      card.append(path, reason, detail);
+      view.appendChild(card);
+    }
+    return;
+  }
+  if (tabName === "technical") {
+    const identity = details.run?.executionIdentity || {};
+    const coverage = details.coverage || {};
+    const rows = document.createElement("div");
+    rows.className = "detail-kv";
+    appendDetailKeyValue(rows, "実行ID", details.runId);
+    appendDetailKeyValue(rows, "状態", details.run?.status || "不明");
+    appendDetailKeyValue(rows, "アプリ版", identity.appVersion || "旧版 / 記録なし");
+    appendDetailKeyValue(rows, "モデル", identity.model || "記録なし");
+    appendDetailKeyValue(rows, "モデル設定", identity.modelProfile || "記録なし");
+    appendDetailKeyValue(rows, "Prompt/Schema版", identity.promptSchemaVersion || "記録なし");
+    appendDetailKeyValue(rows, "設定Hash", identity.configHash || "記録なし");
+    appendDetailKeyValue(rows, "監査進捗", coverage.coveragePercent == null ? "—" : coverage.coveragePercent + "%");
+    appendDetailKeyValue(rows, "処理単位", `${coverage.completedBatches ?? "—"} / ${coverage.totalBatches ?? "—"}`);
+    appendDetailKeyValue(rows, "対象分割", `${coverage.completedChunks ?? "—"} / ${coverage.totalChunks ?? "—"}`);
+    appendDetailKeyValue(rows, "作成", formatDate(details.run?.createdAt));
+    appendDetailKeyValue(rows, "完了/中断", formatDate(details.run?.completedAt || details.run?.interruptedAt));
+    view.appendChild(rows);
+    return;
+  }
+  if (tabName === "log") {
+    const pre = document.createElement("pre");
+    pre.className = "saved-run-log";
+    pre.textContent = details.consoleLog || "このRunの保存済み生ログはありません。v0.2.10以降のDesktop実行から保存されます。";
+    view.appendChild(pre);
+  }
+}
+
+function renderRunDetails(details) {
+  if (!details) return;
+  state.currentRunDetails = details;
+  $("#resultTabs")?.classList.remove("hidden");
+  $("#resultDetailView")?.classList.remove("hidden");
+  renderResultTab("issues");
+  if (details.summary) {
+    state.result = details.summary;
+    setText("#result", details.summary);
+  }
+}
+
+async function loadRunDetails(runId) {
+  if (!runId || runId === "—") return;
+  try {
+    renderRunDetails(await window.localAI.readRunDetails(runId));
+  } catch (error) {
+    $("#resultTabs")?.classList.add("hidden");
+    $("#resultDetailView")?.classList.add("hidden");
+    state.currentRunDetails = null;
   }
 }
 
@@ -782,7 +1029,7 @@ async function run(command = state.selectedCommand, stateOverride = {}) {
       setStage("手動停止", { updateResult: false });
       const stoppedRunId = $("#runLabel").textContent?.trim();
       if (["coverage", "coverage-synthesize"].includes(command) && stoppedRunId && stoppedRunId !== "—") {
-        void loadRunOverview(stoppedRunId);
+        void Promise.all([loadRunOverview(stoppedRunId), loadRunDetails(stoppedRunId)]);
       }
     } else {
       succeeded = true;
@@ -796,7 +1043,7 @@ async function run(command = state.selectedCommand, stateOverride = {}) {
       if (command === "doctor") applyDoctor(state.result);
       const completedRunId = $("#runLabel").textContent?.trim() || payload.runId;
       if (["coverage", "coverage-synthesize"].includes(command) && completedRunId && completedRunId !== "—") {
-        void loadRunOverview(completedRunId);
+        void Promise.all([loadRunOverview(completedRunId), loadRunDetails(completedRunId)]);
       }
     }
   } catch (error) {
@@ -937,6 +1184,8 @@ function createStatusBadge(item) {
     badge.textContent = "統合待ち";
   } else if (item.status === "PARTIAL") {
     badge.textContent = "途中";
+  } else if (item.status === "INTERRUPTED") {
+    badge.textContent = "中断";
   } else if (item.status === "COMPLETED") {
     badge.textContent = "完了";
   } else {
@@ -1082,8 +1331,13 @@ async function loadHistory() {
     populateRunSelect(items);
 
     state.latestRecoverable = items.find((item) => (
-      item.status === "PARTIAL" &&
-      (item.coverageComplete || (item.coveragePercent != null && item.coveragePercent < 100))
+      ["PARTIAL", "INTERRUPTED"].includes(item.status) &&
+      (item.coverageComplete || (
+        item.coveragePercent != null &&
+        item.coveragePercent < 100 &&
+        item.modelProfile &&
+        item.modelProfile === state.settings?.modelProfile
+      ))
     )) || null;
     updateResumeCard();
 
@@ -1103,7 +1357,10 @@ async function loadHistory() {
         item.repoPath,
         item.goal,
         item.status,
-        item.reviewerDecision
+        item.reviewerDecision,
+        item.model,
+        item.modelProfile,
+        item.appVersion
       ].filter(Boolean).join(" ").toLowerCase();
 
       const left = document.createElement("div");
@@ -1121,6 +1378,8 @@ async function loadHistory() {
         item.repoName || "対象フォルダ不明",
         `監査 ${item.coveragePercent ?? "—"}%`,
         `指摘 ${item.findingCount}`,
+        item.model ? `モデル ${item.model}` : null,
+        item.appVersion ? `v${item.appVersion}` : null,
         item.reviewerDecision ? `レビュー ${reviewerDecisionLabel(item.reviewerDecision)}` : null
       ].filter(Boolean);
 
@@ -1130,7 +1389,16 @@ async function loadHistory() {
         meta.appendChild(span);
       }
 
-      if (item.synthesisError) {
+      if (item.status === "INTERRUPTED") {
+        const note = document.createElement("p");
+        note.className = "history-context warning";
+        note.textContent = item.coverageComplete
+          ? "前回の実行は中断されました。保存済み監査結果から統合を再開できます。"
+          : item.modelProfile
+            ? "前回の実行は中断されました。同じモデル設定でのみ監査を再開できます。"
+            : "旧版Runのためモデル整合を確認できず、監査の通常再開はできません。結果は閲覧できます。";
+        left.append(heading, meta, note);
+      } else if (item.synthesisError) {
         const note = document.createElement("p");
         note.className = "history-context warning";
         note.textContent = "結果の統合が未完了: " + item.synthesisError;
@@ -1146,13 +1414,15 @@ async function loadHistory() {
       open.className = "ghost";
       open.textContent = "結果を見る";
       open.addEventListener("click", async () => {
-        const [result] = await Promise.all([
+        const [result, details] = await Promise.all([
           window.localAI.readRunResult(item.runId),
+          window.localAI.readRunDetails(item.runId),
           loadRunOverview(item.runId)
         ]);
         state.result = result.content;
-        setText("#resultTitle", "結果");
+        setText("#resultTitle", "監査結果");
         setText("#result", result.content);
+        renderRunDetails(details);
         $("#copy").disabled = false;
         ensureRunOption(item.runId);
         setText("#runLabel", item.runId);
@@ -1160,18 +1430,23 @@ async function loadHistory() {
       });
       actions.appendChild(open);
 
-      if (item.status === "PARTIAL" && item.coverageComplete) {
+      if (["PARTIAL", "INTERRUPTED"].includes(item.status) && item.coverageComplete) {
         const resume = document.createElement("button");
         resume.className = "primary";
         resume.textContent = "統合を再開";
         resume.addEventListener("click", () => prepareSynthesis(item));
         actions.appendChild(resume);
-      } else if (item.status === "PARTIAL" && !item.coverageComplete) {
+      } else if (["PARTIAL", "INTERRUPTED"].includes(item.status) && !item.coverageComplete) {
         const resume = document.createElement("button");
         resume.className = "primary";
         resume.textContent = "監査を再開";
-        resume.disabled = !item.repoPath || !item.goal;
-        resume.title = resume.disabled ? "この実行履歴には再開情報が不足しています" : "";
+        const incompatibleProfile = !item.modelProfile || item.modelProfile !== state.settings?.modelProfile;
+        resume.disabled = !item.repoPath || !item.goal || incompatibleProfile;
+        resume.title = incompatibleProfile
+          ? "前回と同じモデル設定を確認できないため再開できません"
+          : resume.disabled
+            ? "この実行履歴には再開情報が不足しています"
+            : "";
         resume.addEventListener("click", () => prepareCoverageResume(item));
         actions.appendChild(resume);
       } else if (item.status === "COMPLETED" && item.coverageComplete) {
@@ -1278,6 +1553,9 @@ $("#settingsProfile").addEventListener("change", () => updateBonsaiVisibility($(
 $("#refresh").addEventListener("click", () => run("doctor"));
 $("#reloadHistory").addEventListener("click", loadHistory);
 $("#historyFilter").addEventListener("input", applyHistoryFilter);
+$("#resultTabs .result-tab").forEach((button) => {
+  button.addEventListener("click", () => renderResultTab(button.dataset.resultTab));
+});
 $("#cancel").addEventListener("click", cancelCurrentRun);
 $("#resumeAction").addEventListener("click", () => {
   const item = state.latestRecoverable;
