@@ -206,3 +206,21 @@ test("desktop notifies when a background command completes or fails", async () =
   assert.match(main, /showCommandNotification/);
   assert.match(main, /notification\.show\(\)/);
 });
+
+
+test("desktop repository persistence preference actually controls startup restore", async () => {
+  const main = await readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8");
+  const renderer = await readFile(new URL("../desktop/renderer/renderer.mjs", import.meta.url), "utf8");
+
+  assert.match(main, /if \(merged\.rememberRepository === false\) merged\.defaultRepository = ""/);
+  assert.match(main, /rememberRepository && requestedRepository/);
+  assert.match(renderer, /state\.repository = selectedRepository \|\| state\.repository/);
+});
+
+test("desktop renderer bounds visible log rows during long runs", async () => {
+  const renderer = await readFile(new URL("../desktop/renderer/renderer.mjs", import.meta.url), "utf8");
+
+  assert.match(renderer, /MAX_RENDER_LOG_LINES\s*=\s*800/);
+  assert.match(renderer, /childElementCount > MAX_RENDER_LOG_LINES/);
+  assert.match(renderer, /firstElementChild\?\.remove\(\)/);
+});
