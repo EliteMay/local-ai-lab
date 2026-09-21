@@ -22,6 +22,8 @@ Local AI Lab専用のアイコンを使用します。
 
 Sourceは `desktop/assets/icon.svg`、Windows/Electron用Assetは `desktop/assets/icon.png` です。Windowsの実行ファイル、タスクバー、Desktop / Start Menu Shortcut、開発起動Windowで同じIdentityを使用します。
 
+Windows配布では、コード署名を無効のままにしつつ `signAndEditExecutable: true` で実行ファイルのResource編集を有効にします。ここを `false` にするとIcon埋め込みも止まるため使用しません。
+
 ## 配布
 
 Windows利用ではGitHub ReleasesのSetup.exeを基本導線にします。
