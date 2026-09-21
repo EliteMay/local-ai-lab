@@ -1,0 +1,167 @@
+name: Build Windows installer
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/build-windows.yml"
+      - "package.json"
+      - "desktop/**"
+      - "src/**"
+      - "config/**"
+      - "tests/**"
+      - "README.md"
+      - "REQUIREMENTS.md"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/build-windows.yml"
+      - "package.json"
+      - "desktop/**"
+      - "src/**"
+      - "config/**"
+      - "tests/**"
+      - "README.md"
+      - "REQUIREMENTS.md"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: local-ai-lab-windows-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run tests
+        run: npm test
+
+      - name: Check Electron JavaScript syntax
+        shell: pwsh
+        run: |
+          node --check desktop/main.mjs
+          node --check desktop/updater.mjs
+          node --check desktop/preload.cjs
+          node --check desktop/renderer/renderer.mjs
+
+      - name: Build installer
+        run: npm run build:win
+
+      - name: Verify installer and update metadata
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = node -p "require('./package.json').version"
+          $expected = "dist/local_ai_lab_${version}_setup.exe"
+          $metadata = "dist/latest.yml"
+          $blockmap = "$expected.blockmap"
+
+          if (-not (Test-Path $expected)) { throw "Expected installer not found: $expected" }
+          if (-not (Test-Path $metadata)) { throw "Auto-update metadata not found: $metadata" }
+          if (-not (Test-Path $blockmap)) { throw "Auto-update blockmap not found: $blockmap" }
+          if ((Get-Item $expected).Length -lt 1MB) { throw "Installer is unexpectedly small" }
+          if ((Get-Item $metadata).Length -lt 50) { throw "latest.yml is unexpectedly small" }
+          if ((Get-Item $blockmap).Length -lt 50) { throw "blockmap is unexpectedly small" }
+
+          $metadataText = Get-Content $metadata -Raw
+          if ($metadataText -notmatch [regex]::Escape("local_ai_lab_${version}_setup.exe")) {
+            throw "latest.yml does not reference the current installer"
+          }
+
+          "INSTALLER_PATH=$((Resolve-Path $expected).Path)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "UPDATE_METADATA_PATH=$((Resolve-Path $metadata).Path)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "UPDATE_BLOCKMAP_PATH=$((Resolve-Path $blockmap).Path)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "APP_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-ai-lab-windows
+          path: |
+            dist/*.exe
+            dist/*.blockmap
+            dist/latest.yml
+          if-no-files-found: error
+
+      - name: Publish new version to GitHub Releases
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = "v$env:APP_VERSION"
+          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Release $tag already exists. Keeping the published version immutable; skipping publish."
+            exit 0
+          }
+
+          $notes = @"
+          ## Local AI Lab v$env:APP_VERSION
+
+          Windows向けSetup.exe版です。
+
+          ### 主な機能
+
+          - Local AI Runtime / Model接続確認
+          - Repository Coverage Audit / Synthesis
+          - 長時間Runの進捗・履歴・再開
+          - 対象Repositoryの安全なGitHub最新化
+          - GitHub Releases経由のアプリ内One-click Update
+
+          ### Update
+
+          v0.2.0はAuto Updaterを搭載する最初のVersionです。
+          このVersionだけはSetup.exeを手動で1回インストールしてください。
+          v0.2.0以降はアプリ内の「更新を確認」「今すぐ更新」から新版へ更新できます。
+
+          ### 注意
+
+          現在のInstallerはコード署名していません。Windows SmartScreenが表示される場合があります。
+          GitHub ActionsでInstaller / latest.yml / blockmapの整合は確認しますが、実WindowsでのInstall・旧版→新版更新は別途実機確認が必要です。
+          "@
+          $notesPath = Join-Path $env:RUNNER_TEMP 'release-notes.md'
+          Set-Content -Path $notesPath -Value $notes -Encoding utf8
+
+          gh release create $tag `
+            $env:INSTALLER_PATH `
+            $env:UPDATE_METADATA_PATH `
+            $env:UPDATE_BLOCKMAP_PATH `
+            --repo $env:GITHUB_REPOSITORY `
+            --target $env:GITHUB_SHA `
+            --title "Local AI Lab v$env:APP_VERSION" `
+            --notes-file $notesPath
+
+      - name: Build summary
+        shell: pwsh
+        run: |
+          $state = if ($env:GITHUB_EVENT_NAME -eq 'pull_request') { 'PR build only' } elseif ($env:GITHUB_REF -eq 'refs/heads/main') { "Release candidate: v$env:APP_VERSION" } else { 'Build only' }
+          @"
+          ## Local AI Lab Windows build
+
+          - Version: $env:APP_VERSION
+          - Installer: local_ai_lab_${env:APP_VERSION}_setup.exe
+          - Update metadata: latest.yml + blockmap
+          - State: $state
+          - Code signing: disabled
+          - Real Windows install/update verification: still required
+          "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
