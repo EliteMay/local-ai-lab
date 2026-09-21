@@ -248,7 +248,7 @@ npm run company -- --repo "D:\path\to\repo" --goal "このRepositoryの改善点
 npm test
 ```
 
-## Desktop Controller v0.2
+## Desktop Controller v0.3
 
 WindowsではGitHub ReleasesのSetup.exe版をPrimary Distributionにします。
 
@@ -259,6 +259,9 @@ https://github.com/EliteMay/local-ai-lab/releases/latest
 主な機能:
 
 - Runtime / Model Profile状態の確認
+- 用途別の自動Model Routing（一般監査 / Code監査 / 改善案 / Reviewer）
+- LM Studio ModelのDownload / Load / UnloadをDesktopから管理
+- ModelごとのCall数 / Failure / Token / 所要時間をRun Evidenceへ保存
 - Bonsai 2 27B Runtimeの手動起動 / 状態確認 / 手動停止
 - 前回選択Repositoryの自動復元 / 必要なときだけRepository変更
 - Doctor / Inspect / Coverage / Synthesize / Tests
@@ -279,6 +282,21 @@ https://github.com/EliteMay/local-ai-lab/releases/latest
 - 履歴検索とRun保存Folderの直接Open
 - 手動停止をErrorと分離した明示State
 - Main / Renderer両方の長時間Log上限
+
+### 用途別の自動モデル振り分け
+
+v0.3.0から、Desktopの既定運用は「自動振り分け」です。AIの自然文にModel選択を任せず、Node.js側の固定RuleでTaskごとに候補を選びます。
+
+| 用途 | 優先Model |
+|---|---|
+| 一般監査・大量処理 | Qwen3 8B |
+| Code-heavyな監査 | Qwen2.5 Coder 7B |
+| 改善案・推論 | Phi-4 Mini Reasoning |
+| 最終Reviewer | Bonsai 2 27B → Phi → Qwen3 の順でFallback |
+
+Bonsaiは従来どおりUserが明示的に起動・停止します。停止中ならAuto Routerは次の候補へ進みます。Gemma 3 4B / gpt-oss-20b / Qwen3 Coder 30B-A3BはModel Catalogから導入できますが、現在は重さや未実装Capabilityを理由にDefault Auto Routeへ入れていません。
+
+LM Studio 0.4以降のNative REST APIへ接続できる場合、設定画面の「用途別モデル」からCatalogに固定したModelだけをダウンロード・読み込み・解放できます。任意URLや任意Shell CommandはRendererから渡せません。
 
 v0.2.0はUpdater Bootstrap Versionです。通常はその後アプリ内更新を利用できます。v0.2.7で「新版を検出できるが更新開始後に進まない」実機事例が確認されたため、v0.2.9ではダウンロードと再起動を分離し、標準の再起動処理が始まらない場合は検証済みダウンロード済みInstallerを起動するFallbackを追加しています。v0.2.7から自動更新できない場合は、配布ページからv0.2.9 Setup.exeを1回上書きInstallしてください。
 
