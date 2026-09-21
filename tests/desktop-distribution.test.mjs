@@ -8,7 +8,7 @@ async function read(path) {
 
 test("desktop distribution uses NSIS GitHub Releases auto update", async () => {
   const pkg = JSON.parse(await read("../package.json"));
-  assert.equal(pkg.version, "0.2.2");
+  assert.equal(pkg.version, "0.2.3");
   assert.equal(pkg.main, "desktop/main.mjs");
   assert.equal(pkg.dependencies?.["electron-updater"], "6.8.9");
   assert.equal(pkg.devDependencies?.["electron-builder"], "26.15.3");
@@ -18,6 +18,7 @@ test("desktop distribution uses NSIS GitHub Releases auto update", async () => {
   assert.match(JSON.stringify(pkg.build?.win?.target), /nsis/);
   assert.equal(pkg.build?.asar, false);
   assert.match(pkg.build?.win?.artifactName || "", /local_ai_lab_/);
+  assert.equal(pkg.build?.win?.icon, "desktop/assets/icon.png");
 });
 
 test("auto updater has fixed release provider and one-click install flow", async () => {
@@ -92,4 +93,19 @@ test("renderer exposes app update controls and startup update preference", async
   assert.match(preload, /onUpdateStatus/);
   assert.match(renderer, /applyUpdateState/);
   assert.match(renderer, /autoCheckUpdates/);
+});
+
+
+test("desktop uses a dedicated Local AI Lab icon for Windows and the app window", async () => {
+  const pkg = JSON.parse(await read("../package.json"));
+  const main = await read("../desktop/main.mjs");
+  const icon = await readFile(new URL("../desktop/assets/icon.png", import.meta.url));
+  const source = await read("../desktop/assets/icon.svg");
+
+  assert.equal(pkg.build?.win?.icon, "desktop/assets/icon.png");
+  assert.match(main, /icon:\s*join\(__dirname, "assets", "icon\.png"\)/);
+  assert.match(main, /setAppUserModelId\("local\.elitemay\.localailab"\)/);
+  assert.ok(icon.length > 1000);
+  assert.match(source, /<svg/);
+  assert.match(source, />AI<\/text>/);
 });
