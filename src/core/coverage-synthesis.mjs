@@ -1,6 +1,7 @@
 import { getAgentResponseSchema } from "./response-schemas.mjs";
 import { getRoleDefinition } from "../roles/role-definitions.mjs";
 import { reduceFindingsHierarchically } from "./hierarchical-synthesis.mjs";
+import { buildExecutionIdentity } from "./run-identity.mjs";
 
 function renderSynthesisPrompt({ goal, coverage, findings }) {
   return `Goal:\n${goal}\n\nThe whole-repository coverage pass is complete. Turn the evidence-backed audit themes below into specific, minimally disruptive improvement proposals. Each theme keeps sourceFindingIds that point back to the immutable findings.json evidence index. Do not invent repository facts. Do not request another role unless supplied evidence is insufficient.\n\nCoverage:\n${JSON.stringify(coverage)}\n\nAudit themes:\n${JSON.stringify(findings)}\n\nReturn the required structured role response. Keep it concise and prioritize related changes together.\n\n/no_think`;
@@ -121,6 +122,7 @@ export class CoverageSynthesisService {
       throw new Error(`Stored run is not complete enough to synthesize (${coverage.coveragePercent ?? 0}% coverage)`);
     }
 
+    const synthesisIdentity = buildExecutionIdentity(this.config);
     const synthesis = await this.synthesize({
       runId,
       goal: run.goal,
@@ -140,6 +142,7 @@ export class CoverageSynthesisService {
       coverage,
       synthesisError: synthesis.error,
       reviewerDecision: synthesis.reviewer?.result?.decision ?? null,
+      synthesisIdentity,
       synthesisFromStoredEvidence: true
     });
 
