@@ -174,6 +174,7 @@ async function readSettings() {
 }
 
 async function saveSettings(input) {
+  if (activeProcess) throw new Error("処理実行中は設定を変更できません。完了または停止してから保存してください。");
   const requestedRepository = String(input?.defaultRepository || "").trim();
   const next = {
     defaultRepository: requestedRepository ? validateRepository(requestedRepository) : "",
@@ -780,23 +781,41 @@ async function readRunOverview(runId) {
   };
 }
 
-async function runGit(repoPath, args) {
+async function runGit(repoPath, args, { timeoutMs = 30000 } = {}) {
   const cwd = validateRepository(repoPath);
   return new Promise((resolvePromise, rejectPromise) => {
     let stdout = "";
     let stderr = "";
+    let settled = false;
     const child = spawn("git", ["-C", cwd, ...args], {
       windowsHide: true,
       shell: false
     });
-    child.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
-    child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
-    child.on("error", rejectPromise);
+
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      fn(value);
+    };
+
+    const appendBounded = (current, chunk) => (current + chunk.toString()).slice(-200000);
+    child.stdout.on("data", (chunk) => { stdout = appendBounded(stdout, chunk); });
+    child.stderr.on("data", (chunk) => { stderr = appendBounded(stderr, chunk); });
+    child.on("error", (error) => finish(rejectPromise, error));
     child.on("close", (code) => {
       const result = { code, stdout: stdout.trim(), stderr: stderr.trim() };
-      if (code === 0) resolvePromise(result);
-      else rejectPromise(new Error(result.stderr || result.stdout || `Git処理に失敗しました。終了コード: ${code}`));
+      if (code === 0) finish(resolvePromise, result);
+      else finish(rejectPromise, new Error(result.stderr || result.stdout || `Git処理に失敗しました。終了コード: ${code}`));
     });
+
+    const timer = setTimeout(() => {
+      try { child.kill(); } catch {}
+      const error = new Error(`Git処理が${Math.round(timeoutMs / 1000)}秒以内に完了しませんでした。`);
+      error.code = "GIT_TIMEOUT";
+      finish(rejectPromise, error);
+    }, timeoutMs);
+    timer.unref?.();
   });
 }
 
@@ -836,8 +855,8 @@ async function updateRepository(repoPath) {
     before,
     after,
     message: updated
-      ? `GitHubの最新版へ更新しました（${before.slice(0, 7)} → ${after.slice(0, 7)}）。`
-      : "すでに最新版です。",
+      ? `リモートの最新版へ更新しました（${before.slice(0, 7)} → ${after.slice(0, 7)}）。`
+      : "すでにリモートの最新版です。",
     detail: pull.stdout
   };
 }
