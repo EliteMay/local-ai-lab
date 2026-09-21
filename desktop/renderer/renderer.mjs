@@ -27,6 +27,9 @@ const state = {
   resume: false,
   latestRecoverable: null,
   currentBatch: null,
+  currentStage: "実行待ち",
+  planFiles: 0,
+  planChunks: 0,
   updateState: null,
   bonsaiStatus: null
 };
@@ -163,6 +166,67 @@ function parseDurationText(value) {
   return seconds || null;
 }
 
+function estimateRemainingText() {
+  if (state.totalBatches > 0 && state.batchDurations.length > 0 && state.completedBatches < state.totalBatches) {
+    const average = state.batchDurations.reduce((sum, value) => sum + value, 0) / state.batchDurations.length;
+    const remaining = state.totalBatches - state.completedBatches;
+    return "約 " + formatDuration(average * remaining);
+  }
+  if (state.running && state.totalBatches > 0 && state.completedBatches >= state.totalBatches) {
+    return "監査完了・結果統合中";
+  }
+  if (state.running && state.totalBatches > 0) {
+    return "最初の処理完了後に推定";
+  }
+  if (state.running) return "計測中";
+  return "—";
+}
+
+function updateLiveResult() {
+  if (!state.running) return;
+
+  const elapsed = state.startedAt
+    ? formatDuration((Date.now() - state.startedAt) / 1000)
+    : "—";
+  const estimate = estimateRemainingText();
+  const lines = [
+    "実行中",
+    `処理: ${COMMAND_META[state.selectedCommand]?.label || state.selectedCommand}`,
+    `現在の作業: ${state.currentStage || "開始準備中"}`
+  ];
+
+  if (state.totalBatches > 0) {
+    const percent = Math.min(100, Math.round((state.completedBatches / state.totalBatches) * 100));
+    lines.push(`進捗: ${state.completedBatches} / ${state.totalBatches} 処理（${percent}%）`);
+  } else {
+    lines.push("進捗: 準備中");
+  }
+
+  if (state.planFiles || state.planChunks) {
+    lines.push(`対象: ${state.planFiles || "—"} ファイル / ${state.planChunks || "—"} 分割`);
+  }
+  if (state.currentBatch) lines.push(`処理中の単位: ${state.currentBatch}`);
+
+  lines.push(`経過時間: ${elapsed}`);
+  lines.push(`推定残り: ${estimate}`);
+
+  if (state.promptTokens || state.completionTokens || state.reasoningTokens) {
+    const tokenParts = [`入力 ${state.promptTokens}`, `出力 ${state.completionTokens}`];
+    if (state.reasoningTokens > 0) tokenParts.push(`推論 ${state.reasoningTokens}`);
+    lines.push("使用トークン: " + tokenParts.join(" / "));
+  }
+
+  const runId = $("#runLabel")?.textContent?.trim();
+  if (runId && runId !== "—") lines.push(`実行ID: ${runId}`);
+
+  if (state.totalBatches > 0 && state.batchDurations.length > 0) {
+    lines.push("※ 推定残りは、完了済み処理の平均時間をもとにした目安です。");
+  }
+
+  setText("#resultTitle", "実行中");
+  setText("#result", lines.join("\n"));
+}
+
 function updateTiming() {
   if (!state.startedAt) {
     setText("#elapsed", "—");
@@ -171,18 +235,8 @@ function updateTiming() {
   }
 
   setText("#elapsed", formatDuration((Date.now() - state.startedAt) / 1000));
-
-  if (state.totalBatches > 0 && state.batchDurations.length > 0 && state.completedBatches < state.totalBatches) {
-    const average = state.batchDurations.reduce((sum, value) => sum + value, 0) / state.batchDurations.length;
-    const remaining = state.totalBatches - state.completedBatches;
-    setText("#estimate", "約 " + formatDuration(average * remaining));
-  } else if (state.running && state.totalBatches > 0 && state.completedBatches >= state.totalBatches) {
-    setText("#estimate", "統合処理中");
-  } else if (state.running) {
-    setText("#estimate", "計測中");
-  } else {
-    setText("#estimate", "—");
-  }
+  setText("#estimate", estimateRemainingText());
+  updateLiveResult();
 }
 
 function startTimer() {
@@ -206,6 +260,9 @@ function resetRunMetrics() {
   state.completionTokens = 0;
   state.reasoningTokens = 0;
   state.currentBatch = null;
+  state.currentStage = "開始準備中";
+  state.planFiles = 0;
+  state.planChunks = 0;
   setText("#batchMetric", "処理単位 —");
   setText("#tokenMetric", "使用トークン —");
   setText("#stage", "開始準備中");
@@ -278,7 +335,9 @@ function ensureRunOption(runId, label = runId) {
 }
 
 function setStage(value) {
+  state.currentStage = value;
   setText("#stage", value);
+  updateLiveResult();
 }
 
 function appendLog(payload) {
@@ -298,12 +357,15 @@ function appendLog(payload) {
   if (progress.type === "run-id") {
     setText("#runLabel", progress.runId);
     ensureRunOption(progress.runId);
+    updateLiveResult();
     return;
   }
 
   if (progress.type === "plan") {
     state.totalBatches = progress.batches;
     state.completedBatches = 0;
+    state.planFiles = progress.files || 0;
+    state.planChunks = progress.chunks || 0;
     setStage("監査計画を作成しました");
     setText("#progress", `0 / ${progress.batches} 処理 · ${progress.files} ファイル · ${progress.chunks} 分割`);
     updateTiming();
@@ -312,7 +374,7 @@ function appendLog(payload) {
 
   if (progress.type === "batch-start") {
     state.currentBatch = progress.batchId;
-    setStage(`${progress.batchId} 監査中`);
+    setStage(`${progress.batchId} を監査中`);
     setText("#batchMetric", `${progress.batchId} · ${progress.chunks} 分割 · ${progress.chars} 文字`);
     return;
   }
@@ -350,6 +412,7 @@ function appendLog(payload) {
   if (progress.type === "coverage") {
     $("#bar").style.width = Math.max(0, Math.min(100, progress.percent)) + "%";
     setText("#progress", `監査進捗 ${progress.percent}%`);
+    updateLiveResult();
     return;
   }
 
@@ -427,7 +490,8 @@ async function run(command = state.selectedCommand, stateOverride = {}) {
   }
 
   $("#log").textContent = "";
-  setText("#result", "実行中...");
+  setText("#resultTitle", "実行中");
+  setText("#result", "開始準備中...");
   $("#copy").disabled = true;
   $("#bar").style.width = "0%";
   setText("#progress", "開始しています...");
@@ -446,6 +510,7 @@ async function run(command = state.selectedCommand, stateOverride = {}) {
   };
 
   setRunning(true, COMMAND_META[command]?.label || command);
+  updateLiveResult();
   let succeeded = false;
 
   try {
@@ -455,6 +520,7 @@ async function run(command = state.selectedCommand, stateOverride = {}) {
       state.result = command === "coverage"
         ? "処理を停止しました。保存済みのCheckpointがある場合は、履歴から続きへ戻れます。"
         : "処理を停止しました。";
+      setText("#resultTitle", "結果");
       setText("#result", state.result);
       $("#copy").disabled = false;
       setText("#progress", "停止");
@@ -462,6 +528,7 @@ async function run(command = state.selectedCommand, stateOverride = {}) {
     } else {
       succeeded = true;
       state.result = result.output || "完了しました。";
+      setText("#resultTitle", "結果");
       setText("#result", state.result);
       $("#copy").disabled = false;
       $("#bar").style.width = "100%";
@@ -471,6 +538,7 @@ async function run(command = state.selectedCommand, stateOverride = {}) {
     }
   } catch (error) {
     state.result = friendlyError(error.message);
+    setText("#resultTitle", "結果");
     setText("#result", state.result);
     $("#copy").disabled = false;
     setText("#progress", "失敗");
