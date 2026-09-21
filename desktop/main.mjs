@@ -8,6 +8,7 @@ import { createUpdaterController } from "./updater.mjs";
 import { createBonsaiRuntimeController } from "./bonsai-runtime.mjs";
 import { createSystemMetricsSampler } from "./system-metrics.mjs";
 import { buildRunOverview } from "./run-overview.mjs";
+import { atomicWriteJson, readJsonWithBackup, readTextWithBackup } from "../src/core/atomic-file.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(__dirname, "..");
@@ -92,6 +93,10 @@ function settingsPath() {
   return join(app.getPath("userData"), "settings.json");
 }
 
+function settingsBackupPath() {
+  return join(app.getPath("userData"), "settings.backup.json");
+}
+
 function runsRoot() {
   return app.isPackaged
     ? join(app.getPath("userData"), "runtime-data", "runs")
@@ -129,7 +134,7 @@ async function findLastRepositoryFromHistory() {
 
 async function writeSettings(next) {
   await mkdir(dirname(settingsPath()), { recursive: true });
-  await writeFile(settingsPath(), JSON.stringify(next, null, 2) + "\n", "utf8");
+  await atomicWriteJson(settingsPath(), next, { backupPath: settingsBackupPath() });
 }
 
 async function readSettings() {
@@ -142,7 +147,7 @@ async function readSettings() {
 
   let parsed = {};
   try {
-    parsed = JSON.parse(await readFile(settingsPath(), "utf8"));
+    parsed = await readJsonWithBackup(settingsPath(), { backupPath: settingsBackupPath() });
   } catch {}
 
   const { rememberRepository: _legacyRememberRepository, ...current } = parsed || {};
@@ -183,7 +188,7 @@ async function saveSettings(input) {
 
 async function readDiagnostics() {
   try {
-    const parsed = JSON.parse(await readFile(diagnosticsPath(), "utf8"));
+    const parsed = await readJsonWithBackup(diagnosticsPath());
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
@@ -205,7 +210,7 @@ async function appendDiagnostic(event) {
       }
     ].slice(-MAX_DIAGNOSTIC_EVENTS);
     await mkdir(dirname(diagnosticsPath()), { recursive: true });
-    await writeFile(diagnosticsPath(), JSON.stringify(next, null, 2) + "\n", "utf8");
+    await atomicWriteJson(diagnosticsPath(), next);
   } catch {
     // Diagnostics must never break the primary task.
   }
@@ -213,7 +218,7 @@ async function appendDiagnostic(event) {
 
 async function clearDiagnostics() {
   await mkdir(dirname(diagnosticsPath()), { recursive: true });
-  await writeFile(diagnosticsPath(), "[]\n", "utf8");
+  await atomicWriteJson(diagnosticsPath(), []);
   return true;
 }
 
