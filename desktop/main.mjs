@@ -110,7 +110,10 @@ async function readSettings() {
     bonsaiDemoPath: existsSync("D:\\AI\\Bonsai-demo") ? "D:\\AI\\Bonsai-demo" : ""
   };
   try {
-    return { ...defaults, ...JSON.parse(await readFile(settingsPath(), "utf8")) };
+    const parsed = JSON.parse(await readFile(settingsPath(), "utf8"));
+    const merged = { ...defaults, ...parsed };
+    if (merged.rememberRepository === false) merged.defaultRepository = "";
+    return merged;
   } catch {
     return defaults;
   }
@@ -118,10 +121,11 @@ async function readSettings() {
 
 async function saveSettings(input) {
   const requestedRepository = String(input?.defaultRepository || "").trim();
+  const rememberRepository = input?.rememberRepository !== false;
   const next = {
-    defaultRepository: requestedRepository ? validateRepository(requestedRepository) : "",
+    defaultRepository: rememberRepository && requestedRepository ? validateRepository(requestedRepository) : "",
     modelProfile: safeProfile(input?.modelProfile),
-    rememberRepository: input?.rememberRepository !== false,
+    rememberRepository,
     autoCheckUpdates: input?.autoCheckUpdates !== false,
     bonsaiDemoPath: String(input?.bonsaiDemoPath || "").trim()
   };
