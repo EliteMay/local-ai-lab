@@ -1,9 +1,9 @@
 {
   "name": "local-ai-lab",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Local multi-agent research lab for LM Studio and Qwen.",
+  "description": "Local AI repository audit lab with a Windows Electron run controller.",
   "scripts": {
     "start": "node src/index.mjs",
     "doctor": "node src/index.mjs doctor",
@@ -12,12 +12,62 @@
     "coverage": "node src/index.mjs coverage",
     "coverage-synthesize": "node src/index.mjs coverage-synthesize",
     "test": "node --test",
-    "desktop": "electron desktop/main.mjs"
+    "desktop": "electron desktop/main.mjs",
+    "build:win": "electron-builder --win nsis --x64 --publish never"
   },
   "engines": {
     "node": ">=20"
   },
   "devDependencies": {
-    "electron": "^44.4.3"
+    "electron": "^44.4.3",
+    "electron-builder": "26.15.3"
+  },
+  "dependencies": {
+    "electron-updater": "6.8.9"
+  },
+  "build": {
+    "appId": "local.elitemay.localailab",
+    "productName": "Local AI Lab",
+    "asar": false,
+    "directories": {
+      "output": "dist"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "EliteMay",
+        "repo": "local-ai-lab"
+      }
+    ],
+    "files": [
+      "desktop/**/*",
+      "src/**/*",
+      "config/**/*",
+      "tests/**/*",
+      "package.json",
+      "README.md",
+      "REQUIREMENTS.md",
+      "PROJECT_LEARNINGS.md"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "local_ai_lab_${version}_setup.${ext}",
+      "signAndEditExecutable": false,
+      "forceCodeSigning": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Local AI Lab"
+    }
   }
 }
