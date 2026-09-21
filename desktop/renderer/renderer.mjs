@@ -27,6 +27,14 @@ const state = {
   resume: false,
   latestRecoverable: null,
   currentBatch: null,
+  currentBatchChunks: 0,
+  currentBatchChars: 0,
+  currentBatchStartedAt: null,
+  planFiles: 0,
+  planChunks: 0,
+  activeCommand: null,
+  activeRunId: "",
+  currentStage: "実行待ち",
   updateState: null,
   bonsaiStatus: null
 };
@@ -163,6 +171,133 @@ function parseDurationText(value) {
   return seconds || null;
 }
 
+function formatNumber(value) {
+  return Number(value || 0).toLocaleString("ja-JP");
+}
+
+function estimatedCoverageRemainingSeconds() {
+  if (!state.totalBatches || !state.batchDurations.length || state.completedBatches >= state.totalBatches) {
+    return null;
+  }
+
+  const average = state.batchDurations.reduce((sum, value) => sum + value, 0) / state.batchDurations.length;
+  const remainingBatches = state.totalBatches - state.completedBatches;
+
+  if (state.currentBatch && state.currentBatchStartedAt) {
+    const currentElapsed = Math.max(0, (Date.now() - state.currentBatchStartedAt) / 1000);
+    return Math.max(0, average - currentElapsed) + Math.max(0, remainingBatches - 1) * average;
+  }
+
+  return average * remainingBatches;
+}
+
+function currentProgressPercent() {
+  if (!state.totalBatches) return null;
+  return Math.max(0, Math.min(100, Math.round((state.completedBatches / state.totalBatches) * 100)));
+}
+
+function currentWorkDescription() {
+  const command = state.activeCommand;
+
+  if (command === "coverage") {
+    if (state.currentStage.includes("統合")) {
+      return "全バッチの指摘をまとめ、重複を整理して最終結果の材料を作っています。";
+    }
+    if (state.currentStage.includes("改善案")) {
+      return "保存した指摘と根拠から、具体的な改善方法を組み立てています。";
+    }
+    if (state.currentStage.includes("レビュー")) {
+      return "指摘と根拠が一致しているか、過剰な提案がないかを最終確認しています。";
+    }
+    if (state.currentBatch) {
+      return `AIが ${state.currentBatch} の ${state.currentBatchChunks} 分割（約${formatNumber(state.currentBatchChars)}文字）を読み、問題点・根拠・改善候補を抽出しています。`;
+    }
+    if (state.totalBatches > 0) {
+      return "監査計画に沿って、次の処理単位を準備しています。";
+    }
+    return "対象フォルダを確認し、監査するファイルの一覧と処理計画を作っています。";
+  }
+
+  if (command === "coverage-synthesize") {
+    if (state.currentStage.includes("改善案")) {
+      return "保存済みの監査結果から、具体的な改善方法を組み立てています。";
+    }
+    if (state.currentStage.includes("レビュー")) {
+      return "統合した結果と根拠を最終確認しています。";
+    }
+    return "保存済みの監査結果を読み込み、重複を整理して1つの結果へまとめています。";
+  }
+
+  if (command === "doctor") return "AIの実行環境・モデル・接続状態を確認しています。";
+  if (command === "inspect") return "対象フォルダの構成を変更せずに読み取り、確認しています。";
+  if (command === "test") return "自動テストを実行し、現在の機能が壊れていないか確認しています。";
+  return "処理を実行しています。";
+}
+
+function remainingDescription() {
+  if (state.activeCommand === "coverage") {
+    const remainingSeconds = estimatedCoverageRemainingSeconds();
+    if (remainingSeconds != null) return `監査部分 あと約${formatDuration(remainingSeconds)}`;
+    if (state.totalBatches > 0 && state.completedBatches >= state.totalBatches) {
+      return "監査部分は完了。統合・改善案作成・レビューは所要時間を正確に見積もれません。";
+    }
+    return "監査部分を計測中";
+  }
+
+  if (state.activeCommand === "coverage-synthesize") {
+    return "統合・改善案作成・レビューは工程ごとの差が大きいため、正確な残り時間は表示できません。";
+  }
+
+  return "短い処理のため残り時間は計測していません。";
+}
+
+function renderLiveResult() {
+  if (!state.running) return;
+
+  const commandLabel = COMMAND_META[state.activeCommand]?.label || state.activeCommand || "処理";
+  const elapsed = state.startedAt ? formatDuration((Date.now() - state.startedAt) / 1000) : "計測中";
+  const percent = currentProgressPercent();
+  const progressText = state.totalBatches > 0
+    ? `${state.completedBatches} / ${state.totalBatches} 処理完了（${percent}%）`
+    : "準備中";
+
+  const lines = [
+    `実行中: ${commandLabel}`,
+    "",
+    "今していること",
+    currentWorkDescription(),
+    "",
+    "進み具合",
+    progressText,
+    `経過: ${elapsed}`,
+    `残り目安: ${remainingDescription()}`
+  ];
+
+  if (state.activeCommand === "coverage" && state.totalBatches > 0 && state.completedBatches < state.totalBatches) {
+    lines.push("このあと: 残りの監査 → 結果の統合 → 改善案作成 → レビュー");
+  }
+
+  const detailLines = [];
+  if (state.planFiles || state.planChunks) {
+    detailLines.push(`対象: ${state.planFiles}ファイル / ${state.planChunks}分割`);
+  }
+  if (state.currentBatch) {
+    detailLines.push(`現在の処理単位: ${state.currentBatch} / ${state.currentBatchChunks}分割 / 約${formatNumber(state.currentBatchChars)}文字`);
+  }
+  if (state.promptTokens || state.completionTokens || state.reasoningTokens) {
+    const tokens = [`入力 ${formatNumber(state.promptTokens)}`, `出力 ${formatNumber(state.completionTokens)}`];
+    if (state.reasoningTokens) tokens.push(`推論 ${formatNumber(state.reasoningTokens)}`);
+    detailLines.push(`使用トークン: ${tokens.join(" · ")}`);
+  }
+  if (state.activeRunId) detailLines.push(`実行ID: ${state.activeRunId}`);
+
+  if (detailLines.length) {
+    lines.push("", "詳細", ...detailLines);
+  }
+
+  setText("#result", lines.join("\n"));
+}
+
 function updateTiming() {
   if (!state.startedAt) {
     setText("#elapsed", "—");
@@ -183,6 +318,8 @@ function updateTiming() {
   } else {
     setText("#estimate", "—");
   }
+
+  if (state.running) renderLiveResult();
 }
 
 function startTimer() {
@@ -206,9 +343,15 @@ function resetRunMetrics() {
   state.completionTokens = 0;
   state.reasoningTokens = 0;
   state.currentBatch = null;
+  state.currentBatchChunks = 0;
+  state.currentBatchChars = 0;
+  state.currentBatchStartedAt = null;
+  state.planFiles = 0;
+  state.planChunks = 0;
+  state.activeRunId = "";
   setText("#batchMetric", "処理単位 —");
   setText("#tokenMetric", "使用トークン —");
-  setText("#stage", "開始準備中");
+  setStage("開始準備中");
   setText("#estimate", "計測中");
 }
 
@@ -278,7 +421,9 @@ function ensureRunOption(runId, label = runId) {
 }
 
 function setStage(value) {
+  state.currentStage = value;
   setText("#stage", value);
+  if (state.running) renderLiveResult();
 }
 
 function appendLog(payload) {
@@ -296,14 +441,18 @@ function appendLog(payload) {
   if (!progress) return;
 
   if (progress.type === "run-id") {
+    state.activeRunId = progress.runId;
     setText("#runLabel", progress.runId);
     ensureRunOption(progress.runId);
+    renderLiveResult();
     return;
   }
 
   if (progress.type === "plan") {
     state.totalBatches = progress.batches;
     state.completedBatches = 0;
+    state.planFiles = progress.files;
+    state.planChunks = progress.chunks;
     setStage("監査計画を作成しました");
     setText("#progress", `0 / ${progress.batches} 処理 · ${progress.files} ファイル · ${progress.chunks} 分割`);
     updateTiming();
@@ -312,8 +461,12 @@ function appendLog(payload) {
 
   if (progress.type === "batch-start") {
     state.currentBatch = progress.batchId;
+    state.currentBatchChunks = progress.chunks;
+    state.currentBatchChars = progress.chars;
+    state.currentBatchStartedAt = Date.now();
     setStage(`${progress.batchId} 監査中`);
-    setText("#batchMetric", `${progress.batchId} · ${progress.chunks} 分割 · ${progress.chars} 文字`);
+    setText("#batchMetric", `${progress.batchId} · ${progress.chunks} 分割 · ${formatNumber(progress.chars)} 文字`);
+    renderLiveResult();
     return;
   }
 
@@ -338,18 +491,25 @@ function appendLog(payload) {
         ? `${state.completedBatches} / ${state.totalBatches} 処理`
         : "全体監査を処理中"
     );
+    state.currentBatch = null;
+    state.currentBatchChunks = 0;
+    state.currentBatchChars = 0;
+    state.currentBatchStartedAt = null;
+    setStage(`${progress.batchId} 完了 / 次の処理を準備中`);
     setText(
       "#batchMetric",
       `${progress.batchId} 完了 · ${progress.durationText}${progress.findings == null ? "" : ` · 指摘 ${progress.findings}`}`
     );
     updateTokenMetric();
     updateTiming();
+    renderLiveResult();
     return;
   }
 
   if (progress.type === "coverage") {
     $("#bar").style.width = Math.max(0, Math.min(100, progress.percent)) + "%";
     setText("#progress", `監査進捗 ${progress.percent}%`);
+    renderLiveResult();
     return;
   }
 
@@ -427,7 +587,9 @@ async function run(command = state.selectedCommand, stateOverride = {}) {
   }
 
   $("#log").textContent = "";
-  setText("#result", "実行中...");
+  state.activeCommand = command;
+  setText("#resultTitle", "実行中の詳細");
+  setText("#result", "実行準備中...");
   $("#copy").disabled = true;
   $("#bar").style.width = "0%";
   setText("#progress", "開始しています...");
@@ -446,6 +608,7 @@ async function run(command = state.selectedCommand, stateOverride = {}) {
   };
 
   setRunning(true, COMMAND_META[command]?.label || command);
+  renderLiveResult();
   let succeeded = false;
 
   try {
@@ -455,6 +618,7 @@ async function run(command = state.selectedCommand, stateOverride = {}) {
       state.result = command === "coverage"
         ? "処理を停止しました。保存済みのCheckpointがある場合は、履歴から続きへ戻れます。"
         : "処理を停止しました。";
+      setText("#resultTitle", "結果");
       setText("#result", state.result);
       $("#copy").disabled = false;
       setText("#progress", "停止");
@@ -462,6 +626,7 @@ async function run(command = state.selectedCommand, stateOverride = {}) {
     } else {
       succeeded = true;
       state.result = result.output || "完了しました。";
+      setText("#resultTitle", "結果");
       setText("#result", state.result);
       $("#copy").disabled = false;
       $("#bar").style.width = "100%";
@@ -471,14 +636,16 @@ async function run(command = state.selectedCommand, stateOverride = {}) {
     }
   } catch (error) {
     state.result = friendlyError(error.message);
+    setText("#resultTitle", "結果");
     setText("#result", state.result);
     $("#copy").disabled = false;
     setText("#progress", "失敗");
     setStage("エラー");
   } finally {
     stopTimer();
-    updateTiming();
     setRunning(false);
+    updateTiming();
+    state.activeCommand = null;
     if (succeeded && command === "coverage") {
       state.resume = false;
       updateCoverageMode();
