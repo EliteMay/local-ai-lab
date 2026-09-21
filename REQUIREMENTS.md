@@ -405,6 +405,8 @@ PowerShellで行っている日常操作を置き換え、長時間Local AI Run�
 - 最後に選択したRepositoryとModel ProfileをGUIから保存し、次回起動時にRepositoryを自動復元できる
 - Command選択と実行を分離し、設定不足のまま誤実行しない
 - CoverageのBatch進捗・経過時間・Token使用量を確認できる
+- 実行中の結果Panelでは、現在行っている工程・処理対象・進み具合・経過時間・監査部分の残り目安・この後の工程を日本語で確認できる
+- 残り時間は完了済みBatchの実測から概算し、統合 / 改善案作成 / レビュー等で信頼できる見積りがない場合は架空の時刻を表示しない
 - PARTIAL Runを履歴から再開準備できる
 - Coverage 100%でSynthesisだけ失敗したRunを保存済みEvidenceから再Synthesisできる
 - Runtime未起動など主要FailureをUser向けに理解できるMessageで示す
