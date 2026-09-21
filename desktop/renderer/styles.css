@@ -21,3 +21,10 @@ main{padding:30px 36px 48px;overflow:auto}.view{display:none}.view.active{displa
 @media(max-width:1180px){.grid{grid-template-columns:1fr}.status{grid-template-columns:repeat(2,minmax(0,1fr))}.status div:nth-child(2){border-right:0}.status div:nth-child(-n+2){border-bottom:1px solid var(--border)}.run-panel{min-height:auto}.log{height:250px}}
 @media(max-width:1020px){main{padding:24px}.resume-card,.settings-section{align-items:stretch;flex-direction:column}.history-item{grid-template-columns:1fr}.actions{justify-content:flex-start}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+
+
+.repo-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.update-settings{align-items:center}
+.update-settings>div:first-child{flex:1;min-width:0}
+.update-track{margin-top:10px;max-width:420px}
+#repoUpdateStatus{margin-top:8px}
