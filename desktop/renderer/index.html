@@ -12,7 +12,7 @@
   <aside>
     <div class="brand">
       <div class="logo">AI</div>
-      <div><b>Local AI Lab</b><small>Run Controller</small></div>
+      <div><b>Local AI Lab</b><small>実行管理</small></div>
     </div>
     <nav aria-label="メインナビゲーション">
       <button class="nav active" data-view="home">ホーム</button>
@@ -26,23 +26,23 @@
     <section class="view active" id="home">
       <header>
         <div>
-          <p class="eyebrow">LOCAL AI WORKSPACE</p>
+          <p class="eyebrow">ローカルAI作業画面</p>
           <h1>ホーム</h1>
-          <p>監査を開始し、長時間Runの進行・再開・結果確認をここで管理します。</p>
+          <p>監査を開始し、長時間の処理状況・再開・結果確認をここで管理します。</p>
         </div>
         <button id="refresh" class="ghost">接続状態を更新</button>
       </header>
 
       <div class="status" aria-label="現在の実行環境">
-        <div><span>Runtime</span><strong id="runtime">未確認</strong></div>
-        <div><span>Profile</span><strong id="profile">default</strong></div>
-        <div><span>Model</span><strong id="model">未確認</strong></div>
+        <div><span>実行環境</span><strong id="runtime">未確認</strong></div>
+        <div><span>モデル設定</span><strong id="profile">default</strong></div>
+        <div><span>使用モデル</span><strong id="model">未確認</strong></div>
         <div><span>接続</span><strong id="connection">未確認</strong></div>
       </div>
 
       <section class="panel resume-card hidden" id="resumeCard">
         <div>
-          <p class="label">CONTINUE</p>
+          <p class="label">再開</p>
           <h2 id="resumeTitle">続きから再開できます</h2>
           <p id="resumeDescription" class="subtle"></p>
         </div>
@@ -51,7 +51,7 @@
 
       <section class="panel repo">
         <div class="panel-head">
-          <div><p class="label">REPOSITORY</p><h2>対象Repository</h2></div>
+          <div><p class="label">対象フォルダ</p><h2>監査するフォルダ</h2></div>
           <div class="repo-actions">
             <button id="updateRepo" class="ghost">GitHubから最新化</button>
             <button id="chooseRepo" class="ghost">変更</button>
@@ -64,44 +64,44 @@
       <div class="grid">
         <section class="panel">
           <div class="panel-head">
-            <div><p class="label">TASK</p><h2>実行する処理を選択</h2></div>
+            <div><p class="label">実行内容</p><h2>実行する処理を選択</h2></div>
             <span id="selectionHint" class="mini-status">選択してから実行します</span>
           </div>
 
           <div class="commands" role="group" aria-label="実行処理">
-            <button data-command="doctor"><b>Doctor</b><span>RuntimeとModelの接続確認</span></button>
-            <button data-command="inspect"><b>Inspect</b><span>RepositoryをRead-only確認</span></button>
-            <button data-command="coverage" class="wide selected"><b>Coverage Audit</b><span>Repository全体をEvidence付きで監査</span></button>
-            <button data-command="coverage-synthesize"><b>Synthesize</b><span>保存済みEvidenceから再統合</span></button>
-            <button data-command="test"><b>Tests</b><span>Test Suiteを実行</span></button>
+            <button data-command="doctor"><b>接続確認</b><span>AIとモデルが使える状態か確認</span></button>
+            <button data-command="inspect"><b>フォルダ確認</b><span>内容を変更せずに対象を確認</span></button>
+            <button data-command="coverage" class="wide selected"><b>全体監査</b><span>フォルダ全体を根拠付きで監査</span></button>
+            <button data-command="coverage-synthesize"><b>結果を統合</b><span>保存済みの監査結果をまとめ直す</span></button>
+            <button data-command="test"><b>テスト</b><span>自動テストを実行</span></button>
           </div>
 
           <div class="options" id="coverageOptions">
             <label for="goal">監査目的</label>
-            <textarea id="goal" rows="4">このRepositoryの全監査対象ファイルを読み、改善点と改善方法をEvidence付きで提案する</textarea>
-            <p id="coverageMode" class="option-note">新しいCoverage Auditとして実行します。</p>
+            <textarea id="goal" rows="4">このフォルダの監査対象ファイルをすべて読み、改善点と改善方法を根拠付きで提案する</textarea>
+            <p id="coverageMode" class="option-note">新しい全体監査として実行します。</p>
           </div>
 
           <div class="options hidden" id="synthOptions">
-            <label for="runId">Synthesis対象Run</label>
+            <label for="runId">統合する実行履歴</label>
             <select id="runId">
-              <option value="">履歴からRunを選択してください</option>
+              <option value="">履歴から実行を選択してください</option>
             </select>
-            <p class="option-note">Coverage 100%の保存済みEvidenceを利用するため、Repository全体は再監査しません。</p>
+            <p class="option-note">監査完了済みの保存データを利用するため、フォルダ全体は再監査しません。</p>
           </div>
 
           <div class="execute-strip">
             <div>
               <span>選択中</span>
-              <strong id="selectedTask">Coverage Audit</strong>
+              <strong id="selectedTask">全体監査</strong>
             </div>
-            <button id="execute" class="primary">Coverage Auditを実行</button>
+            <button id="execute" class="primary">全体監査を実行</button>
           </div>
         </section>
 
         <section class="panel run-panel">
           <div class="panel-head">
-            <div><p class="label">RUN STATUS</p><h2 id="runTitle">待機中</h2></div>
+            <div><p class="label">実行状況</p><h2 id="runTitle">待機中</h2></div>
             <button id="cancel" class="danger hidden">停止</button>
           </div>
 
@@ -118,8 +118,8 @@
           </div>
 
           <div class="token-line">
-            <span id="batchMetric">Batch —</span>
-            <span id="tokenMetric">Tokens —</span>
+            <span id="batchMetric">処理単位 —</span>
+            <span id="tokenMetric">使用トークン —</span>
           </div>
 
           <div id="log" class="log" aria-live="polite"></div>
@@ -128,7 +128,7 @@
 
       <section class="panel result">
         <div class="panel-head">
-          <div><p class="label">RESULT</p><h2>結果</h2></div>
+          <div><p class="label">結果</p><h2>結果</h2></div>
           <button id="copy" class="ghost" disabled>結果をコピー</button>
         </div>
         <pre id="result">まだ結果はありません。</pre>
@@ -138,9 +138,9 @@
     <section class="view" id="history">
       <header>
         <div>
-          <p class="eyebrow">RUN ARCHIVE</p>
+          <p class="eyebrow">実行履歴</p>
           <h1>履歴</h1>
-          <p>保存済みRunの状態を確認し、途中Runを安全に再開します。</p>
+          <p>保存済みの実行状態を確認し、途中の処理を安全に再開します。</p>
         </div>
         <button id="reloadHistory" class="ghost">再読み込み</button>
       </header>
@@ -150,23 +150,23 @@
     <section class="view" id="settings">
       <header>
         <div>
-          <p class="eyebrow">PREFERENCES</p>
+          <p class="eyebrow">アプリ設定</p>
           <h1>設定</h1>
-          <p>既定Repository、Model Profile、ローカル診断を管理します。</p>
+          <p>既定の対象フォルダ、使用モデル、ローカル診断を管理します。</p>
         </div>
       </header>
 
       <section class="panel settings">
         <label>
-          <span>Model Profile</span>
+          <span>使用モデル</span>
           <select id="settingsProfile">
-            <option value="default">Default / LM Studio / Qwen3-8B</option>
+            <option value="default">標準 / LM Studio / Qwen3-8B</option>
             <option value="bonsai-2-27b">Bonsai 2 27B / PrismML llama.cpp</option>
           </select>
         </label>
 
         <label>
-          <span>Default Repository</span>
+          <span>既定の対象フォルダ</span>
           <div class="row">
             <input id="settingsRepo" readonly>
             <button id="settingsRepoButton" class="ghost">選択</button>
@@ -175,7 +175,7 @@
 
         <label class="check">
           <input id="rememberRepo" type="checkbox" checked>
-          <span>前回のRepositoryを保存する</span>
+          <span>前回の対象フォルダを保存する</span>
         </label>
 
         <div class="settings-section update-settings">
@@ -187,19 +187,19 @@
           <div class="diagnostic-actions">
             <button id="checkUpdate" class="ghost">更新を確認</button>
             <button id="installUpdate" class="primary hidden">今すぐ更新</button>
-            <button id="openRelease" class="ghost">Releaseページ</button>
+            <button id="openRelease" class="ghost">配布ページ</button>
           </div>
         </div>
 
         <label class="check">
           <input id="autoCheckUpdates" type="checkbox" checked>
-          <span>起動時にGitHub Releasesを確認する</span>
+          <span>起動時に新しいバージョンを確認する</span>
         </label>
 
         <div class="settings-section">
           <div>
             <strong>開発診断</strong>
-            <p>直近100件までのCommand開始・終了・失敗等をuserDataへ保存します。PromptやFile本文は保存しません。</p>
+            <p>直近100件までの処理開始・終了・失敗などをアプリの保存領域へ記録します。入力内容やファイル本文は保存しません。</p>
           </div>
           <div class="diagnostic-actions">
             <button id="copyDiagnostics" class="ghost">診断ログをコピー</button>
