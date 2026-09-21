@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "defaultRoute": "general",
+  "codeExtensions": [
+    ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".py", ".java", ".cs",
+    ".cpp", ".cc", ".c", ".h", ".hpp", ".go", ".rs", ".php", ".rb", ".swift",
+    ".kt", ".kts", ".ps1", ".sh", ".vue", ".svelte"
+  ],
+  "codeRatioThreshold": 0.45,
+  "routes": {
+    "general": ["qwen3-8b", "qwen2.5-coder-7b", "phi-4-mini-reasoning"],
+    "coverage-general": ["qwen3-8b", "qwen2.5-coder-7b", "phi-4-mini-reasoning"],
+    "coverage-code": ["qwen2.5-coder-7b", "qwen3-8b", "phi-4-mini-reasoning"],
+    "synthesis-reduction": ["qwen3-8b", "phi-4-mini-reasoning", "qwen2.5-coder-7b"],
+    "planner": ["phi-4-mini-reasoning", "qwen3-8b", "bonsai-2-27b"],
+    "reviewer": ["bonsai-2-27b", "phi-4-mini-reasoning", "qwen3-8b"],
+    "director": ["qwen3-8b", "phi-4-mini-reasoning"],
+    "researcher": ["qwen3-8b", "phi-4-mini-reasoning"],
+    "auditor": ["qwen2.5-coder-7b", "qwen3-8b", "phi-4-mini-reasoning"],
+    "improvement-planner": ["phi-4-mini-reasoning", "qwen3-8b", "bonsai-2-27b"]
+  }
+}
