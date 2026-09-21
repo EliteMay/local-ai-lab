@@ -153,6 +153,16 @@
               </div>
             </div>
             <div class="insight-card">
+              <span class="insight-title">モデル振り分け</span>
+              <div class="insight-grid">
+                <span>運用</span><strong id="routingMode">—</strong>
+                <span>現在のモデル</span><strong id="currentRoutedModel">—</strong>
+                <span>現在の用途</span><strong id="currentModelTask">—</strong>
+                <span>今回の呼出し</span><strong id="modelUsageMetric">—</strong>
+                <span>代替切替</span><strong id="modelFallbackMetric">0回</strong>
+              </div>
+            </div>
+            <div class="insight-card">
               <span class="insight-title">PC負荷</span>
               <div class="insight-grid">
                 <span>CPU</span><strong id="cpuMetric">取得中...</strong>
@@ -179,6 +189,7 @@
             <div><span>指摘</span><strong id="resultFindings">—</strong></div>
             <div><span>レビュー</span><strong id="resultReviewer">—</strong></div>
           </div>
+          <p class="model-result-line">使用モデル <strong id="resultModels">—</strong></p>
           <div class="severity-row" aria-label="重要度別の指摘数">
             <span>重大 <strong id="severityCritical">0</strong></span>
             <span>高 <strong id="severityHigh">0</strong></span>
@@ -234,13 +245,29 @@
       </header>
 
       <section class="panel settings">
-        <label>
-          <span>使用モデル</span>
-          <select id="settingsProfile">
-            <option value="default">標準 / LM Studio / Qwen3-8B</option>
-            <option value="bonsai-2-27b">Bonsai 2 27B / PrismML llama.cpp</option>
-          </select>
-        </label>
+        <div class="model-routing-settings">
+          <label>
+            <span>モデル運用</span>
+            <select id="modelRoutingMode">
+              <option value="auto">自動振り分け / 作業ごとに最適なモデルを選ぶ</option>
+              <option value="fixed">1モデル固定 / 従来どおり</option>
+            </select>
+          </label>
+
+          <label id="fixedProfileSetting" class="hidden">
+            <span>固定で使うモデル</span>
+            <select id="settingsProfile">
+              <option value="default">標準 / LM Studio / Qwen3-8B</option>
+              <option value="bonsai-2-27b">Bonsai 2 27B / PrismML llama.cpp</option>
+            </select>
+          </label>
+
+          <label class="check">
+            <input id="autoManageModels" type="checkbox" checked>
+            <span>自動振り分け時、LM Studioのモデルを必要に応じて読み込み・解放する</span>
+          </label>
+          <p class="option-note">自動振り分けはアプリ側の固定ルールで決めます。途中再開では、すでに監査に使ったモデルを同じ用途へ固定します。</p>
+        </div>
 
         <div id="bonsaiSettings" class="bonsai-settings hidden">
           <label>
@@ -253,6 +280,16 @@
 
           <p class="option-note">例: D:\AI\Bonsai-demo。起動・停止は自動では行わず、君がボタンを押した時だけ実行します。</p>
         </div>
+
+        <div class="settings-section model-management-section">
+          <div>
+            <strong>用途別モデル</strong>
+            <p>LM StudioのCatalog対象モデルを、このアプリからダウンロード・読み込み・解放できます。重いモデルや未対応用途は自動振り分けへ入れません。</p>
+            <p id="modelProviderStatus" class="option-note">モデル状態を確認中...</p>
+          </div>
+          <button id="refreshModels" class="ghost">モデル状態を更新</button>
+        </div>
+        <div id="modelCatalog" class="model-catalog" aria-live="polite"></div>
 
         <label>
           <span>既定の対象フォルダ</span>
