@@ -1,7 +1,15 @@
 import http from "node:http";
 import https from "node:https";
 
-function requestJsonWithNodeHttp(urlString, options, timeoutMs, providerName) {
+const DEFAULT_MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
+
+function responseTooLargeError(providerName, maxResponseBytes) {
+  const error = new Error(`${providerName} response exceeded ${Math.round(maxResponseBytes / (1024 * 1024))} MB safety limit`);
+  error.code = "RESPONSE_TOO_LARGE";
+  return error;
+}
+
+function requestJsonWithNodeHttp(urlString, options, timeoutMs, providerName, maxResponseBytes) {
   const url = new URL(urlString);
   const protocolClient = url.protocol === "https:"
     ? https
@@ -43,8 +51,25 @@ function requestJsonWithNodeHttp(urlString, options, timeoutMs, providerName) {
       method: options.method ?? "GET",
       headers
     }, (response) => {
+      const declaredLength = Number(response.headers["content-length"] || 0);
+      if (declaredLength > maxResponseBytes) {
+        response.destroy();
+        finish(reject, responseTooLargeError(providerName, maxResponseBytes));
+        return;
+      }
+
       const chunks = [];
-      response.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+      let receivedBytes = 0;
+      response.on("data", (chunk) => {
+        const buffer = Buffer.from(chunk);
+        receivedBytes += buffer.length;
+        if (receivedBytes > maxResponseBytes) {
+          response.destroy();
+          finish(reject, responseTooLargeError(providerName, maxResponseBytes));
+          return;
+        }
+        chunks.push(buffer);
+      });
       response.on("error", (error) => finish(reject, error));
       response.on("end", () => {
         const text = Buffer.concat(chunks).toString("utf8");
@@ -126,7 +151,8 @@ export class LMStudioClient {
     providerName = "LM Studio",
     structuredOutputStyle = "openai-json-schema",
     nativeModelDetailsPath = "/api/v1/models",
-    transport = "fetch"
+    transport = "fetch",
+    maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES
   }) {
     this.baseUrl = String(baseUrl).replace(/\/$/, "");
     this.serverRoot = serverRootFromBaseUrl(this.baseUrl);
@@ -138,11 +164,12 @@ export class LMStudioClient {
     this.structuredOutputStyle = structuredOutputStyle;
     this.nativeModelDetailsPath = nativeModelDetailsPath;
     this.transport = transport;
+    this.maxResponseBytes = maxResponseBytes;
   }
 
   async #requestUrl(url, options = {}) {
     if (this.transport === "node-http") {
-      return requestJsonWithNodeHttp(url, options, this.timeoutMs, this.providerName);
+      return requestJsonWithNodeHttp(url, options, this.timeoutMs, this.providerName, this.maxResponseBytes);
     }
     if (this.transport !== "fetch") {
       throw new Error(`Unknown model HTTP transport: ${this.transport}`);
@@ -161,11 +188,23 @@ export class LMStudioClient {
         }
       });
 
+      const declaredLength = Number(response.headers.get("content-length") || 0);
+      if (declaredLength > this.maxResponseBytes) {
+        throw responseTooLargeError(this.providerName, this.maxResponseBytes);
+      }
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (bytes.byteLength > this.maxResponseBytes) {
+        throw responseTooLargeError(this.providerName, this.maxResponseBytes);
+      }
+      const body = new TextDecoder().decode(bytes);
       if (!response.ok) {
-        const body = await response.text();
         throw new Error(`${this.providerName} request failed (${response.status}): ${body.slice(0, 500)}`);
       }
-      return await response.json();
+      try {
+        return body ? JSON.parse(body) : {};
+      } catch (error) {
+        throw new Error(`${this.providerName} returned invalid JSON: ${error.message}`);
+      }
     } catch (error) {
       if (error?.name === "AbortError") {
         throw new Error(`${this.providerName} request timed out after ${Math.round(this.timeoutMs / 1000)} seconds`);
