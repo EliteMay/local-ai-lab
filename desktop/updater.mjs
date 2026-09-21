@@ -326,10 +326,10 @@ export function createUpdaterController({
     autoUpdater.on("update-downloaded", (info) => {
       setWindowProgress(1);
       void setState({
-        state: "downloaded",
+        state: "downloading",
         latestVersion: info?.version || updateState.latestVersion,
         progress: 100,
-        message: "アップデートのダウンロードが完了しました。"
+        message: "ダウンロード完了。更新ファイルを確認しています。"
       });
     });
     autoUpdater.on("error", (error) => {
