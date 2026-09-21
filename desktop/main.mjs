@@ -86,8 +86,7 @@ async function readSettings() {
     modelProfile: "default",
     rememberRepository: true,
     autoCheckUpdates: true,
-    bonsaiDemoPath: existsSync("D:\\AI\\Bonsai-demo") ? "D:\\AI\\Bonsai-demo" : "",
-    autoStartBonsai: false
+    bonsaiDemoPath: existsSync("D:\\AI\\Bonsai-demo") ? "D:\\AI\\Bonsai-demo" : ""
   };
   try {
     return { ...defaults, ...JSON.parse(await readFile(settingsPath(), "utf8")) };
@@ -103,8 +102,7 @@ async function saveSettings(input) {
     modelProfile: safeProfile(input?.modelProfile),
     rememberRepository: input?.rememberRepository !== false,
     autoCheckUpdates: input?.autoCheckUpdates !== false,
-    bonsaiDemoPath: String(input?.bonsaiDemoPath || "").trim(),
-    autoStartBonsai: input?.autoStartBonsai === true
+    bonsaiDemoPath: String(input?.bonsaiDemoPath || "").trim()
   };
   await mkdir(dirname(settingsPath()), { recursive: true });
   await writeFile(settingsPath(), JSON.stringify(next, null, 2) + "\n", "utf8");
@@ -523,13 +521,9 @@ app.whenReady().then(async () => {
     isBusy: () => Boolean(activeProcess)
   });
   createWindow();
-  await bonsaiRuntimeController.scheduleAutoStart();
   await updaterController.scheduleAutoCheck();
 });
 
-app.on("before-quit", () => {
-  bonsaiRuntimeController?.shutdown();
-});
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
