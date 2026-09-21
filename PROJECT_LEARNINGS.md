@@ -196,3 +196,17 @@
 - Safety: System Metricsは固定read-only CommandだけをMain Processから実行し、Rendererへ任意Shell Capabilityを広げない。
 - Regression Guard: Desktop contract / system metrics / run overview tests。
 - Prevention: 長時間AI処理のUIではActivity、Liveness、Failureを1つの「実行中」表示へ潰さない。
+
+
+## PL-017 — Update検出成功とInstall成功を同じ扱いにしない
+
+- Date: 2026-09-21
+- Type: Failure / Distribution / Reliability
+- Status: Resolved
+- Symptom: v0.2.7実機でv0.2.8の存在は検出でき、「今すぐ更新」Buttonも表示されたが、Userが更新完了まで進められなかった。
+- Evidence Boundary: ScreenshotからUpdate Provider / Version検出までは成功していることを確認。失敗点の厳密な内部Errorは当該実機Diagnostics未取得のため断定しない。
+- Final Fix: DownloadとInstall / Restartを別Stateにし、Download進捗と完了を明示する。Download完了後だけ「再起動して更新」を許可し、標準quitAndInstallがApp Quitへ進まない場合はelectron-updaterが返したDownloaded Installer PathをFallback起動する。
+- Safety: Fallbackへ任意Path / URLを渡さず、electron-updaterがIntegrity確認したDownloaded Fileだけを対象にする。
+- Recovery: 旧v0.2.7自体のUpdaterが動かない環境では、v0.2.9 Setup.exeを配布ページから1回上書きInstallする。
+- Regression Guard: Distribution Contract Testで段階State、Downloaded Installer Path、quitAndInstall、fixed-path fallback、Renderer labelを確認する。
+- Prevention: 「新版を検出できた」をAuto Update E2E成功と見なさず、Download / Restart / New Version起動を別々に検証する。

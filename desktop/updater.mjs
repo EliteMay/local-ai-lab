@@ -35,6 +35,8 @@ export function createUpdaterController({
 }) {
   let checkPromise = null;
   let installInProgress = false;
+  let downloadedInstallerPath = "";
+  let quitObserved = false;
   let promptedVersion = "";
   let configured = false;
   let updateState = {
@@ -89,21 +91,21 @@ export function createUpdaterController({
     const win = getMainWindow();
     const detail = isBusy()
       ? "現在処理を実行中です。更新は処理完了後に行ってください。"
-      : "「今すぐ更新」を押すとダウンロード後にアプリを再起動して更新します。設定と実行履歴はアプリの保存領域に残ります。";
+      : "「ダウンロード」を押すと更新ファイルを取得します。完了後に「再起動して更新」を押すと更新します。設定と実行履歴はアプリの保存領域に残ります。";
 
     const result = await dialog.showMessageBox(win || undefined, {
       type: "info",
       title: "Local AI Lab アップデート",
       message: `新しいバージョン v${version} があります。`,
       detail,
-      buttons: isBusy() ? ["あとで"] : ["今すぐ更新", "あとで"],
+      buttons: isBusy() ? ["あとで"] : ["ダウンロード", "あとで"],
       defaultId: 0,
       cancelId: isBusy() ? 0 : 1,
       noLink: true
     });
 
     if (!isBusy() && result.response === 0) {
-      await downloadAndInstall();
+      await downloadUpdate();
     }
   }
 
@@ -169,7 +171,7 @@ export function createUpdaterController({
     return checkPromise;
   }
 
-  async function downloadAndInstall() {
+  async function downloadUpdate() {
     if (!app.isPackaged) {
       return { ok: false, message: "開発モードでは自動更新できません。" };
     }
@@ -177,7 +179,7 @@ export function createUpdaterController({
       return { ok: false, message: "処理実行中はアプリを更新できません。処理完了後に再実行してください。" };
     }
     if (installInProgress) {
-      return { ok: true, message: "アップデートをダウンロード中です。" };
+      return { ok: true, message: updateState.state === "installing" ? "再起動処理中です。" : "アップデートをダウンロード中です。" };
     }
 
     let latestVersion = updateState.latestVersion;
@@ -190,6 +192,7 @@ export function createUpdaterController({
     }
 
     installInProgress = true;
+    downloadedInstallerPath = "";
     try {
       await setState({
         state: "downloading",
@@ -197,35 +200,87 @@ export function createUpdaterController({
         progress: 0,
         message: `v${latestVersion} をダウンロードしています。`
       });
-      await autoUpdater.downloadUpdate();
+      const downloadedFiles = await autoUpdater.downloadUpdate();
+      downloadedInstallerPath =
+        downloadedFiles.find((file) => /\.exe$/i.test(String(file))) ||
+        downloadedFiles[0] ||
+        "";
 
-      if (isBusy()) {
-        installInProgress = false;
-        setWindowProgress(-1);
-        await setState({
-          state: "downloaded",
-          latestVersion,
-          progress: 100,
-          message: "ダウンロード済みです。処理完了後に「今すぐ更新」を押してください。"
-        });
-        return { ok: false, message: "処理が開始されたため再起動を保留しました。" };
-      }
-
+      installInProgress = false;
+      setWindowProgress(-1);
+      await appendDiagnostic({
+        type: "update.download.completed",
+        latestVersion,
+        installerReady: Boolean(downloadedInstallerPath)
+      });
       await setState({
-        state: "installing",
+        state: "downloaded",
         latestVersion,
         progress: 100,
-        message: "ダウンロード完了。再起動して更新します。"
+        message: "ダウンロード完了。「再起動して更新」を押してください。"
       });
-      setWindowProgress(-1);
-      setTimeout(() => autoUpdater.quitAndInstall(false, true), 500);
-      return { ok: true, message: `v${latestVersion} をインストールするため再起動します。` };
+      return { ok: true, downloaded: true, message: "ダウンロード完了。再起動して更新できます。" };
     } catch (error) {
       installInProgress = false;
+      downloadedInstallerPath = "";
       setWindowProgress(-1);
       await showFailure(error);
       return { ok: false, message: `自動更新に失敗しました: ${error?.message || error}` };
     }
+  }
+
+  async function installDownloadedUpdate() {
+    if (!app.isPackaged) {
+      return { ok: false, message: "開発モードでは自動更新できません。" };
+    }
+    if (isBusy()) {
+      return { ok: false, message: "処理実行中はアプリを更新できません。処理完了後に再実行してください。" };
+    }
+    if (updateState.state !== "downloaded" || !downloadedInstallerPath) {
+      return downloadUpdate();
+    }
+    if (installInProgress) {
+      return { ok: true, message: "再起動処理中です。" };
+    }
+
+    installInProgress = true;
+    quitObserved = false;
+    const latestVersion = updateState.latestVersion;
+    await setState({
+      state: "installing",
+      latestVersion,
+      progress: 100,
+      message: "アプリを終了して更新を開始します。"
+    });
+    await appendDiagnostic({ type: "update.install.requested", latestVersion });
+
+    setWindowProgress(-1);
+    setTimeout(() => {
+      try {
+        autoUpdater.quitAndInstall(false, true);
+      } catch (error) {
+        installInProgress = false;
+        void showFailure(error);
+      }
+    }, 300);
+
+    setTimeout(async () => {
+      if (quitObserved || !installInProgress) return;
+      await appendDiagnostic({
+        type: "update.install.fallback",
+        latestVersion,
+        reason: "quitAndInstall did not begin application quit"
+      });
+      const openError = await shell.openPath(downloadedInstallerPath);
+      if (openError) {
+        installInProgress = false;
+        await showFailure(new Error(`更新インストーラーを起動できませんでした: ${openError}`));
+        return;
+      }
+      app.quit();
+    }, 5000);
+
+    return { ok: true, message: `v${latestVersion} をインストールするため再起動します。` };
   }
 
   function configure() {
@@ -234,6 +289,10 @@ export function createUpdaterController({
     autoUpdater.autoDownload = false;
     autoUpdater.autoInstallOnAppQuit = false;
     autoUpdater.allowPrerelease = false;
+
+    app.on("before-quit", () => {
+      quitObserved = true;
+    });
 
     autoUpdater.on("checking-for-update", () => {
       void setState({ state: "checking", progress: 0, message: "アップデートを確認しています。" });
@@ -267,14 +326,16 @@ export function createUpdaterController({
     autoUpdater.on("update-downloaded", (info) => {
       setWindowProgress(1);
       void setState({
-        state: "downloaded",
+        state: "downloading",
         latestVersion: info?.version || updateState.latestVersion,
         progress: 100,
-        message: "アップデートのダウンロードが完了しました。"
+        message: "ダウンロード完了。更新ファイルを確認しています。"
       });
     });
     autoUpdater.on("error", (error) => {
+      installInProgress = false;
       setWindowProgress(-1);
+      void appendDiagnostic({ type: "update.error", error: String(error?.message || error).slice(0, 500) });
       void setState({
         state: "error",
         progress: 0,
@@ -287,7 +348,9 @@ export function createUpdaterController({
 
   registerIpc("update:state", () => updateState);
   registerIpc("update:check", () => checkForUpdate({ prompt: false }));
-  registerIpc("update:install", () => downloadAndInstall());
+  registerIpc("update:install", () => (
+    updateState.state === "downloaded" ? installDownloadedUpdate() : downloadUpdate()
+  ));
   registerIpc("update:open-release", async () => {
     await shell.openExternal(RELEASE_URL);
     return { ok: true, message: "配布ページを開きました。" };

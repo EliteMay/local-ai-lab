@@ -833,10 +833,28 @@ function applyUpdateState(next) {
   const progress = Math.max(0, Math.min(100, Number(state.updateState.progress) || 0));
   $("#updateBar").style.width = progress + "%";
 
-  const canInstall = ["available", "downloaded"].includes(state.updateState.state);
-  $("#installUpdate").classList.toggle("hidden", !canInstall);
-  $("#installUpdate").disabled = state.running || state.updateState.state === "downloading";
-  $("#checkUpdate").disabled = state.updateState.state === "checking" || state.updateState.state === "downloading";
+  const updateActionStates = ["available", "downloading", "downloaded", "installing"];
+  const showUpdateAction = updateActionStates.includes(state.updateState.state);
+  $("#installUpdate").classList.toggle("hidden", !showUpdateAction);
+
+  const actionLabels = {
+    available: "ダウンロード",
+    downloading: `ダウンロード中 ${progress.toFixed(0)}%`,
+    downloaded: "再起動して更新",
+    installing: "再起動中..."
+  };
+  if (actionLabels[state.updateState.state]) {
+    setText("#installUpdate", actionLabels[state.updateState.state]);
+  }
+
+  $("#installUpdate").disabled =
+    state.running ||
+    state.updateState.state === "downloading" ||
+    state.updateState.state === "installing";
+  $("#checkUpdate").disabled =
+    state.updateState.state === "checking" ||
+    state.updateState.state === "downloading" ||
+    state.updateState.state === "installing";
 }
 
 async function checkForAppUpdate() {
