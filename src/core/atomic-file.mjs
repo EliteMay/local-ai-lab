@@ -25,9 +25,9 @@ export function backupPathFor(path) {
   return path + ".backup";
 }
 
-export async function atomicWriteText(path, content, { backup = true } = {}) {
+export async function atomicWriteText(path, content, { backup = true, backupPath: customBackupPath = null } = {}) {
   const target = String(path);
-  const backupPath = backupPathFor(target);
+  const backupPath = customBackupPath || backupPathFor(target);
   const tempPath = target + ".tmp-" + process.pid + "-" + randomUUID();
   await mkdir(dirname(target), { recursive: true });
   await durableWrite(tempPath, String(content));
@@ -68,12 +68,12 @@ async function restoreBackup(target, backupPath, text) {
   }
 }
 
-export async function readTextWithBackup(path, encoding = "utf8") {
+export async function readTextWithBackup(path, encoding = "utf8", { backupPath: customBackupPath = null } = {}) {
   const target = String(path);
   try {
     return await readFile(target, encoding);
   } catch (primaryError) {
-    const backupPath = backupPathFor(target);
+    const backupPath = customBackupPath || backupPathFor(target);
     try {
       const backupText = await readFile(backupPath, encoding);
       await restoreBackup(target, backupPath, backupText);
@@ -84,12 +84,12 @@ export async function readTextWithBackup(path, encoding = "utf8") {
   }
 }
 
-export async function readJsonWithBackup(path) {
+export async function readJsonWithBackup(path, { backupPath: customBackupPath = null } = {}) {
   const target = String(path);
   try {
     return JSON.parse(await readFile(target, "utf8"));
   } catch (primaryError) {
-    const backupPath = backupPathFor(target);
+    const backupPath = customBackupPath || backupPathFor(target);
     try {
       const backupText = await readFile(backupPath, "utf8");
       const value = JSON.parse(backupText);
