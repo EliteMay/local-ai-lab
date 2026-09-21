@@ -675,6 +675,8 @@ async function migrateLegacyRunsIfNeeded() {
 
 function createWindow() {
   mainWindow = new BrowserWindow({
+    name: "main-window",
+    windowStatePersistence: true,
     width: 1320,
     height: 840,
     minWidth: 980,
@@ -695,9 +697,37 @@ function createWindow() {
   mainWindow.webContents.on("will-navigate", (event, url) => {
     if (url !== rendererUrl) event.preventDefault();
   });
+
+  mainWindow.on("close", (event) => {
+    if (!activeProcess || allowWindowClose) return;
+    event.preventDefault();
+
+    const choice = dialog.showMessageBoxSync(mainWindow, {
+      type: "warning",
+      title: "処理を実行中です",
+      message: "実行中の処理があります。",
+      detail: "このまま終了すると現在の処理を停止します。保存済みのCheckpointがある全体監査は、次回起動後に履歴から再開できます。",
+      buttons: ["処理を続ける", "停止して終了"],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true
+    });
+
+    if (choice === 1) {
+      void cancelActiveCommand({ quitAfter: true });
+    }
+  });
 }
 
-app.whenReady().then(async () => {
+if (hasSingleInstanceLock) {
+  app.on("second-instance", () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  });
+
+  app.whenReady().then(async () => {
   if (process.platform === "win32") {
     app.setAppUserModelId("local.elitemay.localailab");
   }
@@ -717,15 +747,10 @@ app.whenReady().then(async () => {
   });
   registerIpc("repository:update", (repoPath) => updateRepository(repoPath));
   registerIpc("command:run", (input) => runCommand(input));
-  registerIpc("command:cancel", async () => {
-    if (!activeProcess) return false;
-    const command = activeProcessCommand || "active command";
-    activeProcess.kill();
-    await appendDiagnostic({ type: "command.cancelled", command });
-    return true;
-  });
+  registerIpc("command:cancel", () => cancelActiveCommand());
   registerIpc("history:list", () => listHistory());
   registerIpc("history:result", (id) => readRunResult(id));
+  registerIpc("history:open-folder", (id) => openRunFolder(id));
   registerIpc("diagnostics:list", () => readDiagnostics());
   registerIpc("diagnostics:clear", () => clearDiagnostics());
   registerIpc("clipboard:write", (value) => {
@@ -749,8 +774,8 @@ app.whenReady().then(async () => {
   });
   createWindow();
   await updaterController.scheduleAutoCheck();
-});
-
+  });
+}
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
