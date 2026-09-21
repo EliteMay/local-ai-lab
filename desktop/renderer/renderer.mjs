@@ -40,26 +40,47 @@ const state = {
   telemetryTimerId: null,
   systemMetrics: null,
   updateState: null,
-  bonsaiStatus: null
+  bonsaiStatus: null,
+  modelCatalogSnapshot: null,
+  currentRoutedModel: "",
+  currentModelTask: "",
+  modelUsageCounts: {},
+  modelFallbacks: 0,
+  modelPollTimerId: null
 };
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 
-function profileLabel(value) {
+function profileLabel(value, routingMode = state.settings?.modelRoutingMode) {
+  if (routingMode === "auto") return "自動振り分け";
   if (value === "default") return "標準";
   if (value === "bonsai-2-27b") return "Bonsai 2 27B";
   return value || "不明";
+}
+
+function isAutoRouting(mode = state.settings?.modelRoutingMode) {
+  return (mode || "auto") === "auto";
 }
 
 function isBonsaiProfile(value = state.settings?.modelProfile) {
   return value === "bonsai-2-27b";
 }
 
+function updateRoutingSettingsUi() {
+  const mode = $("#modelRoutingMode")?.value || state.settings?.modelRoutingMode || "auto";
+  const profile = $("#settingsProfile")?.value || state.settings?.modelProfile || "default";
+  $("#fixedProfileSetting")?.classList.toggle("hidden", mode !== "fixed");
+  if ($("#autoManageModels")) $("#autoManageModels").disabled = mode !== "auto";
+  const bonsaiVisible = mode === "auto" || isBonsaiProfile(profile);
+  $("#bonsaiRuntimeCard").classList.toggle("hidden", !bonsaiVisible);
+  $("#bonsaiSettings").classList.toggle("hidden", !bonsaiVisible);
+  setText("#profile", profileLabel(profile, mode));
+  updateModelRoutingMetrics();
+}
+
 function updateBonsaiVisibility(profile = state.settings?.modelProfile) {
-  const visible = isBonsaiProfile(profile);
-  $("#bonsaiRuntimeCard").classList.toggle("hidden", !visible);
-  $("#bonsaiSettings").classList.toggle("hidden", $("#settingsProfile").value !== "bonsai-2-27b");
+  updateRoutingSettingsUi();
 }
 
 function applyBonsaiStatus(next) {
@@ -84,7 +105,7 @@ function applyBonsaiStatus(next) {
   $("#stopBonsai").classList.toggle("hidden", !(next.status === "running" && next.managed));
   $("#refreshBonsai").disabled = next.status === "starting" || next.status === "stopping";
 
-  if (isBonsaiProfile()) {
+  if (!isAutoRouting() && isBonsaiProfile()) {
     setText("#runtime", "PrismML llama.cpp");
     setText("#model", "bonsai-2-27b");
     setText("#connection", active ? "接続中" : next.status === "starting" ? "起動中" : "停止中");
@@ -138,6 +159,163 @@ async function chooseBonsaiFolder() {
   const path = await window.localAI.selectBonsaiFolder();
   if (!path) return;
   $("#bonsaiDemoPath").value = path;
+}
+
+
+const MODEL_TASK_LABELS = {
+  "coverage-general": "一般監査",
+  "coverage-code": "コード監査",
+  "synthesis-reduction": "結果圧縮",
+  planner: "改善案",
+  reviewer: "最終レビュー",
+  director: "作業計画",
+  researcher: "調査",
+  auditor: "監査",
+  "improvement-planner": "改善案"
+};
+
+function formatBytes(value) {
+  const bytes = Number(value);
+  if (!Number.isFinite(bytes) || bytes <= 0) return "";
+  const gb = bytes / (1024 ** 3);
+  if (gb >= 1) return gb.toFixed(gb >= 10 ? 1 : 2) + " GB";
+  return (bytes / (1024 ** 2)).toFixed(0) + " MB";
+}
+
+function updateModelRoutingMetrics() {
+  const mode = state.settings?.modelRoutingMode || $("#modelRoutingMode")?.value || "auto";
+  setText("#routingMode", mode === "auto" ? "自動振り分け" : "1モデル固定");
+  setText("#currentRoutedModel", state.currentRoutedModel || (mode === "fixed" ? profileLabel(state.settings?.modelProfile, "fixed") : "待機中"));
+  setText("#currentModelTask", state.currentModelTask ? (MODEL_TASK_LABELS[state.currentModelTask] || state.currentModelTask) : "—");
+  const calls = Object.entries(state.modelUsageCounts)
+    .map(([label, count]) => label + " " + count + "回")
+    .join(" · ");
+  setText("#modelUsageMetric", calls || "—");
+  setText("#modelFallbackMetric", state.modelFallbacks + "回");
+}
+
+function createModelButton(label, className, handler, disabled = false) {
+  const button = document.createElement("button");
+  button.className = className;
+  button.textContent = label;
+  button.disabled = disabled;
+  button.addEventListener("click", handler);
+  return button;
+}
+
+function renderModelCatalog(snapshot) {
+  state.modelCatalogSnapshot = snapshot;
+  const list = $("#modelCatalog");
+  if (!list) return;
+  list.textContent = "";
+  setText("#modelProviderStatus", snapshot?.providerMessage || "モデル状態を確認できません。");
+
+  const models = Array.isArray(snapshot?.models) ? snapshot.models : [];
+  if (!models.length) {
+    const empty = document.createElement("p");
+    empty.className = "subtle";
+    empty.textContent = "モデル一覧を取得できませんでした。";
+    list.appendChild(empty);
+    return;
+  }
+
+  for (const model of models) {
+    const card = document.createElement("article");
+    card.className = "model-card";
+
+    const top = document.createElement("div");
+    top.className = "model-card-head";
+    const titleWrap = document.createElement("div");
+    const title = document.createElement("strong");
+    title.textContent = model.label;
+    const use = document.createElement("p");
+    use.className = "subtle";
+    use.textContent = model.useCase || "";
+    titleWrap.append(title, use);
+
+    const badges = document.createElement("div");
+    badges.className = "model-badges";
+    const routeBadge = document.createElement("span");
+    routeBadge.className = "badge";
+    routeBadge.textContent = model.autoRoute ? "自動候補" : "手動のみ";
+    badges.appendChild(routeBadge);
+    if (model.runtime === "lm-studio") {
+      const stateBadge = document.createElement("span");
+      stateBadge.className = "badge " + (model.loaded ? "completed" : model.installed ? "partial" : "");
+      stateBadge.textContent = model.loaded ? "読み込み中" : model.installed ? "導入済み" : model.installed === false ? "未導入" : "状態不明";
+      badges.appendChild(stateBadge);
+    } else {
+      const external = document.createElement("span");
+      external.className = "badge";
+      external.textContent = "専用Runtime";
+      badges.appendChild(external);
+    }
+    top.append(titleWrap, badges);
+
+    const meta = document.createElement("p");
+    meta.className = "model-meta";
+    const parts = [model.resourceNote, model.quantization, formatBytes(model.sizeBytes)].filter(Boolean);
+    meta.textContent = parts.join(" · ");
+
+    const actions = document.createElement("div");
+    actions.className = "model-actions";
+    const job = model.downloadJob;
+    if (job?.status === "downloading") {
+      const total = Number(job.total_size_bytes) || 0;
+      const done = Number(job.downloaded_bytes) || 0;
+      const percent = total > 0 ? Math.round((done / total) * 100) : null;
+      const progress = document.createElement("span");
+      progress.className = "mini-status";
+      progress.textContent = percent == null ? "ダウンロード中" : "ダウンロード中 " + percent + "%";
+      actions.appendChild(progress);
+    } else if (model.runtime === "lm-studio") {
+      if (model.loaded) {
+        actions.appendChild(createModelButton("解放", "ghost", async () => {
+          await modelAction(() => window.localAI.unloadModel(model.id));
+        }, state.running));
+      } else if (model.installed) {
+        actions.appendChild(createModelButton("読み込み", "ghost", async () => {
+          await modelAction(() => window.localAI.loadModel(model.id));
+        }, state.running));
+      } else {
+        actions.appendChild(createModelButton("ダウンロード", "primary", async () => {
+          await modelAction(() => window.localAI.downloadModel(model.id));
+        }, state.running || snapshot.providerAvailable === false));
+      }
+    } else {
+      const note = document.createElement("span");
+      note.className = "mini-status";
+      note.textContent = "Bonsaiの起動・停止から管理";
+      actions.appendChild(note);
+    }
+
+    card.append(top, meta, actions);
+    list.appendChild(card);
+  }
+}
+
+async function modelAction(action) {
+  try {
+    await action();
+    await refreshModels();
+  } catch (error) {
+    setText("#modelProviderStatus", friendlyError(error.message));
+  }
+}
+
+async function refreshModels() {
+  try {
+    renderModelCatalog(await window.localAI.listModels());
+  } catch (error) {
+    setText("#modelProviderStatus", friendlyError(error.message));
+  }
+}
+
+function startModelPolling() {
+  if (state.modelPollTimerId) clearInterval(state.modelPollTimerId);
+  state.modelPollTimerId = setInterval(() => {
+    if ($("#settings")?.classList.contains("active")) void refreshModels();
+  }, 5000);
 }
 
 function showView(name) {
@@ -285,6 +463,7 @@ function updateOperationalMetrics() {
   setText("#runHealth", health.text);
   $("#runHealth")?.setAttribute("data-state", health.state);
   updateSpeedMetrics();
+  updateModelRoutingMetrics();
 }
 
 async function refreshTelemetry() {
@@ -485,6 +664,10 @@ function resetRunMetrics() {
   state.processAlive = null;
   state.lastBatchDuration = null;
   state.tokenRates = [];
+  state.currentRoutedModel = "";
+  state.currentModelTask = "";
+  state.modelUsageCounts = {};
+  state.modelFallbacks = 0;
   setText("#batchMetric", "処理単位 —");
   setText("#tokenMetric", "使用トークン —");
   setText("#stage", "開始準備中");
@@ -585,6 +768,30 @@ function appendLog(payload) {
   if (!progress) {
     updateOperationalMetrics();
     updateLiveResult();
+    return;
+  }
+
+  if (progress.type === "model-route") {
+    state.currentRoutedModel = progress.label || progress.modelId || "不明";
+    state.currentModelTask = progress.taskType || "";
+    const label = state.currentRoutedModel;
+    state.modelUsageCounts[label] = (state.modelUsageCounts[label] || 0) + 1;
+    setText("#model", label);
+    updateModelRoutingMetrics();
+    updateLiveResult();
+    return;
+  }
+
+  if (progress.type === "model-fallback") {
+    state.modelFallbacks += 1;
+    state.currentModelTask = progress.taskType || state.currentModelTask;
+    updateModelRoutingMetrics();
+    return;
+  }
+
+  if (progress.type === "model-route-plan") {
+    state.currentModelTask = progress.taskType || "";
+    updateModelRoutingMetrics();
     return;
   }
 
@@ -720,7 +927,7 @@ async function run(command = state.selectedCommand, stateOverride = {}) {
     return;
   }
 
-  if (isBonsaiProfile() && ["doctor", "coverage", "coverage-synthesize"].includes(command)) {
+  if (!isAutoRouting() && isBonsaiProfile() && ["doctor", "coverage", "coverage-synthesize"].includes(command)) {
     const runtime = await window.localAI.getBonsaiStatus();
     applyBonsaiStatus(runtime);
     if (!["running", "external-running"].includes(runtime.status)) {
@@ -747,6 +954,8 @@ async function run(command = state.selectedCommand, stateOverride = {}) {
     goal: $("#goal").value,
     runId: $("#runId").value.trim(),
     modelProfile: state.settings.modelProfile,
+    modelRoutingMode: state.settings.modelRoutingMode || "auto",
+    autoManageModels: state.settings.autoManageModels !== false,
     resume: command === "coverage" ? state.resume : false,
     ...stateOverride
   };
@@ -1237,15 +1446,19 @@ async function init() {
   setText("#repoPath", state.repository || "未選択");
   $("#settingsRepo").value = state.repository;
   $("#settingsProfile").value = state.settings.modelProfile;
-  setText("#profile", profileLabel(state.settings.modelProfile));
+  $("#modelRoutingMode").value = state.settings.modelRoutingMode || "auto";
+  $("#autoManageModels").checked = state.settings.autoManageModels !== false;
+  setText("#profile", profileLabel(state.settings.modelProfile, state.settings.modelRoutingMode));
   $("#autoCheckUpdates").checked = state.settings.autoCheckUpdates !== false;
   $("#bonsaiDemoPath").value = state.settings.bonsaiDemoPath || "";
-  updateBonsaiVisibility();
+  updateRoutingSettingsUi();
   window.localAI.onLog(appendLog);
   window.localAI.onUpdateStatus(applyUpdateState);
   window.localAI.onBonsaiStatus(applyBonsaiStatus);
   applyUpdateState(await window.localAI.getUpdateState());
-  if (isBonsaiProfile()) await refreshBonsaiStatus();
+  if (isAutoRouting() || isBonsaiProfile()) await refreshBonsaiStatus();
+  await refreshModels();
+  startModelPolling();
   startTelemetryPolling();
   selectCommand("coverage");
   await loadHistory();
@@ -1261,7 +1474,9 @@ $("#bonsaiFolderButton").addEventListener("click", chooseBonsaiFolder);
 $("#startBonsai").addEventListener("click", startBonsaiRuntime);
 $("#stopBonsai").addEventListener("click", stopBonsaiRuntime);
 $("#refreshBonsai").addEventListener("click", refreshBonsaiStatus);
-$("#settingsProfile").addEventListener("change", () => updateBonsaiVisibility($("#settingsProfile").value));
+$("#settingsProfile").addEventListener("change", updateRoutingSettingsUi);
+$("#modelRoutingMode").addEventListener("change", updateRoutingSettingsUi);
+$("#refreshModels").addEventListener("click", refreshModels);
 $("#refresh").addEventListener("click", () => run("doctor"));
 $("#reloadHistory").addEventListener("click", loadHistory);
 $("#historyFilter").addEventListener("input", applyHistoryFilter);
@@ -1288,15 +1503,18 @@ $("#save").addEventListener("click", async () => {
     const next = await window.localAI.saveSettings({
       defaultRepository: selectedRepository,
       modelProfile: $("#settingsProfile").value,
+      modelRoutingMode: $("#modelRoutingMode").value,
+      autoManageModels: $("#autoManageModels").checked,
       autoCheckUpdates: $("#autoCheckUpdates").checked,
       bonsaiDemoPath: $("#bonsaiDemoPath").value
     });
     state.settings = next;
     state.repository = selectedRepository || state.repository;
     setText("#repoPath", state.repository || "未選択");
-    setText("#profile", profileLabel(next.modelProfile));
-    updateBonsaiVisibility(next.modelProfile);
-    if (isBonsaiProfile(next.modelProfile)) await refreshBonsaiStatus();
+    setText("#profile", profileLabel(next.modelProfile, next.modelRoutingMode));
+    updateRoutingSettingsUi();
+    if (next.modelRoutingMode === "auto" || isBonsaiProfile(next.modelProfile)) await refreshBonsaiStatus();
+    await refreshModels();
     setText("#saveMessage", "保存しました");
     setTimeout(() => setText("#saveMessage", ""), 1500);
   } catch (error) {
