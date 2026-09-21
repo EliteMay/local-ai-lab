@@ -550,7 +550,7 @@ function renderResultTab(tabName) {
 
   state.currentResultTab = tabName;
   view.textContent = "";
-  $("#resultTabs .result-tab").forEach((button) => {
+  $$("#resultTabs .result-tab").forEach((button) => {
     const active = button.dataset.resultTab === tabName;
     button.classList.toggle("active", active);
     button.setAttribute("aria-selected", active ? "true" : "false");
@@ -1553,7 +1553,7 @@ $("#settingsProfile").addEventListener("change", () => updateBonsaiVisibility($(
 $("#refresh").addEventListener("click", () => run("doctor"));
 $("#reloadHistory").addEventListener("click", loadHistory);
 $("#historyFilter").addEventListener("input", applyHistoryFilter);
-$("#resultTabs .result-tab").forEach((button) => {
+$$("#resultTabs .result-tab").forEach((button) => {
   button.addEventListener("click", () => renderResultTab(button.dataset.resultTab));
 });
 $("#cancel").addEventListener("click", cancelCurrentRun);
