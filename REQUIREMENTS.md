@@ -415,6 +415,14 @@ PowerShellで行っている日常操作を置き換え、長時間Local AI Run�
 - Update後もSettings / Run履歴 / Diagnosticsを維持する
 - 選択したLocal Git RepositoryをUser明示操作で安全にGitHub最新版へfast-forwardできる
 - Bonsai 2 27B利用時はPowerShellを別に開かず、DesktopからBonsai Runtimeを起動・状態確認・停止できる
+- 長時間処理の実行中だけOSのApp Suspendを防ぎ、画面自体のSleepは妨げない
+- 実行中にWindowを閉じる場合は処理中断を明示確認し、誤終了を防ぐ
+- Userが停止した処理はFailureと混同せず、手動停止として表示する
+- AppがForegroundでない場合は処理完了 / FailureをOS Notificationで知らせる
+- 同じUser Data / Run Storeへ複数Instanceが同時に触れないようSingle Instanceを基本とする
+- 履歴を実行ID / Folder / Goal等で検索でき、選択Runの保存Folderを安全に開ける
+- 「前回の対象フォルダを保存する」がOFFの場合、次回起動用SettingsへRepository Pathを保持しない
+- 長時間LogはMain / Renderer両方で上限を持ち、進捗行がStream Chunk境界で分割されても解析を失わない
 
 ### Distribution / Update Contract
 
