@@ -136,8 +136,10 @@ test("desktop exposes managed Bonsai runtime controls without arbitrary shell ac
   assert.match(preload, /getBonsaiStatus/);
   assert.match(html, /Bonsaiを起動/);
   assert.match(html, /Bonsaiを停止/);
-  assert.match(html, /アプリ起動時にBonsaiも起動する/);
   assert.match(renderer, /Bonsaiが停止中です/);
+  assert.doesNotMatch(main, /scheduleAutoStart|autoStartBonsai/);
+  assert.doesNotMatch(renderer, /autoStartBonsai/);
+  assert.doesNotMatch(html, /アプリ起動時にBonsaiも起動する/);
   assert.match(runtime, /start_llama_server\.ps1/);
   assert.match(runtime, /powershell\.exe/);
   assert.match(runtime, /shell:\s*false/);
