@@ -215,13 +215,13 @@ function parseProgress(line) {
   const coverage = line.match(/coverage=(\d+(?:\.\d+)?)%/i);
   if (coverage) return { type: "coverage", percent: Number(coverage[1]) };
 
-  if (/\[Synthesis\]\s+START/.test(line)) return { type: "stage", stage: "Synthesis準備" };
-  if (/\[Synthesis\]\s+Planner START/.test(line)) return { type: "stage", stage: "Planner実行中" };
-  if (/\[Synthesis\]\s+Planner DONE/.test(line)) return { type: "stage", stage: "Planner完了" };
-  if (/\[Synthesis\]\s+Reviewer START/.test(line)) return { type: "stage", stage: "Reviewer実行中" };
-  if (/\[Synthesis\]\s+Reviewer DONE/.test(line)) return { type: "stage", stage: "Reviewer完了" };
-  if (/\[Synthesis\]\s+Run COMPLETED/.test(line)) return { type: "stage", stage: "Synthesis完了" };
-  if (/\[Coverage\]\s+Run PARTIAL/.test(line)) return { type: "stage", stage: "Coverage完了 / Synthesis要再開" };
+  if (/\[Synthesis\]\s+START/.test(line)) return { type: "stage", stage: "結果の統合を準備中" };
+  if (/\[Synthesis\]\s+Planner START/.test(line)) return { type: "stage", stage: "改善案を作成中" };
+  if (/\[Synthesis\]\s+Planner DONE/.test(line)) return { type: "stage", stage: "改善案の作成完了" };
+  if (/\[Synthesis\]\s+Reviewer START/.test(line)) return { type: "stage", stage: "レビュー中" };
+  if (/\[Synthesis\]\s+Reviewer DONE/.test(line)) return { type: "stage", stage: "レビュー完了" };
+  if (/\[Synthesis\]\s+Run COMPLETED/.test(line)) return { type: "stage", stage: "結果の統合完了" };
+  if (/\[Coverage\]\s+Run PARTIAL/.test(line)) return { type: "stage", stage: "監査完了 / 結果の統合を再開可能" };
   if (/\[Coverage\]\s+Run COMPLETED/.test(line)) return { type: "stage", stage: "監査完了" };
   return null;
 }
