@@ -1,0 +1,130 @@
+{
+  "schemaVersion": 1,
+  "models": [
+    {
+      "id": "qwen3-8b",
+      "label": "Qwen3 8B",
+      "runtime": "lm-studio",
+      "autoRoute": true,
+      "useCase": "大量監査・要約・一般処理",
+      "resourceNote": "8GB GPU向けの標準モデル",
+      "matchTerms": ["qwen3-8b", "qwen/qwen3-8b"],
+      "download": {
+        "model": "https://huggingface.co/lmstudio-community/Qwen3-8B-GGUF",
+        "quantization": "Q4_K_M"
+      },
+      "load": {
+        "context_length": 16384,
+        "flash_attention": true,
+        "offload_kv_cache_to_gpu": false
+      }
+    },
+    {
+      "id": "qwen2.5-coder-7b",
+      "label": "Qwen2.5 Coder 7B",
+      "runtime": "lm-studio",
+      "autoRoute": true,
+      "useCase": "コード解析・実装監査",
+      "resourceNote": "8GB GPUで使いやすいコード特化モデル",
+      "matchTerms": ["qwen2.5-coder-7b", "qwen2.5-coder-7b-instruct"],
+      "download": {
+        "model": "https://huggingface.co/lmstudio-community/Qwen2.5-Coder-7B-Instruct-GGUF",
+        "quantization": "Q4_K_M"
+      },
+      "load": {
+        "context_length": 16384,
+        "flash_attention": true,
+        "offload_kv_cache_to_gpu": false
+      }
+    },
+    {
+      "id": "phi-4-mini-reasoning",
+      "label": "Phi-4 Mini Reasoning",
+      "runtime": "lm-studio",
+      "autoRoute": true,
+      "useCase": "推論・改善案・難しい判断",
+      "resourceNote": "軽量な推論担当",
+      "matchTerms": ["phi-4-mini-reasoning"],
+      "download": {
+        "model": "https://huggingface.co/lmstudio-community/Phi-4-mini-reasoning-GGUF",
+        "quantization": "Q4_K_M"
+      },
+      "load": {
+        "context_length": 16384,
+        "flash_attention": true,
+        "offload_kv_cache_to_gpu": false
+      }
+    },
+    {
+      "id": "bonsai-2-27b",
+      "label": "Bonsai 2 27B",
+      "runtime": "prism-llama.cpp",
+      "autoRoute": true,
+      "useCase": "高難度レビュー・最終確認",
+      "resourceNote": "重い上位モデル。起動・停止は手動",
+      "matchTerms": ["bonsai-2-27b"],
+      "connection": {
+        "baseUrl": "http://127.0.0.1:8080/v1",
+        "model": "bonsai-2-27b",
+        "providerName": "PrismML llama.cpp",
+        "transport": "node-http",
+        "timeoutMs": 900000,
+        "maxTokens": 4096,
+        "temperature": 1,
+        "structuredOutputStyle": "llama-cpp-json-schema",
+        "nativeModelDetailsPath": null
+      }
+    },
+    {
+      "id": "gemma-3-4b-it",
+      "label": "Gemma 3 4B",
+      "runtime": "lm-studio",
+      "autoRoute": false,
+      "useCase": "画像・UI理解（将来ルート用）",
+      "resourceNote": "モデル管理には対応。現在の監査Pipelineは画像入力未対応",
+      "matchTerms": ["gemma-3-4b-it", "gemma-3-4b"],
+      "download": {
+        "model": "https://huggingface.co/lmstudio-community/gemma-3-4b-it-GGUF",
+        "quantization": "Q4_K_M"
+      },
+      "load": {
+        "context_length": 16384,
+        "flash_attention": true,
+        "offload_kv_cache_to_gpu": false
+      }
+    },
+    {
+      "id": "gpt-oss-20b",
+      "label": "gpt-oss-20b",
+      "runtime": "lm-studio",
+      "autoRoute": false,
+      "useCase": "高度な推論・Agent / Tool利用",
+      "resourceNote": "約16GBメモリ級。現在は任意の重いモデル",
+      "matchTerms": ["gpt-oss-20b"],
+      "download": { "model": "openai/gpt-oss-20b" },
+      "load": {
+        "context_length": 16384,
+        "flash_attention": true,
+        "offload_kv_cache_to_gpu": false
+      }
+    },
+    {
+      "id": "qwen3-coder-30b-a3b",
+      "label": "Qwen3 Coder 30B-A3B",
+      "runtime": "lm-studio",
+      "autoRoute": false,
+      "useCase": "高度なCoding / Agentic Coding",
+      "resourceNote": "Q3でも約15GB級。8GB GPUではRAM/CPU Offload前提",
+      "matchTerms": ["qwen3-coder-30b-a3b"],
+      "download": {
+        "model": "https://huggingface.co/lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-GGUF",
+        "quantization": "Q3_K_M"
+      },
+      "load": {
+        "context_length": 16384,
+        "flash_attention": true,
+        "offload_kv_cache_to_gpu": false
+      }
+    }
+  ]
+}
