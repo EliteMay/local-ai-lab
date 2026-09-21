@@ -101,36 +101,77 @@ function diagnosticsPath() {
   return join(app.getPath("userData"), "diagnostics.json");
 }
 
+function isUsableRepositoryPath(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return false;
+  try {
+    const target = resolve(raw);
+    return existsSync(target) && statSync(target).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+async function findLastRepositoryFromHistory() {
+  try {
+    const items = await listHistory();
+    for (const item of items) {
+      if (isUsableRepositoryPath(item.repoPath)) return resolve(item.repoPath);
+    }
+  } catch {}
+  return "";
+}
+
+async function writeSettings(next) {
+  await mkdir(dirname(settingsPath()), { recursive: true });
+  await writeFile(settingsPath(), JSON.stringify(next, null, 2) + "\n", "utf8");
+}
+
 async function readSettings() {
   const defaults = {
     defaultRepository: app.isPackaged ? "" : projectRoot,
     modelProfile: "default",
-    rememberRepository: true,
     autoCheckUpdates: true,
     bonsaiDemoPath: existsSync("D:\\AI\\Bonsai-demo") ? "D:\\AI\\Bonsai-demo" : ""
   };
+
+  let parsed = {};
   try {
-    const parsed = JSON.parse(await readFile(settingsPath(), "utf8"));
-    const merged = { ...defaults, ...parsed };
-    if (merged.rememberRepository === false) merged.defaultRepository = "";
-    return merged;
-  } catch {
-    return defaults;
+    parsed = JSON.parse(await readFile(settingsPath(), "utf8"));
+  } catch {}
+
+  const { rememberRepository: _legacyRememberRepository, ...current } = parsed || {};
+  const merged = { ...defaults, ...current };
+  let recoveredFromHistory = false;
+
+  if (!isUsableRepositoryPath(merged.defaultRepository)) {
+    const recovered = await findLastRepositoryFromHistory();
+    if (recovered) {
+      merged.defaultRepository = recovered;
+      recoveredFromHistory = true;
+    } else if (app.isPackaged) {
+      merged.defaultRepository = "";
+    }
+  } else {
+    merged.defaultRepository = resolve(merged.defaultRepository);
   }
+
+  if (_legacyRememberRepository !== undefined || recoveredFromHistory) {
+    try { await writeSettings(merged); } catch {}
+  }
+
+  return merged;
 }
 
 async function saveSettings(input) {
   const requestedRepository = String(input?.defaultRepository || "").trim();
-  const rememberRepository = input?.rememberRepository !== false;
   const next = {
-    defaultRepository: rememberRepository && requestedRepository ? validateRepository(requestedRepository) : "",
+    defaultRepository: requestedRepository ? validateRepository(requestedRepository) : "",
     modelProfile: safeProfile(input?.modelProfile),
-    rememberRepository,
     autoCheckUpdates: input?.autoCheckUpdates !== false,
     bonsaiDemoPath: String(input?.bonsaiDemoPath || "").trim()
   };
-  await mkdir(dirname(settingsPath()), { recursive: true });
-  await writeFile(settingsPath(), JSON.stringify(next, null, 2) + "\n", "utf8");
+  await writeSettings(next);
   await appendDiagnostic({ type: "settings.saved", profile: next.modelProfile });
   return next;
 }
