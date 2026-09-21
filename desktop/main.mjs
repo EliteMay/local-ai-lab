@@ -381,6 +381,24 @@ async function persistRunConsoleLog(text) {
   await atomicWriteText(join(directory, "desktop-log.txt"), String(text || ""));
 }
 
+async function markRunInterruptedFromOutput(text, reason = "user-cancelled") {
+  const runId = runIdFromOutput(text);
+  if (!runId) return null;
+  const id = safeRunId(runId);
+  const runPath = join(runsRoot(), id, "run.json");
+  const run = await readOptionalJsonFile(runPath, null);
+  if (!run || run.status !== "RUNNING") return id;
+
+  await atomicWriteJson(runPath, {
+    ...run,
+    status: "INTERRUPTED",
+    interruptedAt: new Date().toISOString(),
+    interruptionReason: reason
+  });
+  await appendDiagnostic({ type: "run.interrupted", runId: id, reason });
+  return id;
+}
+
 function parseProgress(line) {
   const run = line.match(/(?:Coverage\] Run|Coverage run:|Synthesis run:|Stored run:)\s+(run-[\w.-]+)/);
   if (run) return { type: "run-id", runId: run[1] };
@@ -531,6 +549,12 @@ async function runCommand(input) {
           outputTruncated,
           elapsedMs: Date.now() - startedAt
         };
+        try {
+          await persistRunConsoleLog(result.output);
+          await markRunInterruptedFromOutput(result.output, "user-cancelled");
+        } catch (error) {
+          await appendDiagnostic({ type: "run.cancel.persist.error", error: compactError(error) });
+        }
         await appendDiagnostic({
           type: "command.cancelled",
           command: spec.command,
@@ -586,6 +610,11 @@ async function runCommand(input) {
       }
 
       if (cancelled) {
+        try {
+          await markRunInterruptedFromOutput(resultOutput, "user-cancelled");
+        } catch (error) {
+          await appendDiagnostic({ type: "run.cancel.persist.error", error: compactError(error) });
+        }
         await appendDiagnostic({
           type: "command.cancelled",
           command: spec.command,
