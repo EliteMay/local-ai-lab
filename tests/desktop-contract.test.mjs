@@ -208,13 +208,20 @@ test("desktop notifies when a background command completes or fails", async () =
 });
 
 
-test("desktop repository persistence preference actually controls startup restore", async () => {
+test("desktop always restores the last repository without asking every launch", async () => {
   const main = await readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8");
   const renderer = await readFile(new URL("../desktop/renderer/renderer.mjs", import.meta.url), "utf8");
+  const html = await readFile(new URL("../desktop/renderer/index.html", import.meta.url), "utf8");
 
-  assert.match(main, /if \(merged\.rememberRepository === false\) merged\.defaultRepository = ""/);
-  assert.match(main, /rememberRepository && requestedRepository/);
-  assert.match(renderer, /state\.repository = selectedRepository \|\| state\.repository/);
+  assert.match(main, /findLastRepositoryFromHistory/);
+  assert.match(main, /isUsableRepositoryPath/);
+  assert.match(main, /defaultRepository: requestedRepository \? validateRepository\(requestedRepository\) : ""/);
+  assert.match(main, /rememberRepository: _legacyRememberRepository/);
+  assert.match(renderer, /state\.settings\.defaultRepository = path/);
+  assert.match(renderer, /state\.settings = await window\.localAI\.saveSettings\(state\.settings\)/);
+  assert.doesNotMatch(renderer, /#rememberRepo/);
+  assert.doesNotMatch(html, /id="rememberRepo"/);
+  assert.doesNotMatch(html, /前回の対象フォルダを保存する/);
 });
 
 test("desktop renderer bounds visible log rows during long runs", async () => {
