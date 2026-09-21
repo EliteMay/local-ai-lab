@@ -348,7 +348,7 @@ function commandStatus() {
     command: activeProcessCommand,
     startedAt: activeProcessStartedAt,
     lastOutputAt: activeProcessLastOutputAt,
-    processAlive: Boolean(activeProcess && !activeProcess.killed)
+    processAlive: Boolean(activeProcess && activeProcess.exitCode == null)
   };
 }
 
