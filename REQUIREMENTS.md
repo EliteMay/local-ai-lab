@@ -218,9 +218,9 @@ Desktop v0.3 / CLIの `auto` 運用では、Task種別・Role・RepositoryのCod
 - 一般監査 / 大量処理: Qwen3-8B
 - Code-heavy Coverage / Auditor: Qwen2.5 Coder 7Bを優先
 - Synthesis reduction: Qwen3-8Bを優先
-- Improvement Planner: Phi-4 Mini Reasoningを優先
+- Improvement Planner: Ministral 3 8B Reasoningを優先し、Phi-4 Mini Reasoningを軽量Fallbackにする
 - Reviewer: 起動済みBonsai 2 27Bを優先し、利用不可ならPhi-4 Mini Reasoning / Qwen3-8Bへ限定Fallback
-- Gemma 3 4B、gpt-oss-20b、Qwen3 Coder 30B-A3BはCatalog管理対象だがDefault Auto Routeへは入れない
+- Gemma 3 4B、Qwen3-VL 4B、gpt-oss-20b、Qwen3 Coder 30B-A3BはCatalog管理対象だがDefault Auto Routeへは入れない
 
 同一Taskで最初に成功したModelをRun内Pinとして保存し、Resume時も同じPinを要求する。途中で別ModelへSilent切替しない。
 
