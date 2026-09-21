@@ -1,4 +1,4 @@
-# Local AI Lab Desktop v0.2
+# Local AI Lab Desktop v0.3
 
 Local AI Labの監査・再統合・検証Runを、Windows向けElectron GUIから開始・監視・再開するDesktop Controllerです。
 
@@ -32,6 +32,19 @@ Windows用 multi-size icon.ico
 Windows packageとTitlebarは `desktop/assets/generated/icon.ico`、非Windows Window用には生成済み `icon.png` を使用します。生成物はGit管理せず、Desktop起動前とWindows Build前に毎回生成します。
 
 Windows配布では、コード署名を無効のままにしつつ `signAndEditExecutable: true` で実行ファイルのResource編集を有効にします。
+
+## 用途別モデル運用
+
+設定の「モデル運用」は次の2方式です。
+
+- **自動振り分け**: Task種別に応じてCatalog内のModelをNode.js側の固定Ruleで選ぶ
+- **1モデル固定**: 従来のQwen3-8B / Bonsai Profileを固定利用する
+
+自動振り分けでは、Code比率が高いRepositoryのCoverageにQwen2.5 Coder 7B、一般CoverageにQwen3 8B、改善案にPhi-4 Mini Reasoning、最終Reviewに起動済みBonsai 2 27Bを優先します。候補が未導入・停止・失敗なら次候補へ限定Fallbackします。
+
+設定画面の「用途別モデル」ではLM StudioのNative REST APIを使い、Repository管理のModel CatalogからのみDownload / Load / Unloadできます。Download中は進捗を表示します。長時間Run中はModel管理操作を開始できません。
+
+Run中は現在のTask / Model / Call回数 / Fallback回数を表示し、完了後は `model-usage.json` にModel別のCall数・成功・失敗・Token・所要時間を保存します。
 
 ## 配布
 
