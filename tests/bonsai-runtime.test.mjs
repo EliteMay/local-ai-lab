@@ -16,7 +16,7 @@ test("Bonsai start spec uses the fixed supported launch contract", () => {
   assert.ok(spec.args.includes("-ExecutionPolicy"));
   assert.ok(spec.args.includes("Bypass"));
   assert.ok(spec.args.some((value) => value.endsWith("start_llama_server.ps1")));
-  assert.deepEqual(spec.args.slice(-7), [
+  assert.deepEqual(spec.args.slice(-6), [
     "--alias",
     "bonsai-2-27b",
     "--parallel",
