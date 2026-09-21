@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld("localAI", {
   cancelCommand: () => ipcRenderer.invoke("command:cancel"),
   listHistory: () => ipcRenderer.invoke("history:list"),
   readRunResult: (id) => ipcRenderer.invoke("history:result", id),
+  listDiagnostics: () => ipcRenderer.invoke("diagnostics:list"),
+  clearDiagnostics: () => ipcRenderer.invoke("diagnostics:clear"),
   copyText: (text) => ipcRenderer.invoke("clipboard:write", text),
   onLog: (callback) => {
     const handler = (_event, payload) => callback(payload);
