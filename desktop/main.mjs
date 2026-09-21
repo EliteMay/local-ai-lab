@@ -183,7 +183,8 @@ async function readSettings() {
   return merged;
 }
 
-async function saveSettings(input) {\n  if (activeProcess) throw new Error("処理実行中は設定を変更できません。完了または停止してから保存してください。");
+async function saveSettings(input) {
+  if (activeProcess) throw new Error("処理実行中は設定を変更できません。完了または停止してから保存してください。");
   const requestedRepository = String(input?.defaultRepository || "").trim();
   const next = {
     defaultRepository: requestedRepository ? validateRepository(requestedRepository) : "",
