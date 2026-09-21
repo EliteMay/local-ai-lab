@@ -8,7 +8,7 @@ async function read(path) {
 
 test("desktop distribution uses NSIS GitHub Releases auto update", async () => {
   const pkg = JSON.parse(await read("../package.json"));
-  assert.equal(pkg.version, "0.2.8");
+  assert.equal(pkg.version, "0.2.9");
   assert.equal(pkg.main, "desktop/main.mjs");
   assert.equal(pkg.dependencies?.["electron-updater"], "6.8.9");
   assert.equal(pkg.devDependencies?.["electron-builder"], "26.15.3");
@@ -30,7 +30,9 @@ test("auto updater has fixed release provider and one-click install flow", async
     "autoUpdater.autoDownload = false",
     "autoUpdater.checkForUpdates()",
     "autoUpdater.downloadUpdate()",
+    "downloadedInstallerPath",
     "autoUpdater.quitAndInstall(false, true)",
+    "shell.openPath(downloadedInstallerPath)",
     "app.isPackaged",
     "update:check",
     "update:install",
@@ -95,6 +97,8 @@ test("renderer exposes app update controls and startup update preference", async
   assert.match(preload, /onUpdateStatus/);
   assert.match(renderer, /applyUpdateState/);
   assert.match(renderer, /autoCheckUpdates/);
+  assert.match(renderer, /ダウンロード中/);
+  assert.match(renderer, /再起動して更新/);
 });
 
 
@@ -104,7 +108,7 @@ test("desktop builds a dedicated multi-size Local AI Lab icon", async () => {
   const source = await read("../desktop/assets/icon.svg");
   const generator = await read("../scripts/generate-app-icon.mjs");
 
-  assert.equal(pkg.version, "0.2.8");
+  assert.equal(pkg.version, "0.2.9");
   assert.equal(pkg.build?.win?.icon, "desktop/assets/generated/icon.ico");
   assert.equal(pkg.build?.win?.signAndEditExecutable, true);
   assert.equal(pkg.build?.win?.signExecutable, false);
