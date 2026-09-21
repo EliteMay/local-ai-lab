@@ -56,6 +56,9 @@ export class ModelRouter {
 
   async #clientForEntry(entry) {
     if (entry.runtime === "prism-llama.cpp") {
+      if (this.autoManageModels) {
+        try { await this.manager.unloadManaged(); } catch {}
+      }
       return new LMStudioClient(entry.connection);
     }
     if (entry.runtime !== "lm-studio") {
@@ -91,6 +94,14 @@ export class ModelRouter {
         const entry = candidates[index];
         const startedAt = Date.now();
         try {
+          router.onRoute({
+            type: "model_prepare",
+            taskType,
+            modelId: entry.id,
+            label: entry.label,
+            runtime: entry.runtime,
+            fallbackIndex: index
+          });
           const client = await router.#clientForEntry(entry);
           router.onRoute({
             type: "model_route",
