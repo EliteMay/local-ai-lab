@@ -210,3 +210,24 @@
 - Recovery: 旧v0.2.7自体のUpdaterが動かない環境では、v0.2.9 Setup.exeを配布ページから1回上書きInstallする。
 - Regression Guard: Distribution Contract Testで段階State、Downloaded Installer Path、quitAndInstall、fixed-path fallback、Renderer labelを確認する。
 - Prevention: 「新版を検出できた」をAuto Update E2E成功と見なさず、Download / Restart / New Version起動を別々に検証する。
+
+
+## 2026-09-21: Local multi-model routingはAI判断ではなく決定的Controllerで行う
+
+### 背景
+
+1つのModelをCoverage / Planner / Reviewerへ共通利用すると、軽い大量処理へ重いModelを使うか、難しいReviewへ軽いModelを使うかのTrade-offが発生する。
+
+### 採用した形
+
+- Task種別とRepositoryのCode比率をNode.js側で判定する
+- Model候補順はVersion管理されたCatalog / Routing Configを正本にする
+- Model未導入・Runtime停止・Request Failureでは次候補へBounded Fallbackする
+- LM Studioの自動Load / UnloadはCatalog管理Modelだけに限定する
+- BonsaiのProcess LifecycleはUser明示操作のままにする
+- Heavy ModelやVision Modelは「導入できる」と「現在のPipelineが自動利用できる」を分けて表示する
+- Model別利用統計をRun Evidenceへ残し、将来のRouting改善を実測で判断できるようにする
+
+### 再利用する判断
+
+複数Modelを使う場合も、Model自身へRouting権限を渡さない。Capability / Resource / Task ContractをDeterministic Controller側で管理し、FallbackとEvidenceを追跡できる構造を優先する。
