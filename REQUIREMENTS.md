@@ -410,6 +410,7 @@ PowerShellで行っている日常操作を置き換え、長時間Local AI Run�
 - Runtime未起動など主要FailureをUser向けに理解できるMessageで示す
 - 開発診断はElectron userDataへ上限付きで保存し、Prompt本文やFile本文は保存しない
 - Setup.exeからInstallでき、Desktop / Start Menuから起動できる
+- Windowsのタスクバー / デスクトップショートカット / Start Menuで他Electron Appと見分けられるLocal AI Lab専用Iconを使用する
 - v0.2.0以降はGitHub Releasesを使ったアプリ内One-click Updateを利用できる
 - Update後もSettings / Run履歴 / Diagnosticsを維持する
 - 選択したLocal Git RepositoryをUser明示操作で安全にGitHub最新版へfast-forwardできる
