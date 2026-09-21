@@ -25,4 +25,4 @@ jobs:
       - name: Syntax check
         shell: bash
         run: |
-          find src tests -type f -name '*.mjs' -print0 | xargs -0 -n1 node --check
+          find src tests desktop -type f \( -name '*.mjs' -o -name '*.cjs' \) -print0 | xargs -0 -n1 node --check
