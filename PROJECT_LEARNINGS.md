@@ -116,3 +116,15 @@
 - Asset: `desktop/assets/icon.svg` を編集用Source、`desktop/assets/icon.png` を配布用Rasterとして使用する。
 - Regression Guard: Distribution testでVersion / Windows icon path / BrowserWindow icon / AppUserModelId / Binary Asset existenceを確認する。
 - Prevention: Desktop AppをSetup.exe配布する段階で、Default framework iconのままReleaseしない。
+
+
+## PL-010 — signAndEditExecutable=false はWindows Icon埋め込みも止める
+
+- Date: 2026-09-21
+- Type: Failure / Distribution
+- Status: Resolved
+- Symptom: v0.2.3でcustom PNGを設定しWindows buildも成功したが、実機のTitlebar IconがElectron既定Iconのままだった。
+- Root Cause: `win.signAndEditExecutable=false` により、Code SigningだけでなくWindows executable resource編集も無効化していた。electron-builder v26ではこのresource編集がApp Icon埋め込みも担当する。
+- Final Fix: `signAndEditExecutable=true` に戻し、`signExecutable=false` で署名だけを明示的に無効化する。
+- Regression Guard: Distribution testで両設定を固定し、Windows CIでpackaged exeからAssociated Iconを抽出できることを確認する。
+- Prevention: Windowsで未署名buildを作る場合、Signing無効化とResource Editing無効化を同一設定として扱わない。
