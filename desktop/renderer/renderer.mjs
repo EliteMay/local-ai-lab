@@ -1,5 +1,6 @@
 const MAX_RENDER_LOG_LINES = 800;
-const TELEMETRY_INTERVAL_MS = 5000;
+const TELEMETRY_ACTIVE_INTERVAL_MS = 5000;
+const TELEMETRY_IDLE_INTERVAL_MS = 45000;
 const RESPONSE_WAIT_SECONDS = 15;
 const LONG_WAIT_SECONDS = 600;
 
@@ -304,10 +305,21 @@ async function refreshTelemetry() {
   updateLiveResult();
 }
 
+async function telemetryTick() {
+  await refreshTelemetry();
+  const delay = state.running ? TELEMETRY_ACTIVE_INTERVAL_MS : TELEMETRY_IDLE_INTERVAL_MS;
+  state.telemetryTimerId = setTimeout(() => void telemetryTick(), delay);
+}
+
 function startTelemetryPolling() {
-  if (state.telemetryTimerId) clearInterval(state.telemetryTimerId);
-  void refreshTelemetry();
-  state.telemetryTimerId = setInterval(() => void refreshTelemetry(), TELEMETRY_INTERVAL_MS);
+  if (state.telemetryTimerId) clearTimeout(state.telemetryTimerId);
+  state.telemetryTimerId = null;
+  void telemetryTick();
+}
+
+function restartTelemetryPolling() {
+  if (state.telemetryTimerId) clearTimeout(state.telemetryTimerId);
+  state.telemetryTimerId = setTimeout(() => void telemetryTick(), 0);
 }
 
 function clearRunOverview() {
@@ -548,6 +560,7 @@ function setRunning(value, title) {
   if (!value) state.processAlive = false;
   if (title) setText("#runTitle", title);
   updateOperationalMetrics();
+  restartTelemetryPolling();
 }
 
 function ensureRunOption(runId, label = runId) {
