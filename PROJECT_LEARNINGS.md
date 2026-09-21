@@ -140,3 +140,33 @@
 - Final Fix: Iconを「濃紺Tile + 太い青いL + シアンDot」へ単純化し、16/24/32/48/64/128/256pxを含むICOをBuild前に生成する。
 - Regression Guard: Windows CIでICO directory entriesを解析し、必要な各Sizeが存在することを確認する。
 - Prevention: App IconはSourceの高解像度Previewだけで完成判定せず、16px / 24px / 32pxを最低限確認する。
+
+
+## PL-012 — 長時間Local AI Runは通常のDesktop Commandとして扱わない
+
+- Date: 2026-09-21
+- Type: Reliability / UX
+- Status: Adopted
+- Problem: Coverage Auditは数分〜数十分続くため、通常の短いDesktop操作と同じLifecycleではSleep、誤終了、完了見逃しがRun Reliabilityへ直結する。
+- Decision: Active Command中だけ `prevent-app-suspension` を使用し、Window Close時は明示確認、Background完了時はNotification、User StopはFailureと分離する。
+- Boundary: Display Sleepは止めない。Bonsai RuntimeはUserの手動Start / Stop Contractを維持し、Desktop終了時に自動停止しない。
+- Regression Guard: Desktop Contract TestでPower Blocker / Close Guard / Cancellation / Notificationを確認する。
+
+## PL-013 — Stream OutputはChunk境界とMemory上限を前提にする
+
+- Date: 2026-09-21
+- Type: Reliability
+- Status: Adopted
+- Problem: Child Processのstdout/stderrは1行単位ではなく任意Chunkで届くため、ChunkごとにsplitするとCoverage Progress行を途中で分断して解析を取りこぼす。またOutputとRenderer Logを無制限に保持すると長時間RunでMemory使用量が増え続ける。
+- Decision: Channelごとに未完LineをBufferし、改行まで揃えてProgress解析する。MainのCommand OutputとRendererの表示Logには上限を設ける。
+- Regression Guard: Contract Testでpending line buffer / output truncation / Renderer row limitを固定する。
+
+## PL-014 — 「保存しない」設定はPathを実際に永続化しない
+
+- Date: 2026-09-21
+- Type: Privacy / UX
+- Status: Resolved
+- Symptom: 「前回の対象フォルダを保存する」をOFFにしても `defaultRepository` がsettings.jsonへ残っていた。
+- Root Cause: Checkboxは自動保存動作だけを制御し、settings serialization自体には反映していなかった。
+- Final Fix: OFF時はPersisted `defaultRepository` を空にし、現在Sessionの選択FolderだけRenderer Stateで維持する。
+- Regression Guard: Desktop Contract TestでRead / Save両方のPersistence条件を確認する。
