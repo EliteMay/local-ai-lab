@@ -125,11 +125,31 @@ npm run desktop
 
 ## Bonsai 2 27B
 
-Bonsai Profileを使う場合、PrismML llama.cpp Serverは別Processとして起動しておく必要があります。
+Bonsai 2 27BはDesktopから起動・状態確認・停止できます。
 
-Desktop側で `ECONNREFUSED 127.0.0.1:8080` を検出した場合、Bonsai Runtimeが起動していないことをUser向けMessageとして表示します。
+初回だけ設定画面で `Bonsai-demo` Folderを指定します。User PCで既定の `D:\AI\Bonsai-demo` が存在する場合は自動候補として使います。
 
-Desktop v0.2はRuntimeのStart / Stop自動化、Model download、Load / Unloadまでは行いません。
+Desktopが実行する起動条件:
+
+```text
+BONSAI_CTX=16384
+BONSAI_MMPROJ_CPU=1
+BONSAI_SPECULATIVE=0
+BONSAI_KV4=0
+
+start_llama_server.ps1
+  --alias bonsai-2-27b
+  --parallel 1
+  --reasoning-budget 1024
+```
+
+- 「Bonsaiを起動」でPowerShell Windowを表示せずBackground起動する
+- 起動・停止はUserがButtonを押した場合だけ行い、Desktopの起動・終了では自動実行しない
+- 「Bonsaiを停止」はDesktop自身が起動したProcessだけを対象にする
+- 別PowerShellで起動済みなら「外部で起動中」と表示し、DesktopからKillしない
+- Bonsai停止中の監査は開始前に止め、起動が必要であることを日本語で案内する
+
+BonsaiのModel download、`setup.ps1`、PrismML Binary setupは自動化しません。すでにSetup済みのBonsai-demoをDesktopから管理する機能です。
 
 ## Security Boundary
 

@@ -134,7 +134,7 @@ Bonsai 2 27Bは低速なローカル推論で1リクエストが5分を超える
 
 Bonsai 2 27BはStructured Outputが既定Role上限より長くなる場合があるため、このProfileではSynthesisのPlannerを2400 tokens、Reviewerを2800 tokensまで許可します。Coverageが100%完了した後にSynthesisだけ失敗した場合は、保存済みEvidenceを使って `npm run coverage-synthesize -- --model-profile bonsai-2-27b --run-id "<run-id>"` で再開でき、Repositoryの再監査は行いません。
 
-このProfileはModel downloadやServer起動を自動化しません。Runtimeを明示的に分離し、Qwen3-8Bへ戻す場合はProfile指定を外すだけにしています。
+CLI利用時は従来どおりBonsai Serverを別途起動できます。Desktop v0.2.2以降では、Setup済みの `Bonsai-demo` Folderを設定すると「Bonsaiを起動 / 停止」からServer Processを管理できます。Model downloadや `setup.ps1` 自体は自動化しません。
 
 ## 現在の実装
 
@@ -259,6 +259,7 @@ https://github.com/EliteMay/local-ai-lab/releases/latest
 主な機能:
 
 - Runtime / Model Profile状態の確認
+- Bonsai 2 27B Runtimeの手動起動 / 状態確認 / 手動停止
 - Repository選択
 - Doctor / Inspect / Coverage / Synthesize / Tests
 - Coverage進捗、経過時間、Token使用量

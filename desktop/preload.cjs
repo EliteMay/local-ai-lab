@@ -5,6 +5,15 @@ contextBridge.exposeInMainWorld("localAI", {
   saveSettings: (input) => ipcRenderer.invoke("settings:save", input),
   selectRepository: () => ipcRenderer.invoke("repository:select"),
   updateRepository: (repoPath) => ipcRenderer.invoke("repository:update", repoPath),
+  selectBonsaiFolder: () => ipcRenderer.invoke("runtime:bonsai-select-folder"),
+  getBonsaiStatus: () => ipcRenderer.invoke("runtime:bonsai-status"),
+  startBonsai: () => ipcRenderer.invoke("runtime:bonsai-start"),
+  stopBonsai: () => ipcRenderer.invoke("runtime:bonsai-stop"),
+  onBonsaiStatus: (callback) => {
+    const handler = (_event, payload) => callback(payload);
+    ipcRenderer.on("runtime:bonsai-status", handler);
+    return () => ipcRenderer.removeListener("runtime:bonsai-status", handler);
+  },
   runCommand: (input) => ipcRenderer.invoke("command:run", input),
   cancelCommand: () => ipcRenderer.invoke("command:cancel"),
   listHistory: () => ipcRenderer.invoke("history:list"),

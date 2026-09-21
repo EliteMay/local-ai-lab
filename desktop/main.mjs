@@ -5,6 +5,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawn } from "node:child_process";
 import { createUpdaterController } from "./updater.mjs";
+import { createBonsaiRuntimeController } from "./bonsai-runtime.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(__dirname, "..");
@@ -17,6 +18,7 @@ let mainWindow = null;
 let activeProcess = null;
 let activeProcessCommand = null;
 let updaterController = null;
+let bonsaiRuntimeController = null;
 
 function safeProfile(value) {
   const profile = String(value || "default");
@@ -83,7 +85,8 @@ async function readSettings() {
     defaultRepository: app.isPackaged ? "" : projectRoot,
     modelProfile: "default",
     rememberRepository: true,
-    autoCheckUpdates: true
+    autoCheckUpdates: true,
+    bonsaiDemoPath: existsSync("D:\\AI\\Bonsai-demo") ? "D:\\AI\\Bonsai-demo" : ""
   };
   try {
     return { ...defaults, ...JSON.parse(await readFile(settingsPath(), "utf8")) };
@@ -98,7 +101,8 @@ async function saveSettings(input) {
     defaultRepository: requestedRepository ? validateRepository(requestedRepository) : "",
     modelProfile: safeProfile(input?.modelProfile),
     rememberRepository: input?.rememberRepository !== false,
-    autoCheckUpdates: input?.autoCheckUpdates !== false
+    autoCheckUpdates: input?.autoCheckUpdates !== false,
+    bonsaiDemoPath: String(input?.bonsaiDemoPath || "").trim()
   };
   await mkdir(dirname(settingsPath()), { recursive: true });
   await writeFile(settingsPath(), JSON.stringify(next, null, 2) + "\n", "utf8");
@@ -477,6 +481,13 @@ app.whenReady().then(async () => {
     const result = await dialog.showOpenDialog(mainWindow, { properties: ["openDirectory"] });
     return result.canceled ? null : result.filePaths[0];
   });
+  registerIpc("runtime:bonsai-select-folder", async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: "Bonsai-demoフォルダを選択",
+      properties: ["openDirectory"]
+    });
+    return result.canceled ? null : result.filePaths[0];
+  });
   registerIpc("repository:update", (repoPath) => updateRepository(repoPath));
   registerIpc("command:run", (input) => runCommand(input));
   registerIpc("command:cancel", async () => {
@@ -496,6 +507,12 @@ app.whenReady().then(async () => {
     clipboard.writeText(text);
     return true;
   });
+  bonsaiRuntimeController = createBonsaiRuntimeController({
+    registerIpc,
+    readSettings,
+    appendDiagnostic,
+    getMainWindow: () => mainWindow
+  });
   updaterController = createUpdaterController({
     registerIpc,
     readSettings,
@@ -506,6 +523,7 @@ app.whenReady().then(async () => {
   createWindow();
   await updaterController.scheduleAutoCheck();
 });
+
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();

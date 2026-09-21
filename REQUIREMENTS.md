@@ -413,6 +413,7 @@ PowerShellで行っている日常操作を置き換え、長時間Local AI Run�
 - v0.2.0以降はGitHub Releasesを使ったアプリ内One-click Updateを利用できる
 - Update後もSettings / Run履歴 / Diagnosticsを維持する
 - 選択したLocal Git RepositoryをUser明示操作で安全にGitHub最新版へfast-forwardできる
+- Bonsai 2 27B利用時はPowerShellを別に開かず、DesktopからBonsai Runtimeを起動・状態確認・停止できる
 
 ### Distribution / Update Contract
 
@@ -427,6 +428,18 @@ PowerShellで行っている日常操作を置き換え、長時間Local AI Run�
 - Update失敗時はCurrent Versionを継続利用でき、固定GitHub Releases URLへのManual fallbackを持つ
 - Setup.exe版のRuntime DataはProgram FilesではなくElectron userDataへ保存する
 - Code Signing未導入の間はSmartScreen警告の可能性をDocumentationへ明記する
+
+### Bonsai Runtime Control Contract
+
+- 対象は現在のBonsai 2 27B / PrismML llama.cpp Profileに限定する
+- Userが設定した `Bonsai-demo` Folder内の `scripts/start_llama_server.ps1` だけを固定引数で起動する
+- 任意PowerShell / 任意Command / 任意ArgumentをRendererへ公開しない
+- 起動時Environmentは現在検証済みの `BONSAI_CTX=16384`, `BONSAI_MMPROJ_CPU=1`, `BONSAI_SPECULATIVE=0`, `BONSAI_KV4=0` を使用する
+- 起動引数は `--alias bonsai-2-27b --parallel 1 --reasoning-budget 1024` を使用する
+- Desktopが起動したProcessだけを停止対象とし、外部PowerShell等で起動済みのServerを勝手にKillしない
+- 起動・停止はUserがButtonを押した場合だけ行い、Desktop起動時・終了時に自動Start / Stopしない
+- Bonsai停止中に監査を開始した場合はRaw `fetch failed` ではなく、起動が必要であることをUserへ示す
+- Model download / setup.ps1自動実行はこの機能の範囲外
 
 ### Repository Maintenance Contract
 
@@ -466,9 +479,10 @@ PowerShellで行っている日常操作を置き換え、長時間Local AI Run�
 - AIによるTarget Repositoryの自動修正
 - Repositoryの自動pull / 自動commit / 自動push
 - git commit / push
-- Runtime自動起動
-- Model download
-- LM Studio / PrismMLのModel Load / Unload自動化
+- LM Studio Runtimeの自動起動
+- Model download / Bonsai setup.ps1自動実行
+- LM StudioのModel Load / Unload自動化
+- Bonsai以外のRuntime Process自動管理
 - Chat / RAG / Long-term Memory / MCP管理
 
 ## 20. Later Candidates

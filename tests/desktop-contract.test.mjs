@@ -120,3 +120,29 @@ test("desktop user-facing controls are understandable in Japanese", async () => 
   assert.match(renderer, /入力 \$\{state\.promptTokens\}/);
   assert.match(renderer, /出力 \$\{state\.completionTokens\}/);
 });
+
+
+test("desktop exposes managed Bonsai runtime controls without arbitrary shell access", async () => {
+  const main = await readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8");
+  const preload = await readFile(new URL("../desktop/preload.cjs", import.meta.url), "utf8");
+  const html = await readFile(new URL("../desktop/renderer/index.html", import.meta.url), "utf8");
+  const renderer = await readFile(new URL("../desktop/renderer/renderer.mjs", import.meta.url), "utf8");
+  const runtime = await readFile(new URL("../desktop/bonsai-runtime.mjs", import.meta.url), "utf8");
+
+  assert.match(main, /createBonsaiRuntimeController/);
+  assert.match(main, /runtime:bonsai-select-folder/);
+  assert.match(preload, /startBonsai/);
+  assert.match(preload, /stopBonsai/);
+  assert.match(preload, /getBonsaiStatus/);
+  assert.match(html, /Bonsaiを起動/);
+  assert.match(html, /Bonsaiを停止/);
+  assert.match(renderer, /Bonsaiが停止中です/);
+  assert.doesNotMatch(main, /scheduleAutoStart|autoStartBonsai/);
+  assert.doesNotMatch(renderer, /autoStartBonsai/);
+  assert.doesNotMatch(html, /アプリ起動時にBonsaiも起動する/);
+  assert.match(runtime, /start_llama_server\.ps1/);
+  assert.match(runtime, /powershell\.exe/);
+  assert.match(runtime, /shell:\s*false/);
+  assert.match(runtime, /taskkill\.exe/);
+  assert.doesNotMatch(preload, /runShell|executeShell|powershell/i);
+});
