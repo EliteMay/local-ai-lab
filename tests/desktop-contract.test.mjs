@@ -231,3 +231,20 @@ test("desktop renderer bounds visible log rows during long runs", async () => {
   assert.match(renderer, /childElementCount > MAX_RENDER_LOG_LINES/);
   assert.match(renderer, /firstElementChild\?\.remove\(\)/);
 });
+
+
+test("desktop result panel explains live work, progress, and remaining time", async () => {
+  const html = await readFile(new URL("../desktop/renderer/index.html", import.meta.url), "utf8");
+  const renderer = await readFile(new URL("../desktop/renderer/renderer.mjs", import.meta.url), "utf8");
+
+  assert.match(html, /id="resultTitle"/);
+  assert.match(html, />実行詳細</);
+  assert.match(renderer, /function renderLiveResult/);
+  assert.match(renderer, /今していること/);
+  assert.match(renderer, /残り目安/);
+  assert.match(renderer, /監査部分 あと約/);
+  assert.match(renderer, /このあと: 残りの監査 → 結果の統合 → 改善案作成 → レビュー/);
+  assert.match(renderer, /state\.currentBatchChars/);
+  assert.match(renderer, /state\.planFiles/);
+  assert.doesNotMatch(renderer, /setText\("#result", "実行中\.\.\."\)/);
+});
