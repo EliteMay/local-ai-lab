@@ -618,29 +618,29 @@ async function run(command = state.selectedCommand, stateOverride = {}) {
       state.result = command === "coverage"
         ? "処理を停止しました。保存済みのCheckpointがある場合は、履歴から続きへ戻れます。"
         : "処理を停止しました。";
+      setText("#progress", "停止");
+      setStage("手動停止");
       setText("#resultTitle", "結果");
       setText("#result", state.result);
       $("#copy").disabled = false;
-      setText("#progress", "停止");
-      setStage("手動停止");
     } else {
       succeeded = true;
       state.result = result.output || "完了しました。";
-      setText("#resultTitle", "結果");
-      setText("#result", state.result);
-      $("#copy").disabled = false;
       $("#bar").style.width = "100%";
       setText("#progress", "完了");
       setStage(command === "doctor" ? "接続確認完了" : "処理完了");
+      setText("#resultTitle", "結果");
+      setText("#result", state.result);
+      $("#copy").disabled = false;
       if (command === "doctor") applyDoctor(state.result);
     }
   } catch (error) {
     state.result = friendlyError(error.message);
+    setText("#progress", "失敗");
+    setStage("エラー");
     setText("#resultTitle", "結果");
     setText("#result", state.result);
     $("#copy").disabled = false;
-    setText("#progress", "失敗");
-    setStage("エラー");
   } finally {
     stopTimer();
     setRunning(false);
