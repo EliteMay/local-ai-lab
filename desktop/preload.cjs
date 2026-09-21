@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld("localAI", {
   listHistory: () => ipcRenderer.invoke("history:list"),
   readRunResult: (id) => ipcRenderer.invoke("history:result", id),
   readRunOverview: (id) => ipcRenderer.invoke("history:overview", id),
+  readRunDetails: (id) => ipcRenderer.invoke("history:details", id),
   openRunFolder: (id) => ipcRenderer.invoke("history:open-folder", id),
   listDiagnostics: () => ipcRenderer.invoke("diagnostics:list"),
   clearDiagnostics: () => ipcRenderer.invoke("diagnostics:clear"),
