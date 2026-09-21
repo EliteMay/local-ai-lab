@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
-export const RUN_SCHEMA_VERSION = 2;
-export const PROMPT_SCHEMA_VERSION = "2026-09-21.1";
+export const RUN_SCHEMA_VERSION = 3;
+export const PROMPT_SCHEMA_VERSION = "2026-09-21.2";
 
 function stableValue(value) {
   if (Array.isArray(value)) return value.map(stableValue);
@@ -18,8 +18,15 @@ function sha256(value) {
 }
 
 export function buildExecutionIdentity(config = {}) {
+  const modelRoutingMode = String(config.modelRoutingMode || "fixed");
+  const routingIdentity = config.modelRoutingIdentity && typeof config.modelRoutingIdentity === "object"
+    ? config.modelRoutingIdentity
+    : null;
+
   const relevantConfig = {
-    model: config.model ?? {},
+    model: modelRoutingMode === "fixed" ? (config.model ?? {}) : {},
+    modelRoutingMode,
+    modelRoutingIdentity: routingIdentity,
     limits: config.limits ?? {},
     orchestrator: config.orchestrator ?? {},
     context: config.context ?? {},
@@ -30,9 +37,13 @@ export function buildExecutionIdentity(config = {}) {
   return {
     runSchemaVersion: RUN_SCHEMA_VERSION,
     appVersion: String(config.appVersion || "unknown"),
-    model: String(config.model?.model || "unknown"),
-    modelProfile: String(config.activeModelProfile || "default"),
-    providerName: String(config.model?.providerName || "LM Studio"),
+    modelRoutingMode,
+    model: modelRoutingMode === "auto" ? "auto" : String(config.model?.model || "unknown"),
+    modelProfile: modelRoutingMode === "auto" ? "auto" : String(config.activeModelProfile || "default"),
+    providerName: modelRoutingMode === "auto" ? "multi-model-router" : String(config.model?.providerName || "LM Studio"),
+    routingCatalogHash: routingIdentity?.catalogHash ?? null,
+    routingHash: routingIdentity?.routingHash ?? null,
+    autoManageModels: routingIdentity?.autoManageModels ?? null,
     configHash: sha256(relevantConfig),
     promptSchemaVersion: PROMPT_SCHEMA_VERSION
   };
@@ -47,14 +58,37 @@ export function compareResumeIdentity(saved, current) {
   }
 
   const reasons = [];
-  for (const [key, label] of [
-    ["model", "使用モデル"],
-    ["modelProfile", "モデル設定"],
+  const commonKeys = [
+    ["modelRoutingMode", "モデル運用"],
     ["configHash", "監査設定"],
     ["promptSchemaVersion", "Prompt/Schema版"]
-  ]) {
+  ];
+
+  for (const [key, label] of commonKeys) {
     if (String(saved[key] ?? "") !== String(current[key] ?? "")) {
       reasons.push(`${label}が前回実行と異なります。`);
+    }
+  }
+
+  if ((current.modelRoutingMode || "fixed") === "auto") {
+    for (const [key, label] of [
+      ["routingCatalogHash", "モデルCatalog"],
+      ["routingHash", "モデル振り分けRule"],
+      ["autoManageModels", "モデル自動管理設定"]
+    ]) {
+      if (String(saved[key] ?? "") !== String(current[key] ?? "")) {
+        reasons.push(`${label}が前回実行と異なります。`);
+      }
+    }
+  } else {
+    for (const [key, label] of [
+      ["model", "使用モデル"],
+      ["modelProfile", "モデル設定"],
+      ["providerName", "モデル実行環境"]
+    ]) {
+      if (String(saved[key] ?? "") !== String(current[key] ?? "")) {
+        reasons.push(`${label}が前回実行と異なります。`);
+      }
     }
   }
 
