@@ -751,6 +751,9 @@ async function listHistory() {
       goal: typeof run.goal === "string" ? run.goal : "",
       model: identity.model || "",
       modelProfile: identity.modelProfile || "",
+      modelRoutingMode: identity.modelRoutingMode || (identity.modelProfile === "auto" ? "auto" : "fixed"),
+      routingCatalogHash: identity.routingCatalogHash || "",
+      routingHash: identity.routingHash || "",
       appVersion: identity.appVersion || "",
       interruptionReason: run.interruptionReason || ""
     });
@@ -780,14 +783,15 @@ async function readRunDetails(runId) {
   const info = await stat(directory).catch(() => null);
   if (!info?.isDirectory()) throw new Error("この実行履歴が見つかりません");
 
-  const [run, coverage, findings, synthesis, review, plan, batches] = await Promise.all([
+  const [run, coverage, findings, synthesis, review, plan, batches, modelUsage] = await Promise.all([
     readOptionalJsonFile(join(directory, "run.json"), {}),
     readOptionalJsonFile(join(directory, "coverage.json"), {}),
     readOptionalJsonFile(join(directory, "findings.json"), []),
     readOptionalJsonFile(join(directory, "synthesis.json"), {}),
     readOptionalJsonFile(join(directory, "review.json"), {}),
     readOptionalJsonFile(join(directory, "coverage-plan.json"), {}),
-    readOptionalJsonFile(join(directory, "batch-results.json"), [])
+    readOptionalJsonFile(join(directory, "batch-results.json"), []),
+    readOptionalJsonFile(join(directory, "model-usage.json"), null)
   ]);
 
   let summary = "";
@@ -806,6 +810,7 @@ async function readRunDetails(runId) {
     excluded: Array.isArray(plan?.excluded) ? plan.excluded : [],
     files: Array.isArray(plan?.files) ? plan.files : [],
     batchResults: Array.isArray(batches) ? batches : [],
+    modelUsage: modelUsage || run.modelRouting || null,
     summary,
     consoleLog
   };
