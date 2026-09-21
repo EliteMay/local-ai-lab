@@ -11,13 +11,18 @@ function renderReviewPrompt({ goal, coverage, findings, planner }) {
 }
 
 export class CoverageSynthesisService {
-  constructor({ config, modelClient, runStore = null, onProgress = null } = {}) {
+  constructor({ config, modelClient = null, modelRouter = null, runStore = null, onProgress = null } = {}) {
     if (!config) throw new Error("config is required");
-    if (!modelClient) throw new Error("modelClient is required");
+    if (!modelClient && !modelRouter) throw new Error("modelClient or modelRouter is required");
     this.config = config;
     this.modelClient = modelClient;
+    this.modelRouter = modelRouter;
     this.runStore = runStore;
     this.onProgress = typeof onProgress === "function" ? onProgress : () => {};
+  }
+
+  #clientFor(taskType) {
+    return this.modelRouter ? this.modelRouter.clientFor(taskType) : this.modelClient;
   }
 
   #emit(event) {
@@ -47,7 +52,7 @@ export class CoverageSynthesisService {
     });
 
     const reduction = await reduceFindingsHierarchically({
-      modelClient: this.modelClient,
+      modelClient: this.#clientFor("synthesis-reduction"),
       goal,
       findings,
       targetChars: maxSynthesisChars,
@@ -75,7 +80,7 @@ export class CoverageSynthesisService {
 
     const plannerRole = getRoleDefinition("improvement-planner");
     this.#emit({ type: "synthesis_planner_started", findings: planningFindings.length, chars: planningChars });
-    const planner = await this.modelClient.chatJsonDetailed({
+    const planner = await this.#clientFor("planner").chatJsonDetailed({
       system: plannerRole.system,
       user: renderSynthesisPrompt({ goal, coverage, findings: planningFindings }),
       jsonSchema: getAgentResponseSchema("improvement-planner"),
@@ -85,7 +90,7 @@ export class CoverageSynthesisService {
 
     const reviewerRole = getRoleDefinition("reviewer");
     this.#emit({ type: "synthesis_reviewer_started" });
-    const reviewer = await this.modelClient.chatJsonDetailed({
+    const reviewer = await this.#clientFor("reviewer").chatJsonDetailed({
       system: reviewerRole.system,
       user: renderReviewPrompt({ goal, coverage, findings: planningFindings, planner: planner.value }),
       jsonSchema: getAgentResponseSchema("reviewer"),
@@ -130,6 +135,8 @@ export class CoverageSynthesisService {
 
     await this.runStore.writeJson(runId, "synthesis.json", synthesis);
     await this.runStore.writeJson(runId, "review.json", synthesis.reviewer ?? {});
+    const modelUsage = this.modelRouter ? this.modelRouter.snapshot() : null;
+    if (modelUsage) await this.runStore.writeJson(runId, "model-usage.json", modelUsage);
 
     const status = synthesis.error ? "PARTIAL" : "COMPLETED";
     const completedAt = new Date().toISOString();
@@ -140,6 +147,7 @@ export class CoverageSynthesisService {
       coverage,
       synthesisError: synthesis.error,
       reviewerDecision: synthesis.reviewer?.result?.decision ?? null,
+      modelRouting: modelUsage,
       synthesisFromStoredEvidence: true
     });
 
