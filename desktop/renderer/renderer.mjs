@@ -54,14 +54,16 @@ function applyBonsaiStatus(next) {
 
   const labels = {
     stopped: "停止中",
-    starting: "起動中...",
+    starting: "起動処理中",
     running: "起動中",
     "external-running": "外部で起動中",
-    stopping: "停止中...",
+    stopping: "停止処理中",
     error: "エラー"
   };
   setText("#bonsaiRuntimeTitle", labels[next.status] || "状態不明");
   setText("#bonsaiRuntimeMessage", next.message || "");
+  const dot = $("#bonsaiRuntimeDot");
+  dot.className = "runtime-state-dot " + (next.status || "stopped");
 
   const active = next.status === "running" || next.status === "external-running";
   $("#startBonsai").classList.toggle("hidden", active || next.status === "starting" || next.status === "stopping");
@@ -810,7 +812,6 @@ async function init() {
   $("#rememberRepo").checked = state.settings.rememberRepository;
   $("#autoCheckUpdates").checked = state.settings.autoCheckUpdates !== false;
   $("#bonsaiDemoPath").value = state.settings.bonsaiDemoPath || "";
-  $("#autoStartBonsai").checked = state.settings.autoStartBonsai === true;
   updateBonsaiVisibility();
   window.localAI.onLog(appendLog);
   window.localAI.onUpdateStatus(applyUpdateState);
@@ -858,8 +859,7 @@ $("#save").addEventListener("click", async () => {
       modelProfile: $("#settingsProfile").value,
       rememberRepository: $("#rememberRepo").checked,
       autoCheckUpdates: $("#autoCheckUpdates").checked,
-      bonsaiDemoPath: $("#bonsaiDemoPath").value,
-      autoStartBonsai: $("#autoStartBonsai").checked
+      bonsaiDemoPath: $("#bonsaiDemoPath").value
     });
     state.settings = next;
     state.repository = next.defaultRepository;
