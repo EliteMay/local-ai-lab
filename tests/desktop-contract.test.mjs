@@ -246,5 +246,8 @@ test("desktop result panel explains live work, progress, and remaining time", as
   assert.match(renderer, /このあと: 残りの監査 → 結果の統合 → 改善案作成 → レビュー/);
   assert.match(renderer, /state\.currentBatchChars/);
   assert.match(renderer, /state\.planFiles/);
+  assert.match(renderer, /setStage\("手動停止"\);\s*setText\("#resultTitle", "結果"\);\s*setText\("#result", state\.result\)/);
+  assert.match(renderer, /setStage\(command === "doctor" \? "接続確認完了" : "処理完了"\);\s*setText\("#resultTitle", "結果"\);\s*setText\("#result", state\.result\)/);
+  assert.match(renderer, /setStage\("エラー"\);\s*setText\("#resultTitle", "結果"\);\s*setText\("#result", state\.result\)/);
   assert.doesNotMatch(renderer, /setText\("#result", "実行中\.\.\."\)/);
 });
