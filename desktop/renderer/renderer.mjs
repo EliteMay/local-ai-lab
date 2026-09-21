@@ -334,10 +334,10 @@ function ensureRunOption(runId, label = runId) {
   select.value = runId;
 }
 
-function setStage(value) {
+function setStage(value, { updateResult = true } = {}) {
   state.currentStage = value;
   setText("#stage", value);
-  updateLiveResult();
+  if (updateResult) updateLiveResult();
 }
 
 function appendLog(payload) {
@@ -524,7 +524,7 @@ async function run(command = state.selectedCommand, stateOverride = {}) {
       setText("#result", state.result);
       $("#copy").disabled = false;
       setText("#progress", "停止");
-      setStage("手動停止");
+      setStage("手動停止", { updateResult: false });
     } else {
       succeeded = true;
       state.result = result.output || "完了しました。";
@@ -533,7 +533,7 @@ async function run(command = state.selectedCommand, stateOverride = {}) {
       $("#copy").disabled = false;
       $("#bar").style.width = "100%";
       setText("#progress", "完了");
-      setStage(command === "doctor" ? "接続確認完了" : "処理完了");
+      setStage(command === "doctor" ? "接続確認完了" : "処理完了", { updateResult: false });
       if (command === "doctor") applyDoctor(state.result);
     }
   } catch (error) {
@@ -542,7 +542,7 @@ async function run(command = state.selectedCommand, stateOverride = {}) {
     setText("#result", state.result);
     $("#copy").disabled = false;
     setText("#progress", "失敗");
-    setStage("エラー");
+    setStage("エラー", { updateResult: false });
   } finally {
     stopTimer();
     updateTiming();
