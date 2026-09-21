@@ -383,7 +383,7 @@ test("desktop blocks mutable settings and update actions while a run is active",
   ]) {
     assert.ok(renderer.includes(`${selector}").disabled = value`), "missing active-run setting lock: " + selector);
   }
-  assert.ok(renderer.includes('$("#checkUpdate").disabled = state.running'));
+  assert.match(renderer, /\$\("#checkUpdate"\)\.disabled =\s*state\.running\s*\|\|/);
 });
 
 test("repository maintenance uses a bounded git subprocess and generic remote wording", async () => {
