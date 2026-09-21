@@ -439,6 +439,19 @@ PowerShellで行っている日常操作を置き換え、長時間Local AI Run�
 - 監査結果概要は保存済みRun EvidenceからNode.js側で決定的に集計し、Finding重要度、Coverage、対象File数、Reviewer結果、上位Findingを表示する
 - 結果概要は原Finding / Evidence / Raw resultを置換せず、詳細結果へ到達できる補助表示とする
 
+### Active-run Mutation Guard
+
+- AI Run実行中はSettings保存、Model Profile変更、Repository選択設定、App Update開始をUI/Main Process双方で拒否する
+- Runtime中に表示上だけ値を変えてCurrent Runの実行IdentityとSettingsが食い違う状態を作らない
+- UserがRunを停止または完了した後にのみSettings変更を再度許可する
+
+### Local Process / Response Boundaries
+
+- User明示のRepository syncは固定Git Commandのみを使い、各Git subprocessへTimeoutを持たせる
+- Git stdout/stderrは上限を持ち、Network/Auth待ちや異常出力でDesktop Memoryを無制限に増やさない
+- Local LLM HTTP Responseにも最大Byte数を設定し、Fetch / node:httpの両Transportで上限超過をFailureとして扱う
+- Repository syncのUI表記はRemote種類をGitHubと決め打ちせず「リモートから最新化」とする
+
 ### Distribution / Update Contract
 
 - Desktop Versionの正本は `package.json#version`
