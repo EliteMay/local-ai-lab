@@ -49,11 +49,12 @@ function queryNvidiaMetrics({ spawnImpl = spawn } = {}) {
     let stdout = "";
     let settled = false;
     let child;
+    let timer = null;
 
     const finish = (value) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
+      if (timer) clearTimeout(timer);
       resolve(value);
     };
 
@@ -75,7 +76,7 @@ function queryNvidiaMetrics({ spawnImpl = spawn } = {}) {
     child.on?.("error", () => finish(null));
     child.on?.("close", (code) => finish(code === 0 ? parseNvidiaSmi(stdout) : null));
 
-    const timer = setTimeout(() => {
+    timer = setTimeout(() => {
       try { child.kill(); } catch {}
       finish(null);
     }, NVIDIA_TIMEOUT_MS);
