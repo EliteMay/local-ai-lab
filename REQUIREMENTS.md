@@ -1,7 +1,7 @@
 # Local AI Lab Requirements
 
 更新日: 2026-09-21
-Status: Desktop v0.2 distribution candidate
+Status: Desktop v0.3 multi-model routing
 
 ## 1. 目的
 
@@ -24,7 +24,7 @@ Status: Desktop v0.2 distribution candidate
 - Default接続: LM StudioのローカルAPIを利用する
 - Optional Runtime: PrismML llama.cpp（OpenAI互換API）
 - Optional Model Profile: Bonsai 2 27B
-- Model切替は手動Profile指定とし、自動Model routingはv1の範囲外とする
+- Model運用は `auto` / `fixed` を選択できる。`auto` ではNode.js側の決定的なModel RouterがTask種別からCatalog内のModelを選び、`fixed` では従来どおり明示Profileを使う
 - 初期対象: PC上に存在するローカルGit Repository
 
 ModelやRuntimeを将来差し替えられる構造を優先し、Qwen3-8B専用実装へ固定しすぎない。
@@ -210,14 +210,19 @@ AI自身の「もう十分」という判断だけを終了条件にしない。
 
 ## 10. 実行方式
 
-v1ではModel instanceを役職ごとに複製しない。
+v1ではModel instanceを役職ごとに無制限に複製しない。
 
-同じConfigured local modelを、役職ごとに以下を分けて呼び出す。初期既定はQwen3-8Bとし、明示的なModel Profile指定時だけ別Modelへ切り替える。
+Desktop v0.3 / CLI auto routingでは、Task種別・Role・Repositoryのcode比率から、Node.js側の固定Routing RuleでCatalog内のModelを選ぶ。Model自身の自然文出力をRouting権限として使わない。
 
-- System Prompt
-- Tool Allowlist
-- Context
-- Task Input
+初期Route:
+- 一般監査 / 要約: Qwen3-8B
+- code-heavyなCoverage / Auditor: Qwen2.5-Coder-7Bを優先
+- Synthesis reduction: Qwen3-8Bを優先
+- Improvement Planner: Phi-4 Mini Reasoningを優先
+- Reviewer: 起動済みならBonsai 2 27Bを優先し、利用できなければPhi-4 Mini Reasoning / Qwen3-8BへFallback
+- Gemma 3 4B、gpt-oss-20b、Qwen3-Coder-30B-A3BはCatalog管理対象だが、現時点ではDefault Auto Routeへ入れない
+
+同一Task内で候補Modelが未導入・未起動・Request Failureの場合は、Routing Configに定義した次候補へBounded Fallbackする。LM Studio Modelの自動Load / UnloadはCatalog管理Modelだけに限定し、Bonsai RuntimeのStart / StopはUser明示操作のままとする。
 
 初期同時実行数は1とする。
 
@@ -321,7 +326,6 @@ v1では次を実装対象外とする。
 - 長期Memory
 - RAG
 - LoRA / Fine-tuning
-- 複数Model自動選択
 - Discord連携
 - 一般公開Service化
 
@@ -374,7 +378,7 @@ v1完成には最低限次を満たす。
 9. Task / Delegation / Result履歴を保存できる
 10. Loop / Task explosionをSystem側で停止できる
 11. 対象Repositoryを変更しないことを確認できる
-12. 同じConfigured local modelを複数Roleとして使え、Default Qwen3-8Bと明示的なModel Profileを安全に切り替えられる
+12. `auto` ではTaskごとの決定的Model RoutingとFallbackを使え、`fixed` ではDefault Qwen3-8B / 明示Model Profileを安全に利用できる
 13. Schema違反を検出してFailureまたは限定Recoveryできる
 14. Run失敗時に原因・失敗Taskを追跡できる
 15. 後からChatGPTまたは人間がEvidenceを読んで判断できる
@@ -391,7 +395,7 @@ v1完成には最低限次を満たす。
 - Audit EvidenceをCurrent Project Stateの第二Source of Truthにしない
 - 未確認事項を確認済みとして扱わない
 
-## 19. Desktop Controller v0.2
+## 19. Desktop Controller v0.3
 
 PowerShellで行っている日常操作を置き換え、長時間Local AI Runを開始・監視・再開できるWindows向けElectron Desktop Controllerを提供する。
 
@@ -438,6 +442,21 @@ PowerShellで行っている日常操作を置き換え、長時間Local AI Run�
 - System Metrics取得は固定Command / 固定Argumentに限定し、Rendererへ任意Shell Capabilityを追加しない
 - 監査結果概要は保存済みRun EvidenceからNode.js側で決定的に集計し、Finding重要度、Coverage、対象File数、Reviewer結果、上位Findingを表示する
 - 結果概要は原Finding / Evidence / Raw resultを置換せず、詳細結果へ到達できる補助表示とする
+
+### Multi-model Routing / Model Management Contract
+
+- DesktopのDefault Model運用は `auto` とし、従来互換として `fixed` を残す
+- Auto RoutingはRepository ContentやModelの自由文ではなく、Version管理された `config/model-routing.json` とTask種別から決定する
+- Model Catalogの正本は `config/model-catalog.json` とし、Rendererから任意Model URL / 任意File PathをDownload対象へ渡さない
+- LM StudioのDownload / List / Load / UnloadはlocalhostのNative REST APIだけをMain/Node側から利用する
+- LM Studio API認証Tokenが必要な場合は `LM_API_TOKEN` をProcess Environmentからだけ受け取り、Renderer / Settings / Diagnosticsへ保存しない
+- Model Download / Manual Load / Unloadは長時間Run中に開始しない
+- Auto RoutingのLM Studio Model切替ではCatalog管理Modelだけを自動Unload対象にし、Userの非Catalog Modelを勝手にUnloadしない
+- Bonsai 2 27Bは専用PrismML Runtimeとして扱い、Auto Routing候補にはできるがRuntimeのStart / StopはUser明示操作だけとする
+- Modelが未導入・停止・Request Failureの場合は、Routeに定義した次候補へBounded Fallbackし、使用ModelとFallbackを進捗表示・Run Evidenceへ記録する
+- Runごとに `model-usage.json` を保存し、Model別Call数 / 成功 / 失敗 / Token / 所要時間を追跡できるようにする
+- 8GB級GPUで重いModelを常用しないため、gpt-oss-20b / Qwen3-Coder-30B-A3B等のLarge Modelは初期Auto Route対象外とする
+- Gemma 3 4BはCatalog管理対象とするが、画像入力Pipelineを実装するまではVision Taskを実行済みと扱わない
 
 ### Distribution / Update Contract
 
