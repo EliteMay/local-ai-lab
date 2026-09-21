@@ -1,5 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { LMStudioClient } from "./model/lm-studio-client.mjs";
+import { loadModelCatalog, loadModelRouting } from "./model/model-catalog.mjs";
+import { ModelRouter } from "./model/model-router.mjs";
 import { RepoReader } from "./security/repo-reader.mjs";
 import { TaskBroker } from "./core/task-broker.mjs";
 import { AICompanyOrchestrator } from "./core/orchestrator.mjs";
@@ -48,6 +50,37 @@ function getOption(args, name) {
 
 function hasFlag(args, name) {
   return args.includes(name);
+}
+
+function optionBoolean(args, name, fallback = true) {
+  const value = getOption(args, name);
+  if (value === undefined) return fallback;
+  return !["0", "false", "off", "no"].includes(String(value).toLowerCase());
+}
+
+async function createModelRouter(config, args) {
+  const explicitProfile = getOption(args, "--model-profile") ?? process.env.LOCAL_AI_MODEL_PROFILE;
+  const mode = getOption(args, "--model-routing")
+    ?? process.env.LOCAL_AI_MODEL_ROUTING
+    ?? (explicitProfile ? "fixed" : "auto");
+  if (!["auto", "fixed"].includes(mode)) throw new Error("Invalid --model-routing value; use auto or fixed");
+
+  config.modelRoutingMode = mode;
+  config.autoManageModels = optionBoolean(args, "--auto-manage-models", true);
+  if (mode === "fixed") return null;
+
+  const catalog = await loadModelCatalog();
+  const routing = await loadModelRouting(catalog);
+  return new ModelRouter({
+    config,
+    catalog,
+    routing,
+    autoManageModels: config.autoManageModels,
+    onRoute: (event) => {
+      const marker = event.type === "model_fallback" ? "FALLBACK" : "ROUTE";
+      console.log(`[Model] ${marker} ${JSON.stringify(event)}`);
+    }
+  });
 }
 
 function printHelp() {
@@ -256,15 +289,17 @@ async function runCompany(config, args) {
     throw new Error("company requires --repo <path> and --goal <text>");
   }
 
-  const client = new LMStudioClient(config.model);
-  await assertConfiguredModelLoaded(client, config);
+  const modelRouter = await createModelRouter(config, args);
+  const client = modelRouter ? null : new LMStudioClient(config.model);
+  if (client) await assertConfiguredModelLoaded(client, config);
 
-  console.log(`AI Company model: ${config.model.model}`);
+  console.log(modelRouter ? "AI Company model routing: auto" : `AI Company model: ${config.model.model}`);
   console.log(`Per-request timeout: ${Math.round((config.model.timeoutMs ?? 600000) / 1000)}s / max output tokens: ${config.model.maxTokens ?? 2048}`);
 
   const orchestrator = new AICompanyOrchestrator({
     config,
     modelClient: client,
+    modelRouter,
     onProgress: printCompanyProgress
   });
   const result = await orchestrator.run({ repoPath: repo, goal, runId });
@@ -289,15 +324,17 @@ async function runCoverage(config, args) {
     throw new Error("coverage --resume requires --run-id <id>");
   }
 
-  const client = new LMStudioClient(config.model);
-  await assertConfiguredModelLoaded(client, config);
-  console.log(`Coverage audit model: ${config.model.model}`);
+  const modelRouter = await createModelRouter(config, args);
+  const client = modelRouter ? null : new LMStudioClient(config.model);
+  if (client) await assertConfiguredModelLoaded(client, config);
+  console.log(modelRouter ? "Coverage audit model routing: auto" : `Coverage audit model: ${config.model.model}`);
   console.log(`Batch budget: ${config.coverage?.maxBatchChars ?? 16000} chars / ${config.coverage?.batchMaxTokens ?? 1000} output tokens`);
   console.log(`Adaptive single-chunk ceiling: ${config.coverage?.singleChunkMaxTokens ?? 1800} output tokens`);
 
   const orchestrator = new CoverageAuditOrchestrator({
     config,
     modelClient: client,
+    modelRouter,
     onProgress: printCoverageProgress
   });
   const result = await orchestrator.run({ repoPath: repo, goal, runId, resume });
@@ -321,17 +358,19 @@ async function runCoverageSynthesize(config, args) {
   const runId = getOption(args, "--run-id");
   if (!runId) throw new Error("coverage-synthesize requires --run-id <id>");
 
-  const client = new LMStudioClient(config.model);
-  await assertConfiguredModelLoaded(client, config);
+  const modelRouter = await createModelRouter(config, args);
+  const client = modelRouter ? null : new LMStudioClient(config.model);
+  if (client) await assertConfiguredModelLoaded(client, config);
   const runStore = new RunStore(config.runtimeData?.runsRoot ?? "runtime-data/runs");
   const service = new CoverageSynthesisService({
     config,
     modelClient: client,
+    modelRouter,
     runStore,
     onProgress: printSynthesisProgress
   });
 
-  console.log(`Coverage synthesis model: ${config.model.model}`);
+  console.log(modelRouter ? "Coverage synthesis model routing: auto" : `Coverage synthesis model: ${config.model.model}`);
   console.log(`Stored run: ${runId}`);
   console.log(`Planner input target: <=${config.coverage?.maxSynthesisChars ?? 24000} chars`);
   const result = await service.synthesizeExistingRun({ runId });
