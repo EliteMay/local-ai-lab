@@ -28,3 +28,8 @@ main{padding:30px 36px 48px;overflow:auto}.view{display:none}.view.active{displa
 .update-settings>div:first-child{flex:1;min-width:0}
 .update-track{margin-top:10px;max-width:420px}
 #repoUpdateStatus{margin-top:8px}
+
+
+.runtime-card{margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;gap:18px;border-color:#31435f;background:linear-gradient(180deg,#121923 0%,#11161e 100%)}
+.runtime-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.bonsai-settings{display:grid;gap:12px;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--panel3)}
