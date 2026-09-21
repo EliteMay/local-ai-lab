@@ -796,6 +796,34 @@ async function isLocalAiLabRepository(repoPath) {
   }
 }
 
+async function reconcileInterruptedRuns() {
+  const root = runsRoot();
+  if (!existsSync(root)) return { interrupted: 0 };
+
+  const names = await readdir(root);
+  let interrupted = 0;
+  for (const name of names) {
+    if (!/^run-[a-zA-Z0-9._-]+$/.test(name)) continue;
+    const runPath = join(root, name, "run.json");
+    const run = await readOptionalJsonFile(runPath, null);
+    if (!run || run.status !== "RUNNING") continue;
+
+    const now = new Date().toISOString();
+    await atomicWriteJson(runPath, {
+      ...run,
+      status: "INTERRUPTED",
+      interruptedAt: now,
+      interruptionReason: "app-restart-or-crash"
+    });
+    interrupted += 1;
+    await appendDiagnostic({
+      type: "run.reconciled.interrupted",
+      runId: name
+    });
+  }
+  return { interrupted };
+}
+
 async function migrateLegacyRunsIfNeeded() {
   if (!app.isPackaged) return { migrated: false };
   const destination = runsRoot();
@@ -875,6 +903,7 @@ if (hasSingleInstanceLock) {
     app.setAppUserModelId("local.elitemay.localailab");
   }
   await migrateLegacyRunsIfNeeded();
+  await reconcileInterruptedRuns();
   registerIpc("settings:get", () => readSettings());
   registerIpc("settings:save", (input) => saveSettings(input));
   registerIpc("repository:select", async () => {
@@ -896,6 +925,7 @@ if (hasSingleInstanceLock) {
   registerIpc("history:list", () => listHistory());
   registerIpc("history:result", (id) => readRunResult(id));
   registerIpc("history:overview", (id) => readRunOverview(id));
+  registerIpc("history:details", (id) => readRunDetails(id));
   registerIpc("history:open-folder", (id) => openRunFolder(id));
   registerIpc("diagnostics:list", () => readDiagnostics());
   registerIpc("diagnostics:clear", () => clearDiagnostics());
