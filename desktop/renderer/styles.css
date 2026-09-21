@@ -111,3 +111,20 @@ main{padding:30px 36px 48px;overflow:auto}.view{display:none}.view.active{displa
 .structured-json,.saved-run-log{margin:0;max-height:360px;overflow:auto;white-space:pre-wrap;word-break:break-word;color:#bcc7d5;font:11px/1.55 "Cascadia Code",Consolas,monospace}
 .badge.interrupted{border-color:#5d4930;color:#efc47d;background:#241c11}
 @media(max-width:1180px){.detail-kv{grid-template-columns:1fr}}
+
+
+/* Multi-model routing and catalog */
+.model-routing-settings{display:grid;gap:12px;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--panel3)}
+.model-management-section{align-items:center}
+.model-catalog{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.model-card{display:grid;gap:10px;min-width:0;padding:14px;border:1px solid var(--border);border-radius:11px;background:var(--panel3)}
+.model-card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.model-card-head strong{display:block;font-size:13px}
+.model-card-head .subtle{margin-top:5px;font-size:11px}
+.model-badges{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}
+.model-meta{margin:0;color:var(--subtle);font-size:10px;line-height:1.5}
+.model-actions{min-height:38px;display:flex;align-items:center;justify-content:flex-end;gap:8px}
+.model-actions .mini-status{color:var(--muted)}
+.model-result-line{margin:0;color:var(--muted);font-size:10px;line-height:1.5}
+.model-result-line strong{color:var(--text);font-size:11px;font-weight:650}
+@media(max-width:1180px){.model-catalog{grid-template-columns:1fr}}

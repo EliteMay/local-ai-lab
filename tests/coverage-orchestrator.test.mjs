@@ -149,7 +149,7 @@ test("coverage audit processes every planned chunk, checkpoints results, and rea
   assert.equal(result.reviewer.result.decision, "APPROVE");
   const runRecord = JSON.parse(await readFile(join(runs, "coverage-complete", "run.json"), "utf8"));
   assert.equal(runRecord.executionIdentity.model, "fake");
-  assert.equal(runRecord.executionIdentity.runSchemaVersion, 2);
+  assert.equal(runRecord.executionIdentity.runSchemaVersion, 3);
   assert.ok(runRecord.createdAt);
   const plannerCall = model.calls.find((call) => call.system.includes("Improvement Planner"));
   const reviewerCall = model.calls.find((call) => call.system.includes("Reviewer"));

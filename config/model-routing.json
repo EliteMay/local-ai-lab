@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "defaultRoute": "general",
+  "codeExtensions": [
+    ".js",
+    ".mjs",
+    ".cjs",
+    ".ts",
+    ".tsx",
+    ".jsx",
+    ".py",
+    ".java",
+    ".cs",
+    ".cpp",
+    ".cc",
+    ".c",
+    ".h",
+    ".hpp",
+    ".go",
+    ".rs",
+    ".php",
+    ".rb",
+    ".swift",
+    ".kt",
+    ".kts",
+    ".ps1",
+    ".sh",
+    ".vue",
+    ".svelte",
+    ".html",
+    ".htm",
+    ".css",
+    ".scss",
+    ".sass",
+    ".less"
+  ],
+  "codeRatioThreshold": 0.45,
+  "routes": {
+    "general": [
+      "qwen3-8b",
+      "ministral-3-8b-reasoning",
+      "qwen3-4b",
+      "qwen2.5-coder-7b",
+      "phi-4-mini-reasoning"
+    ],
+    "coverage-general": [
+      "qwen3-8b",
+      "ministral-3-8b-reasoning",
+      "qwen3-4b",
+      "qwen2.5-coder-7b"
+    ],
+    "coverage-code": [
+      "qwen2.5-coder-7b",
+      "qwen3-8b",
+      "ministral-3-8b-reasoning",
+      "qwen3-4b"
+    ],
+    "synthesis-reduction": [
+      "qwen3-8b",
+      "ministral-3-8b-reasoning",
+      "qwen3-4b"
+    ],
+    "planner": [
+      "ministral-3-8b-reasoning",
+      "phi-4-mini-reasoning",
+      "qwen3-8b",
+      "qwen3-4b"
+    ],
+    "reviewer": [
+      "bonsai-2-27b",
+      "ministral-3-8b-reasoning",
+      "qwen3-8b",
+      "phi-4-mini-reasoning"
+    ],
+    "director": [
+      "qwen3-8b",
+      "ministral-3-8b-reasoning",
+      "qwen3-4b"
+    ],
+    "researcher": [
+      "qwen3-8b",
+      "ministral-3-8b-reasoning",
+      "qwen3-4b"
+    ],
+    "auditor": [
+      "qwen2.5-coder-7b",
+      "qwen3-8b",
+      "ministral-3-8b-reasoning",
+      "qwen3-4b"
+    ],
+    "improvement-planner": [
+      "ministral-3-8b-reasoning",
+      "phi-4-mini-reasoning",
+      "qwen3-8b",
+      "qwen3-4b"
+    ]
+  }
+}

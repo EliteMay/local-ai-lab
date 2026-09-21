@@ -8,6 +8,7 @@ import { createUpdaterController } from "./updater.mjs";
 import { createBonsaiRuntimeController } from "./bonsai-runtime.mjs";
 import { createSystemMetricsSampler } from "./system-metrics.mjs";
 import { buildRunOverview } from "./run-overview.mjs";
+import { createDesktopModelManager } from "./model-manager.mjs";
 import { atomicWriteJson, atomicWriteText, readJsonWithBackup, readTextWithBackup } from "../src/core/atomic-file.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -37,9 +38,16 @@ let pendingQuitAfterCancel = false;
 let allowWindowClose = false;
 let updaterController = null;
 let bonsaiRuntimeController = null;
+let desktopModelManager = null;
 let activeProcessStartedAt = null;
 let activeProcessLastOutputAt = null;
 const sampleSystemMetrics = createSystemMetricsSampler();
+
+function safeRoutingMode(value) {
+  const mode = String(value || "auto");
+  if (!["auto", "fixed"].includes(mode)) throw new Error("モデル運用の値が不正です");
+  return mode;
+}
 
 function safeProfile(value) {
   const profile = String(value || "default");
@@ -141,6 +149,8 @@ async function readSettings() {
   const defaults = {
     defaultRepository: app.isPackaged ? "" : projectRoot,
     modelProfile: "default",
+    modelRoutingMode: "auto",
+    autoManageModels: true,
     autoCheckUpdates: true,
     bonsaiDemoPath: existsSync("D:\\AI\\Bonsai-demo") ? "D:\\AI\\Bonsai-demo" : ""
   };
@@ -179,11 +189,18 @@ async function saveSettings(input) {
   const next = {
     defaultRepository: requestedRepository ? validateRepository(requestedRepository) : "",
     modelProfile: safeProfile(input?.modelProfile),
+    modelRoutingMode: safeRoutingMode(input?.modelRoutingMode),
+    autoManageModels: input?.autoManageModels !== false,
     autoCheckUpdates: input?.autoCheckUpdates !== false,
     bonsaiDemoPath: String(input?.bonsaiDemoPath || "").trim()
   };
   await writeSettings(next);
-  await appendDiagnostic({ type: "settings.saved", profile: next.modelProfile });
+  await appendDiagnostic({
+    type: "settings.saved",
+    profile: next.modelProfile,
+    modelRoutingMode: next.modelRoutingMode,
+    autoManageModels: next.autoManageModels
+  });
   return next;
 }
 
@@ -228,19 +245,25 @@ function buildCommand(input) {
   const command = String(input.command || "");
   if (!allowedCommands.has(command)) throw new Error("この処理は実行できません");
   const profile = safeProfile(input.modelProfile);
-  const profileArgs = profile === "default" ? [] : ["--model-profile", profile];
+  const routingMode = safeRoutingMode(input.modelRoutingMode);
+  const autoManageModels = input.autoManageModels !== false;
+  const profileArgs = routingMode === "fixed" && profile !== "default"
+    ? ["--model-profile", profile]
+    : [];
+  const routingArgs = ["--model-routing", routingMode, "--auto-manage-models", String(autoManageModels)];
 
   if (command === "test") {
     return {
       command,
       profile,
+      routingMode,
       file: process.execPath,
       args: ["--test"],
       nodeMode: true
     };
   }
 
-  const args = [cliScriptPath(), command, ...profileArgs];
+  const args = [cliScriptPath(), command, ...profileArgs, ...routingArgs];
   if (command === "inspect") {
     args.push("--repo", validateRepository(input.repoPath));
   }
@@ -252,7 +275,7 @@ function buildCommand(input) {
   if (command === "coverage-synthesize") {
     args.push("--run-id", safeRunId(input.runId));
   }
-  return { command, profile, file: process.execPath, args, nodeMode: true };
+  return { command, profile, routingMode, file: process.execPath, args, nodeMode: true };
 }
 
 function startRunProtection() {
@@ -401,6 +424,34 @@ async function markRunInterruptedFromOutput(text, reason = "user-cancelled") {
 }
 
 function parseProgress(line) {
+  if (
+    line.startsWith("[Model] PREPARE ") ||
+    line.startsWith("[Model] ROUTE ") ||
+    line.startsWith("[Model] FALLBACK ") ||
+    line.startsWith("[Model] PIN ")
+  ) {
+    const prepare = line.startsWith("[Model] PREPARE ");
+    const fallback = line.startsWith("[Model] FALLBACK ");
+    const pin = line.startsWith("[Model] PIN ");
+    const prefix = prepare
+      ? "[Model] PREPARE "
+      : fallback
+        ? "[Model] FALLBACK "
+        : pin
+          ? "[Model] PIN "
+          : "[Model] ROUTE ";
+    const raw = line.slice(prefix.length);
+    try {
+      const payload = JSON.parse(raw);
+      return {
+        type: prepare ? "model-prepare" : fallback ? "model-fallback" : pin ? "model-pin" : "model-route",
+        ...payload
+      };
+    } catch {
+      return null;
+    }
+  }
+
   const run = line.match(/(?:Coverage\] Run|Coverage run:|Synthesis run:|Stored run:)\s+(run-[\w.-]+)/);
   if (run) return { type: "run-id", runId: run[1] };
 
@@ -456,7 +507,12 @@ async function runCommand(input) {
   if (activeProcess) throw new Error("Another command is already running");
   const spec = buildCommand(input);
   const startedAt = Date.now();
-  await appendDiagnostic({ type: "command.started", command: spec.command, profile: spec.profile });
+  await appendDiagnostic({
+    type: "command.started",
+    command: spec.command,
+    profile: spec.profile,
+    modelRoutingMode: spec.routingMode
+  });
 
   return new Promise((resolvePromise, rejectPromise) => {
     let output = "";
@@ -560,6 +616,7 @@ async function runCommand(input) {
           type: "command.cancelled",
           command: spec.command,
           profile: spec.profile,
+          modelRoutingMode: spec.routingMode,
           elapsedMs: result.elapsedMs
         });
         resolvePromise(result);
@@ -620,6 +677,7 @@ async function runCommand(input) {
           type: "command.cancelled",
           command: spec.command,
           profile: spec.profile,
+          modelRoutingMode: spec.routingMode,
           elapsedMs
         });
         resolvePromise(result);
@@ -631,6 +689,7 @@ async function runCommand(input) {
         type: "command.finished",
         command: spec.command,
         profile: spec.profile,
+        modelRoutingMode: spec.routingMode,
         ok: result.ok,
         code,
         elapsedMs,
@@ -693,6 +752,9 @@ async function listHistory() {
       goal: typeof run.goal === "string" ? run.goal : "",
       model: identity.model || "",
       modelProfile: identity.modelProfile || "",
+      modelRoutingMode: identity.modelRoutingMode || (identity.modelProfile === "auto" ? "auto" : "fixed"),
+      routingCatalogHash: identity.routingCatalogHash || "",
+      routingHash: identity.routingHash || "",
       appVersion: identity.appVersion || "",
       interruptionReason: run.interruptionReason || ""
     });
@@ -722,14 +784,15 @@ async function readRunDetails(runId) {
   const info = await stat(directory).catch(() => null);
   if (!info?.isDirectory()) throw new Error("この実行履歴が見つかりません");
 
-  const [run, coverage, findings, synthesis, review, plan, batches] = await Promise.all([
+  const [run, coverage, findings, synthesis, review, plan, batches, modelUsage] = await Promise.all([
     readOptionalJsonFile(join(directory, "run.json"), {}),
     readOptionalJsonFile(join(directory, "coverage.json"), {}),
     readOptionalJsonFile(join(directory, "findings.json"), []),
     readOptionalJsonFile(join(directory, "synthesis.json"), {}),
     readOptionalJsonFile(join(directory, "review.json"), {}),
     readOptionalJsonFile(join(directory, "coverage-plan.json"), {}),
-    readOptionalJsonFile(join(directory, "batch-results.json"), [])
+    readOptionalJsonFile(join(directory, "batch-results.json"), []),
+    readOptionalJsonFile(join(directory, "model-usage.json"), null)
   ]);
 
   let summary = "";
@@ -748,6 +811,7 @@ async function readRunDetails(runId) {
     excluded: Array.isArray(plan?.excluded) ? plan.excluded : [],
     files: Array.isArray(plan?.files) ? plan.files : [],
     batchResults: Array.isArray(batches) ? batches : [],
+    modelUsage: modelUsage || run.modelRouting || null,
     summary,
     consoleLog
   };
@@ -1016,6 +1080,12 @@ if (hasSingleInstanceLock) {
     readSettings,
     appendDiagnostic,
     getMainWindow: () => mainWindow
+  });
+  desktopModelManager = createDesktopModelManager({
+    registerIpc,
+    readSettings,
+    appendDiagnostic,
+    isBusy: () => Boolean(activeProcess)
   });
   updaterController = createUpdaterController({
     registerIpc,

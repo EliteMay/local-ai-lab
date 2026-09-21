@@ -1,5 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { LMStudioClient } from "./model/lm-studio-client.mjs";
+import { loadModelCatalog, loadModelRouting } from "./model/model-catalog.mjs";
+import { ModelRouter } from "./model/model-router.mjs";
 import { RepoReader } from "./security/repo-reader.mjs";
 import { TaskBroker } from "./core/task-broker.mjs";
 import { AICompanyOrchestrator } from "./core/orchestrator.mjs";
@@ -54,8 +56,52 @@ function hasFlag(args, name) {
   return args.includes(name);
 }
 
+function optionBoolean(args, name, fallback = true) {
+  const value = getOption(args, name);
+  if (value === undefined) return fallback;
+  return !["0", "false", "off", "no"].includes(String(value).toLowerCase());
+}
+
+async function createModelRouter(config, args) {
+  const explicitProfile = getOption(args, "--model-profile") ?? process.env.LOCAL_AI_MODEL_PROFILE;
+  const mode = getOption(args, "--model-routing")
+    ?? process.env.LOCAL_AI_MODEL_ROUTING
+    ?? (explicitProfile ? "fixed" : "auto");
+  if (!["auto", "fixed"].includes(mode)) {
+    throw new Error("Invalid --model-routing value; use auto or fixed");
+  }
+
+  config.modelRoutingMode = mode;
+  config.autoManageModels = optionBoolean(args, "--auto-manage-models", true);
+  if (mode === "fixed") {
+    config.modelRoutingIdentity = null;
+    return null;
+  }
+
+  const catalog = await loadModelCatalog();
+  const routing = await loadModelRouting(catalog);
+  const router = new ModelRouter({
+    config,
+    catalog,
+    routing,
+    autoManageModels: config.autoManageModels,
+    onRoute: (event) => {
+      const marker = event.type === "model_prepare"
+        ? "PREPARE"
+        : event.type === "model_fallback"
+          ? "FALLBACK"
+          : event.type === "model_pin"
+            ? "PIN"
+            : "ROUTE";
+      console.log(`[Model] ${marker} ${JSON.stringify(event)}`);
+    }
+  });
+  config.modelRoutingIdentity = router.identity();
+  return router;
+}
+
 function printHelp() {
-  console.log(`local-ai-lab\n\nGlobal options:\n  --model-profile <name>\n      Load config/model-profiles/<name>.json over the default config.\n      You can also set LOCAL_AI_MODEL_PROFILE.\n\nCommands:\n  doctor\n      Check LM Studio API, loaded model, context length, and parallel setting.\n\n  inspect --repo <path> [--search <text>]\n      Read-only inspection of a local repository.\n\n  broker-demo\n      Exercise deterministic delegation without calling the model.\n\n  company --repo <path> --goal <text> [--run-id <id>]\n      Run the original brokered AI Company orchestration.\n\n  coverage --repo <path> --goal <text> [--run-id <id>] [--resume]\n      Audit every auditable text chunk with checkpoints and an explicit coverage ledger.\n      Use --resume with the same --run-id to continue a partial coverage run when repository fingerprints still match.\n\n  coverage-synthesize --run-id <id>\n      Hierarchically synthesize an existing 100% coverage evidence snapshot without re-reading the repository.\n`);
+  console.log(`local-ai-lab\n\nGlobal options:\n  --model-profile <name>\n      1モデル固定で config/model-profiles/<name>.json を使用します。\n  --model-routing <auto|fixed>\n      auto は作業種類ごとにモデルを自動選択し、fixed は1つのProfileを使います。\n  --auto-manage-models <true|false>\n      auto時にLM StudioのCatalog管理モデルを必要に応じて読み込み・解放します。\n\nCommands:\n  doctor\n      Check the configured baseline model connection.\n\n  inspect --repo <path> [--search <text>]\n      Read-only inspection of a local repository.\n\n  broker-demo\n      Exercise deterministic delegation without calling the model.\n\n  company --repo <path> --goal <text> [--run-id <id>]\n      Run the brokered AI Company orchestration.\n\n  coverage --repo <path> --goal <text> [--run-id <id>] [--resume]\n      Audit every auditable text chunk with checkpoints and an explicit coverage ledger.\n\n  coverage-synthesize --run-id <id>\n      Synthesize an existing 100% coverage evidence snapshot without re-reading the repository.\n`);
 }
 
 function roleLabel(role) {
@@ -260,15 +306,17 @@ async function runCompany(config, args) {
     throw new Error("company requires --repo <path> and --goal <text>");
   }
 
-  const client = new LMStudioClient(config.model);
-  await assertConfiguredModelLoaded(client, config);
+  const modelRouter = await createModelRouter(config, args);
+  const client = modelRouter ? null : new LMStudioClient(config.model);
+  if (client) await assertConfiguredModelLoaded(client, config);
 
-  console.log(`AI Company model: ${config.model.model}`);
+  console.log(modelRouter ? "AI Company model routing: auto" : `AI Company model: ${config.model.model}`);
   console.log(`Per-request timeout: ${Math.round((config.model.timeoutMs ?? 600000) / 1000)}s / max output tokens: ${config.model.maxTokens ?? 2048}`);
 
   const orchestrator = new AICompanyOrchestrator({
     config,
     modelClient: client,
+    modelRouter,
     onProgress: printCompanyProgress
   });
   const result = await orchestrator.run({ repoPath: repo, goal, runId });
@@ -293,15 +341,17 @@ async function runCoverage(config, args) {
     throw new Error("coverage --resume requires --run-id <id>");
   }
 
-  const client = new LMStudioClient(config.model);
-  await assertConfiguredModelLoaded(client, config);
-  console.log(`Coverage audit model: ${config.model.model}`);
+  const modelRouter = await createModelRouter(config, args);
+  const client = modelRouter ? null : new LMStudioClient(config.model);
+  if (client) await assertConfiguredModelLoaded(client, config);
+  console.log(modelRouter ? "Coverage audit model routing: auto" : `Coverage audit model: ${config.model.model}`);
   console.log(`Batch budget: ${config.coverage?.maxBatchChars ?? 16000} chars / ${config.coverage?.batchMaxTokens ?? 1000} output tokens`);
   console.log(`Adaptive single-chunk ceiling: ${config.coverage?.singleChunkMaxTokens ?? 1800} output tokens`);
 
   const orchestrator = new CoverageAuditOrchestrator({
     config,
     modelClient: client,
+    modelRouter,
     onProgress: printCoverageProgress
   });
   const result = await orchestrator.run({ repoPath: repo, goal, runId, resume });
@@ -325,17 +375,19 @@ async function runCoverageSynthesize(config, args) {
   const runId = getOption(args, "--run-id");
   if (!runId) throw new Error("coverage-synthesize requires --run-id <id>");
 
-  const client = new LMStudioClient(config.model);
-  await assertConfiguredModelLoaded(client, config);
+  const modelRouter = await createModelRouter(config, args);
+  const client = modelRouter ? null : new LMStudioClient(config.model);
+  if (client) await assertConfiguredModelLoaded(client, config);
   const runStore = new RunStore(config.runtimeData?.runsRoot ?? "runtime-data/runs");
   const service = new CoverageSynthesisService({
     config,
     modelClient: client,
+    modelRouter,
     runStore,
     onProgress: printSynthesisProgress
   });
 
-  console.log(`Coverage synthesis model: ${config.model.model}`);
+  console.log(modelRouter ? "Coverage synthesis model routing: auto" : `Coverage synthesis model: ${config.model.model}`);
   console.log(`Stored run: ${runId}`);
   console.log(`Planner input target: <=${config.coverage?.maxSynthesisChars ?? 24000} chars`);
   const result = await service.synthesizeExistingRun({ runId });

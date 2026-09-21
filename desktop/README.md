@@ -1,4 +1,4 @@
-# Local AI Lab Desktop v0.2.11
+# Local AI Lab Desktop v0.3
 
 Local AI Labの監査・再統合・検証Runを、Windows向けElectron GUIから開始・監視・再開するDesktop Controllerです。
 
@@ -38,6 +38,22 @@ Windows配布では、コード署名を無効のままにしつつ `signAndEdit
 長時間Run中は、Model Profileや既定Repository等の設定保存とApp Update開始を無効化します。Current Runが使用中の設定と保存Settingsが途中で食い違わないようにするためです。
 
 Repositoryの更新はRemote ProviderをGitHubへ固定せず「リモートから最新化」と表示します。Git操作は固定Command、30秒Timeout、bounded outputで実行します。
+
+## 用途別モデル運用
+
+設定の「モデル運用」は次の3つの考え方を持ちます。
+
+- **自動振り分け**: Task種別に応じてCatalog内ModelをNode.js側の固定Ruleで選ぶ既定運用
+- **1モデル固定**: 従来のQwen3-8B / Bonsai Profileを固定利用
+- **役割ごとの指定**: 現時点ではRouting Config側で管理し、将来GUI編集へ拡張できる構造
+
+自動振り分けでは、Code比率が高いCoverageにQwen2.5 Coder 7B、一般CoverageにQwen3 8B、改善案にMinistral 3 8B Reasoning、最終Reviewに起動済みBonsai 2 27Bを優先します。候補が未導入・停止・Request Failureなら次候補へ限定Fallbackします。
+
+一度成功したModelはTaskごとのRun Pinとして保存されます。途中ResumeでPinned Modelが使えない場合は別ModelへSilent切替せず、復旧してから再開するよう停止します。
+
+設定画面の「用途別モデル」ではLM Studio Native REST APIを使い、Repository管理のModel CatalogからのみDownload / Load / Unloadできます。長時間Run中はModel管理とSettings変更をLockします。
+
+Run中は現在のTask / Model / Call回数 / Fallback回数を表示し、完了後は `model-usage.json` にModel別のCall数・成功・失敗・Token・所要時間を保存します。
 
 ## 配布
 
@@ -93,7 +109,7 @@ Command CardのクリックはTask選択だけを行い、その場では実行�
 
 ## Repositoryを最新化
 
-対象Repository Panelの「GitHubから最新化」は、選択したLocal Git Repositoryを明示操作で更新します。
+対象Repository Panelの「リモートから最新化」は、選択したLocal Git Repositoryを明示操作で更新します。
 
 ```text
 Git Repository確認
@@ -117,11 +133,12 @@ Before / After SHAを確認
 
 これはAI CompanyのRead-only Audit Capabilityとは別の、Userが明示的に押すLocal Repository Maintenance操作です。
 
-## v0.2 Scope
+## v0.3 Scope
 
-- Runtime / Model Profile状態の確認
+- Runtime / Model Profile / 自動Model Routing状態の確認
+- 用途別Model Catalog管理、LM Studio ModelのDownload / Load / Unload
 - 前回Repositoryの自動復元 / 必要時のRepository変更
-- Repositoryの安全なGitHub最新化
+- Repositoryの安全なリモート最新化
 - doctor
 - inspect
 - coverage
@@ -186,7 +203,7 @@ start_llama_server.ps1
 - 起動・停止はUserがButtonを押した場合だけ行い、Desktopの起動・終了では自動実行しない
 - 「Bonsaiを停止」はDesktop自身が起動したProcessだけを対象にする
 - 別PowerShellで起動済みなら「外部で起動中」と表示し、DesktopからKillしない
-- Bonsai停止中の監査は開始前に止め、起動が必要であることを日本語で案内する
+- Bonsai固定Profileでは停止中の監査を開始前に止める。自動振り分けではBonsaiが利用不可ならRouteに定義した次候補へ限定Fallbackする
 
 BonsaiのModel download、`setup.ps1`、PrismML Binary setupは自動化しません。すでにSetup済みのBonsai-demoをDesktopから管理する機能です。
 
@@ -228,8 +245,9 @@ Prompt本文、Repository File本文、Credential等は保存しません。
 
 ## Current Limitations
 
-- LM Studio / PrismML Runtime自体の起動は自動化しない
-- Model download / Load / Unloadは自動化しない
+- LM Studio Server自体の起動は自動化しない
+- Catalog外ModelのDownload / Load / Unloadは自動化しない
+- PrismML / Bonsai RuntimeのStart / StopはUser明示操作のまま
 - 長時間ProcessはAppを閉じると継続管理できない
 - 残り時間はBatch平均からの概算
 - Installer Code Signingは未導入

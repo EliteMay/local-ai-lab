@@ -44,8 +44,10 @@ function buildUserPrompt({ role, task, goal, repositoryContext, priorResults, ma
 }
 
 export class AgentRunner {
-  constructor({ modelClient, broker, maxPriorResultChars = 12000 }) {
+  constructor({ modelClient = null, modelRouter = null, broker, maxPriorResultChars = 12000 }) {
+    if (!modelClient && !modelRouter) throw new Error("modelClient or modelRouter is required");
     this.modelClient = modelClient;
+    this.modelRouter = modelRouter;
     this.broker = broker;
     this.maxPriorResultChars = maxPriorResultChars;
     this.lastMetaByTask = new Map();
@@ -82,12 +84,13 @@ export class AgentRunner {
           maxTokens: definition.maxTokens
         };
 
-        if (typeof this.modelClient.chatJsonDetailed === "function") {
-          const detailed = await this.modelClient.chatJsonDetailed(request);
+        const activeClient = this.modelRouter ? this.modelRouter.clientFor(role) : this.modelClient;
+        if (typeof activeClient.chatJsonDetailed === "function") {
+          const detailed = await activeClient.chatJsonDetailed(request);
           output = detailed.value;
           this.lastMetaByTask.set(task.id, detailed.meta);
         } else {
-          output = await this.modelClient.chatJson(request);
+          output = await activeClient.chatJson(request);
         }
       } catch (error) {
         correction = [`Model call or JSON parse failed: ${error.message}`];

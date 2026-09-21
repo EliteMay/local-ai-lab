@@ -78,6 +78,7 @@ jobs:
         run: |
           node --check desktop/main.mjs
           node --check desktop/updater.mjs
+          node --check desktop/model-manager.mjs
           node --check desktop/preload.cjs
           node --check desktop/renderer/renderer.mjs
           node --check scripts/generate-app-icon.mjs

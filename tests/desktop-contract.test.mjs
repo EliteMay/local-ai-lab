@@ -327,7 +327,7 @@ test("desktop reconciles stale and user-cancelled runs as interrupted", async ()
   assert.match(main, /markRunInterruptedFromOutput/);
   assert.match(main, /user-cancelled/);
   assert.match(renderer, /"INTERRUPTED"/);
-  assert.match(renderer, /同じモデル設定でのみ監査を再開/);
+  assert.match(renderer, /記録済みのモデル振り分けを維持して再開/);
 });
 
 test("desktop result viewer exposes saved findings evidence plans reviews and raw log", async () => {
@@ -375,6 +375,8 @@ test("desktop blocks mutable settings and update actions while a run is active",
 
   assert.match(main, /処理実行中は設定を変更できません/);
   for (const selector of [
+    "#modelRoutingMode",
+    "#autoManageModels",
     "#settingsProfile",
     "#settingsRepoButton",
     "#bonsaiFolderButton",
@@ -395,4 +397,32 @@ test("repository maintenance uses a bounded git subprocess and generic remote wo
   assert.match(main, /slice\(-200000\)/);
   assert.match(html, /リモートから最新化/);
   assert.doesNotMatch(html, /GitHubから最新化/);
+});
+
+
+test("desktop exposes deterministic multi-model routing and safe catalog management", async () => {
+  const main = await readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8");
+  const preload = await readFile(new URL("../desktop/preload.cjs", import.meta.url), "utf8");
+  const html = await readFile(new URL("../desktop/renderer/index.html", import.meta.url), "utf8");
+  const renderer = await readFile(new URL("../desktop/renderer/renderer.mjs", import.meta.url), "utf8");
+  const manager = await readFile(new URL("../desktop/model-manager.mjs", import.meta.url), "utf8");
+
+  for (const marker of ["models:list", "models:download", "models:load", "models:unload"]) {
+    assert.ok(main.includes(marker) || manager.includes(marker), "missing model IPC: " + marker);
+  }
+  assert.match(preload, /listModels/);
+  assert.match(preload, /downloadModel/);
+  assert.match(preload, /loadModel/);
+  assert.match(preload, /unloadModel/);
+  assert.match(html, /id="modelRoutingMode"/);
+  assert.match(html, /id="autoManageModels"/);
+  assert.match(html, /id="modelCatalog"/);
+  assert.match(html, /id="currentRoutedModel"/);
+  assert.match(renderer, /model-route/);
+  assert.match(renderer, /model-fallback/);
+  assert.match(manager, /findCatalogModel/);
+  assert.match(manager, /処理実行中はモデルをダウンロードできません/);
+  assert.match(manager, /処理実行中はモデルを読み込めません/);
+  assert.match(manager, /処理実行中はモデルを解放できません/);
+  assert.doesNotMatch(preload, /modelUrl|downloadUrl|shellCommand/);
 });
