@@ -31,6 +31,12 @@ const state = {
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 
+function profileLabel(value) {
+  if (value === "default") return "標準";
+  if (value === "bonsai-2-27b") return "Bonsai 2 27B";
+  return value || "不明";
+}
+
 function showView(name) {
   $$(".nav").forEach((button) => button.classList.toggle("active", button.dataset.view === name));
   $$(".view").forEach((view) => view.classList.toggle("active", view.id === name));
@@ -700,7 +706,7 @@ async function init() {
   setText("#repoPath", state.repository || "未選択");
   $("#settingsRepo").value = state.repository;
   $("#settingsProfile").value = state.settings.modelProfile;
-  setText("#profile", state.settings.modelProfile);
+  setText("#profile", profileLabel(state.settings.modelProfile));
   $("#rememberRepo").checked = state.settings.rememberRepository;
   $("#autoCheckUpdates").checked = state.settings.autoCheckUpdates !== false;
   window.localAI.onLog(appendLog);
@@ -746,7 +752,7 @@ $("#save").addEventListener("click", async () => {
     state.settings = next;
     state.repository = next.defaultRepository;
     setText("#repoPath", state.repository || "未選択");
-    setText("#profile", next.modelProfile);
+    setText("#profile", profileLabel(next.modelProfile));
     setText("#saveMessage", "保存しました");
     setTimeout(() => setText("#saveMessage", ""), 1500);
   } catch (error) {
