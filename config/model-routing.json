@@ -38,51 +38,61 @@
   "routes": {
     "general": [
       "qwen3-8b",
+      "ministral-3-8b-reasoning",
+      "qwen3-4b",
       "qwen2.5-coder-7b",
       "phi-4-mini-reasoning"
     ],
     "coverage-general": [
       "qwen3-8b",
-      "qwen2.5-coder-7b",
-      "phi-4-mini-reasoning"
+      "ministral-3-8b-reasoning",
+      "qwen3-4b",
+      "qwen2.5-coder-7b"
     ],
     "coverage-code": [
       "qwen2.5-coder-7b",
       "qwen3-8b",
-      "phi-4-mini-reasoning"
+      "ministral-3-8b-reasoning",
+      "qwen3-4b"
     ],
     "synthesis-reduction": [
       "qwen3-8b",
-      "phi-4-mini-reasoning",
-      "qwen2.5-coder-7b"
+      "ministral-3-8b-reasoning",
+      "qwen3-4b"
     ],
     "planner": [
+      "ministral-3-8b-reasoning",
       "phi-4-mini-reasoning",
       "qwen3-8b",
-      "bonsai-2-27b"
+      "qwen3-4b"
     ],
     "reviewer": [
       "bonsai-2-27b",
-      "phi-4-mini-reasoning",
-      "qwen3-8b"
+      "ministral-3-8b-reasoning",
+      "qwen3-8b",
+      "phi-4-mini-reasoning"
     ],
     "director": [
       "qwen3-8b",
-      "phi-4-mini-reasoning"
+      "ministral-3-8b-reasoning",
+      "qwen3-4b"
     ],
     "researcher": [
       "qwen3-8b",
-      "phi-4-mini-reasoning"
+      "ministral-3-8b-reasoning",
+      "qwen3-4b"
     ],
     "auditor": [
       "qwen2.5-coder-7b",
       "qwen3-8b",
-      "phi-4-mini-reasoning"
+      "ministral-3-8b-reasoning",
+      "qwen3-4b"
     ],
     "improvement-planner": [
+      "ministral-3-8b-reasoning",
       "phi-4-mini-reasoning",
       "qwen3-8b",
-      "bonsai-2-27b"
+      "qwen3-4b"
     ]
   }
 }
