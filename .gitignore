@@ -4,3 +4,4 @@ node_modules/
 runtime-data/
 logs/
 *.log
+desktop/assets/generated/
