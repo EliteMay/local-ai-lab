@@ -113,6 +113,20 @@ export class LMStudioModelManager {
     }
   }
 
+  async unloadManaged() {
+    const models = await this.listModels();
+    let unloaded = 0;
+    for (const entry of this.catalog.models) {
+      if (entry.runtime !== "lm-studio") continue;
+      const installed = this.resolveInstalled(entry, models);
+      for (const instance of installed?.loaded_instances ?? []) {
+        await this.unloadInstance(instance.id);
+        unloaded += 1;
+      }
+    }
+    return { unloaded };
+  }
+
   async ensureLoaded(entry, { autoManage = true } = {}) {
     if (entry.runtime !== "lm-studio") throw new Error("ensureLoaded only supports LM Studio models");
     let models = await this.listModels();
