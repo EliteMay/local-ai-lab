@@ -327,7 +327,7 @@ test("desktop reconciles stale and user-cancelled runs as interrupted", async ()
   assert.match(main, /markRunInterruptedFromOutput/);
   assert.match(main, /user-cancelled/);
   assert.match(renderer, /"INTERRUPTED"/);
-  assert.match(renderer, /同じモデル設定でのみ監査を再開/);
+  assert.match(renderer, /記録済みのモデル振り分けを維持して再開/);
 });
 
 test("desktop result viewer exposes saved findings evidence plans reviews and raw log", async () => {
