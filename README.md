@@ -271,7 +271,7 @@ https://github.com/EliteMay/local-ai-lab/releases/latest
 - 10分以上新しい出力がない場合の長時間応答待ち表示（接続エラーとは別状態）
 - PARTIAL Run / Synthesisの履歴再開
 - 選択Repositoryの「GitHubから最新化」
-- GitHub Releases経由のアプリ内One-click Update
+- GitHub Releases経由のアプリ内更新（ダウンロード → 再起動して更新を明示分離）
 - Settings / Run履歴 / DiagnosticsのuserData保存
 - 長時間Run中の自動Sleep防止と誤終了Guard
 - Background完了 / FailureのWindows通知
@@ -280,7 +280,7 @@ https://github.com/EliteMay/local-ai-lab/releases/latest
 - 手動停止をErrorと分離した明示State
 - Main / Renderer両方の長時間Log上限
 
-v0.2.0はUpdater Bootstrap Versionです。v0.2.0のみSetup.exeを1回手動Installし、その後はアプリ内更新を利用できます。
+v0.2.0はUpdater Bootstrap Versionです。通常はその後アプリ内更新を利用できます。v0.2.7で「新版を検出できるが更新開始後に進まない」実機事例が確認されたため、v0.2.9ではダウンロードと再起動を分離し、標準の再起動処理が始まらない場合は検証済みダウンロード済みInstallerを起動するFallbackを追加しています。v0.2.7から自動更新できない場合は、配布ページからv0.2.9 Setup.exeを1回上書きInstallしてください。
 
 Repository最新化はUserの明示操作だけで、未コミット変更がある場合は停止し、`git fetch --prune origin` → `git pull --ff-only` だけを許可します。AI Companyの監査Capability自体は引き続きRead-onlyです。
 
