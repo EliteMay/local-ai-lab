@@ -263,14 +263,14 @@ v0.3.0では、1回のRunで1つのModelを固定するだけでなく、作業�
 既定の自動振り分け:
 - 一般監査 / 大量処理: Qwen3 8B
 - Code-heavy監査: Qwen2.5 Coder 7B
-- 改善案 / 推論: Phi-4 Mini Reasoning
+- 改善案 / 推論: Ministral 3 8B Reasoning（Fallback: Phi-4 Mini Reasoning）
 - 最終Reviewer: Bonsai 2 27Bを優先し、利用不可なら限定Fallback
 
 設定画面の「用途別モデル」から、LM Studio Native REST APIでCatalog固定ModelのDownload / Load / Unloadを管理できます。任意URL・任意ShellはRendererへ渡しません。
 
 Run中は現在のTask / Model / Fallback / Model別Call数を表示し、保存済みRunへ `model-usage.json` とRouting Pinを残します。同じTaskで一度成功したModelはRun内でPinされ、Resume中に別ModelへSilent切替しません。
 
-Gemma 3 4B / gpt-oss-20b / Qwen3 Coder 30B-A3BもCatalogへ登録しますが、重さや未実装Capabilityのため初期Auto Routeには入れません。
+Qwen3 4Bは軽量FallbackとしてAuto Routeへ入れます。Gemma 3 4B / Qwen3-VL 4B / gpt-oss-20b / Qwen3 Coder 30B-A3BもCatalogへ登録しますが、重さや未実装Capabilityのため初期Auto Routeには入れません。
 
 ## Desktop Controller v0.3
 
