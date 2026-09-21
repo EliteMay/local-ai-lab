@@ -47,7 +47,7 @@ WindowsへInstall
 Desktop / Start Menuから起動
 ```
 
-v0.2.0はAuto Updaterを搭載する最初のVersionです。v0.2.0だけはSetup.exeを手動で1回Installします。v0.2.0以降はアプリ内の「更新を確認」「今すぐ更新」からGitHub Releasesの新版を取得し、再起動して更新できます。
+v0.2.0はAuto Updaterを搭載する最初のVersionです。v0.2.9以降の更新UIは「更新を確認」→「ダウンロード」→「再起動して更新」の2段階です。Download完了前には再起動しません。標準のUpdater再起動が開始されない場合は、electron-updaterがIntegrity確認して返したDownloaded InstallerだけをFallback起動します。v0.2.7で新版検出後に更新できない実機事例があるため、その場合は配布ページからv0.2.9 Setup.exeを1回上書きInstallしてください。
 
 Releaseには同一Versionの次のArtifactを揃えます。
 
@@ -130,7 +130,7 @@ Before / After SHAを確認
 - 結果のClipboard Copy
 - Model Profile / 最後に使ったRepositoryの設定保存
 - Electron userDataへのRun履歴 / Settings / 最大100件の診断履歴
-- GitHub Releases One-click Update
+- GitHub Releases Update（DownloadとRestartを分離）
 - 実行中だけ `prevent-app-suspension` を使うSleep防止
 - 実行中Window Close時の中断確認
 - Background完了 / Failure通知
