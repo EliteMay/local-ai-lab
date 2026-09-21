@@ -17,7 +17,7 @@ test("run identity is deterministic for the same effective configuration", () =>
   });
 
   assert.equal(first.configHash, second.configHash);
-  assert.equal(first.runSchemaVersion, 2);
+  assert.equal(first.runSchemaVersion, 3);
   assert.equal(compareResumeIdentity(first, second).ok, true);
 });
 
@@ -42,4 +42,45 @@ test("legacy run without execution identity is not silently resumable", () => {
   const result = compareResumeIdentity(null, current);
   assert.equal(result.ok, false);
   assert.match(result.reasons[0], /旧版/);
+});
+
+
+test("auto-routing identity pins catalog and routing hashes for safe resume", () => {
+  const first = buildExecutionIdentity({
+    appVersion: "0.3.0",
+    modelRoutingMode: "auto",
+    modelRoutingIdentity: {
+      catalogHash: "catalog-a",
+      routingHash: "routing-a",
+      autoManageModels: true
+    },
+    coverage: { maxBatchChars: 16000 }
+  });
+  const same = buildExecutionIdentity({
+    appVersion: "0.3.0",
+    modelRoutingMode: "auto",
+    modelRoutingIdentity: {
+      catalogHash: "catalog-a",
+      routingHash: "routing-a",
+      autoManageModels: true
+    },
+    coverage: { maxBatchChars: 16000 }
+  });
+  const changed = buildExecutionIdentity({
+    appVersion: "0.3.0",
+    modelRoutingMode: "auto",
+    modelRoutingIdentity: {
+      catalogHash: "catalog-a",
+      routingHash: "routing-b",
+      autoManageModels: true
+    },
+    coverage: { maxBatchChars: 16000 }
+  });
+
+  assert.equal(first.model, "auto");
+  assert.equal(first.routingCatalogHash, "catalog-a");
+  assert.equal(compareResumeIdentity(first, same).ok, true);
+  const mismatch = compareResumeIdentity(first, changed);
+  assert.equal(mismatch.ok, false);
+  assert.ok(mismatch.reasons.some((item) => item.includes("監査設定") || item.includes("モデル振り分け")));
 });
