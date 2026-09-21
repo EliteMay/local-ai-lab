@@ -8,6 +8,7 @@ import { createUpdaterController } from "./updater.mjs";
 import { createBonsaiRuntimeController } from "./bonsai-runtime.mjs";
 import { createSystemMetricsSampler } from "./system-metrics.mjs";
 import { buildRunOverview } from "./run-overview.mjs";
+import { createDesktopModelManager } from "./model-manager.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(__dirname, "..");
@@ -36,9 +37,16 @@ let pendingQuitAfterCancel = false;
 let allowWindowClose = false;
 let updaterController = null;
 let bonsaiRuntimeController = null;
+let desktopModelManager = null;
 let activeProcessStartedAt = null;
 let activeProcessLastOutputAt = null;
 const sampleSystemMetrics = createSystemMetricsSampler();
+
+function safeRoutingMode(value) {
+  const mode = String(value || "auto");
+  if (!["auto", "fixed"].includes(mode)) throw new Error("モデル運用の値が不正です");
+  return mode;
+}
 
 function safeProfile(value) {
   const profile = String(value || "default");
@@ -136,6 +144,8 @@ async function readSettings() {
   const defaults = {
     defaultRepository: app.isPackaged ? "" : projectRoot,
     modelProfile: "default",
+    modelRoutingMode: "auto",
+    autoManageModels: true,
     autoCheckUpdates: true,
     bonsaiDemoPath: existsSync("D:\\AI\\Bonsai-demo") ? "D:\\AI\\Bonsai-demo" : ""
   };
@@ -173,11 +183,18 @@ async function saveSettings(input) {
   const next = {
     defaultRepository: requestedRepository ? validateRepository(requestedRepository) : "",
     modelProfile: safeProfile(input?.modelProfile),
+    modelRoutingMode: safeRoutingMode(input?.modelRoutingMode),
+    autoManageModels: input?.autoManageModels !== false,
     autoCheckUpdates: input?.autoCheckUpdates !== false,
     bonsaiDemoPath: String(input?.bonsaiDemoPath || "").trim()
   };
   await writeSettings(next);
-  await appendDiagnostic({ type: "settings.saved", profile: next.modelProfile });
+  await appendDiagnostic({
+    type: "settings.saved",
+    profile: next.modelProfile,
+    modelRoutingMode: next.modelRoutingMode,
+    autoManageModels: next.autoManageModels
+  });
   return next;
 }
 
@@ -222,19 +239,25 @@ function buildCommand(input) {
   const command = String(input.command || "");
   if (!allowedCommands.has(command)) throw new Error("この処理は実行できません");
   const profile = safeProfile(input.modelProfile);
-  const profileArgs = profile === "default" ? [] : ["--model-profile", profile];
+  const routingMode = safeRoutingMode(input.modelRoutingMode);
+  const autoManageModels = input.autoManageModels !== false;
+  const profileArgs = routingMode === "fixed" && profile !== "default"
+    ? ["--model-profile", profile]
+    : [];
+  const routingArgs = ["--model-routing", routingMode, "--auto-manage-models", String(autoManageModels)];
 
   if (command === "test") {
     return {
       command,
       profile,
+      routingMode,
       file: process.execPath,
       args: ["--test"],
       nodeMode: true
     };
   }
 
-  const args = [cliScriptPath(), command, ...profileArgs];
+  const args = [cliScriptPath(), command, ...profileArgs, ...routingArgs];
   if (command === "inspect") {
     args.push("--repo", validateRepository(input.repoPath));
   }
@@ -246,7 +269,7 @@ function buildCommand(input) {
   if (command === "coverage-synthesize") {
     args.push("--run-id", safeRunId(input.runId));
   }
-  return { command, profile, file: process.execPath, args, nodeMode: true };
+  return { command, profile, routingMode, file: process.execPath, args, nodeMode: true };
 }
 
 function startRunProtection() {
@@ -363,6 +386,17 @@ async function openRunFolder(runId) {
 }
 
 function parseProgress(line) {
+  if (line.startsWith("[Model] ROUTE ") || line.startsWith("[Model] FALLBACK ")) {
+    const fallback = line.startsWith("[Model] FALLBACK ");
+    const raw = line.slice(fallback ? "[Model] FALLBACK ".length : "[Model] ROUTE ".length);
+    try {
+      const payload = JSON.parse(raw);
+      return { type: fallback ? "model-fallback" : "model-route", ...payload };
+    } catch {
+      return null;
+    }
+  }
+
   const run = line.match(/(?:Coverage\] Run|Coverage run:|Synthesis run:|Stored run:)\s+(run-[\w.-]+)/);
   if (run) return { type: "run-id", runId: run[1] };
 
@@ -418,7 +452,12 @@ async function runCommand(input) {
   if (activeProcess) throw new Error("Another command is already running");
   const spec = buildCommand(input);
   const startedAt = Date.now();
-  await appendDiagnostic({ type: "command.started", command: spec.command, profile: spec.profile });
+  await appendDiagnostic({
+    type: "command.started",
+    command: spec.command,
+    profile: spec.profile,
+    modelRoutingMode: spec.routingMode
+  });
 
   return new Promise((resolvePromise, rejectPromise) => {
     let output = "";
@@ -516,6 +555,7 @@ async function runCommand(input) {
           type: "command.cancelled",
           command: spec.command,
           profile: spec.profile,
+          modelRoutingMode: spec.routingMode,
           elapsedMs: result.elapsedMs
         });
         resolvePromise(result);
@@ -527,6 +567,7 @@ async function runCommand(input) {
         type: "command.error",
         command: spec.command,
         profile: spec.profile,
+        modelRoutingMode: spec.routingMode,
         error: compactError(error)
       });
       showCommandNotification(spec.command, false);
@@ -561,6 +602,7 @@ async function runCommand(input) {
           type: "command.cancelled",
           command: spec.command,
           profile: spec.profile,
+          modelRoutingMode: spec.routingMode,
           elapsedMs
         });
         resolvePromise(result);
@@ -572,6 +614,7 @@ async function runCommand(input) {
         type: "command.finished",
         command: spec.command,
         profile: spec.profile,
+        modelRoutingMode: spec.routingMode,
         ok: result.ok,
         code,
         elapsedMs,
@@ -864,6 +907,12 @@ if (hasSingleInstanceLock) {
     readSettings,
     appendDiagnostic,
     getMainWindow: () => mainWindow
+  });
+  desktopModelManager = createDesktopModelManager({
+    registerIpc,
+    readSettings,
+    appendDiagnostic,
+    isBusy: () => Boolean(activeProcess)
   });
   updaterController = createUpdaterController({
     registerIpc,
