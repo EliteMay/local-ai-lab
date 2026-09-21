@@ -33,3 +33,10 @@ main{padding:30px 36px 48px;overflow:auto}.view{display:none}.view.active{displa
 .runtime-card{margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;gap:18px;border-color:#31435f;background:linear-gradient(180deg,#121923 0%,#11161e 100%)}
 .runtime-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 .bonsai-settings{display:grid;gap:12px;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--panel3)}
+
+.runtime-state-line{display:flex;align-items:center;gap:9px}
+.runtime-state-dot{width:11px;height:11px;border-radius:50%;background:#697485;box-shadow:0 0 0 3px rgba(105,116,133,.12)}
+.runtime-state-dot.running,.runtime-state-dot.external-running{background:var(--ok);box-shadow:0 0 0 3px rgba(98,211,155,.12)}
+.runtime-state-dot.starting,.runtime-state-dot.stopping{background:var(--warn);box-shadow:0 0 0 3px rgba(233,183,96,.12)}
+.runtime-state-dot.error{background:var(--danger);box-shadow:0 0 0 3px rgba(255,120,134,.12)}
+.runtime-state-dot.stopped{background:#697485}
