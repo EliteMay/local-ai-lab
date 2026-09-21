@@ -351,6 +351,12 @@ const command = args[0];
 
 try {
   const config = await loadConfig(args);
+  if (process.env.LOCAL_AI_RUNTIME_DATA_ROOT) {
+    config.runtimeData = {
+      ...(config.runtimeData ?? {}),
+      runsRoot: process.env.LOCAL_AI_RUNTIME_DATA_ROOT
+    };
+  }
   if (!command || command === "help" || command === "--help" || command === "-h") {
     printHelp();
   } else if (command === "doctor") {
