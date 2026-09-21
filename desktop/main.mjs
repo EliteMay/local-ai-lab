@@ -1,5 +1,5 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain } from "electron";
-import { existsSync } from "node:fs";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Notification, powerSaveBlocker, shell } from "electron";
+import { existsSync, statSync } from "node:fs";
 import { cp, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -14,9 +14,24 @@ const allowedCommands = new Set(["doctor", "inspect", "coverage", "coverage-synt
 const MAX_GOAL_CHARS = 4000;
 const MAX_CLIPBOARD_CHARS = 2_000_000;
 const MAX_DIAGNOSTIC_EVENTS = 100;
+const MAX_COMMAND_OUTPUT_CHARS = 2_000_000;
+const COMMAND_LABELS = new Map([
+  ["doctor", "接続確認"],
+  ["inspect", "フォルダ確認"],
+  ["coverage", "全体監査"],
+  ["coverage-synthesize", "結果の統合"],
+  ["test", "テスト"]
+]);
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) app.quit();
+
 let mainWindow = null;
 let activeProcess = null;
 let activeProcessCommand = null;
+let activeProcessCancelled = false;
+let activePowerBlockerId = null;
+let pendingQuitAfterCancel = false;
+let allowWindowClose = false;
 let updaterController = null;
 let bonsaiRuntimeController = null;
 
@@ -45,6 +60,12 @@ function validateRepository(repoPath) {
   if (!raw) throw new Error("対象フォルダを選択してください");
   const target = resolve(raw);
   if (!existsSync(target)) throw new Error("対象フォルダが見つかりません");
+  try {
+    if (!statSync(target).isDirectory()) throw new Error("対象フォルダではありません");
+  } catch (error) {
+    if (error?.message === "対象フォルダではありません") throw error;
+    throw new Error("対象フォルダを確認できません");
+  }
   return target;
 }
 
@@ -89,7 +110,10 @@ async function readSettings() {
     bonsaiDemoPath: existsSync("D:\\AI\\Bonsai-demo") ? "D:\\AI\\Bonsai-demo" : ""
   };
   try {
-    return { ...defaults, ...JSON.parse(await readFile(settingsPath(), "utf8")) };
+    const parsed = JSON.parse(await readFile(settingsPath(), "utf8"));
+    const merged = { ...defaults, ...parsed };
+    if (merged.rememberRepository === false) merged.defaultRepository = "";
+    return merged;
   } catch {
     return defaults;
   }
@@ -97,10 +121,11 @@ async function readSettings() {
 
 async function saveSettings(input) {
   const requestedRepository = String(input?.defaultRepository || "").trim();
+  const rememberRepository = input?.rememberRepository !== false;
   const next = {
-    defaultRepository: requestedRepository ? validateRepository(requestedRepository) : "",
+    defaultRepository: rememberRepository && requestedRepository ? validateRepository(requestedRepository) : "",
     modelProfile: safeProfile(input?.modelProfile),
-    rememberRepository: input?.rememberRepository !== false,
+    rememberRepository,
     autoCheckUpdates: input?.autoCheckUpdates !== false,
     bonsaiDemoPath: String(input?.bonsaiDemoPath || "").trim()
   };
@@ -178,6 +203,109 @@ function buildCommand(input) {
   return { command, profile, file: process.execPath, args, nodeMode: true };
 }
 
+function startRunProtection() {
+  if (activePowerBlockerId != null && powerSaveBlocker.isStarted(activePowerBlockerId)) {
+    return activePowerBlockerId;
+  }
+  try {
+    activePowerBlockerId = powerSaveBlocker.start("prevent-app-suspension");
+    void appendDiagnostic({ type: "command.sleep-protection.started" });
+  } catch (error) {
+    activePowerBlockerId = null;
+    void appendDiagnostic({
+      type: "command.sleep-protection.error",
+      error: compactError(error)
+    });
+  }
+  return activePowerBlockerId;
+}
+
+function stopRunProtection() {
+  if (activePowerBlockerId == null) return;
+  try {
+    if (powerSaveBlocker.isStarted(activePowerBlockerId)) {
+      powerSaveBlocker.stop(activePowerBlockerId);
+    }
+  } catch {}
+  activePowerBlockerId = null;
+  void appendDiagnostic({ type: "command.sleep-protection.stopped" });
+}
+
+function killProcessTree(pid) {
+  if (!pid) return;
+  if (process.platform === "win32") {
+    const killer = spawn("taskkill.exe", ["/PID", String(pid), "/T", "/F"], {
+      windowsHide: true,
+      shell: false,
+      stdio: "ignore"
+    });
+    killer.unref();
+    return;
+  }
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch {}
+}
+
+function appendBoundedOutput(current, chunk) {
+  const next = current + chunk;
+  if (next.length <= MAX_COMMAND_OUTPUT_CHARS) {
+    return { text: next, truncated: false };
+  }
+  return {
+    text: next.slice(-MAX_COMMAND_OUTPUT_CHARS),
+    truncated: true
+  };
+}
+
+function showCommandNotification(command, ok) {
+  if (!Notification.isSupported() || !mainWindow || mainWindow.isDestroyed() || mainWindow.isFocused()) return;
+  const label = COMMAND_LABELS.get(command) || "処理";
+  const notification = new Notification({
+    title: "Local AI Lab",
+    body: ok ? `${label}が完了しました。` : `${label}でエラーが発生しました。`,
+    silent: false
+  });
+  notification.on("click", () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  });
+  notification.show();
+}
+
+async function cancelActiveCommand({ quitAfter = false } = {}) {
+  if (!activeProcess) return { cancelled: false };
+  activeProcessCancelled = true;
+  pendingQuitAfterCancel = pendingQuitAfterCancel || quitAfter;
+  const command = activeProcessCommand || "active command";
+  const pid = activeProcess.pid;
+  await appendDiagnostic({
+    type: "command.cancel.requested",
+    command,
+    quitAfter,
+    pid
+  });
+  killProcessTree(pid);
+  return { cancelled: true };
+}
+
+async function openRunFolder(runId) {
+  const id = safeRunId(runId);
+  const directory = join(runsRoot(), id);
+  let info;
+  try {
+    info = await stat(directory);
+  } catch {
+    throw new Error("この実行履歴の保存フォルダが見つかりません。");
+  }
+  if (!info.isDirectory()) throw new Error("実行履歴の保存先が不正です。");
+  const error = await shell.openPath(directory);
+  if (error) throw new Error(`保存フォルダを開けませんでした: ${error}`);
+  return { ok: true, runId: id };
+}
+
 function parseProgress(line) {
   const run = line.match(/(?:Coverage\] Run|Coverage run:|Synthesis run:|Stored run:)\s+(run-[\w.-]+)/);
   if (run) return { type: "run-id", runId: run[1] };
@@ -238,6 +366,10 @@ async function runCommand(input) {
 
   return new Promise((resolvePromise, rejectPromise) => {
     let output = "";
+    let outputTruncated = false;
+    let settled = false;
+    const pendingLines = { stdout: "", stderr: "" };
+
     const child = spawn(spec.file, spec.args, {
       cwd: projectRoot,
       windowsHide: true,
@@ -249,53 +381,148 @@ async function runCommand(input) {
         LOCAL_AI_RUNTIME_DATA_ROOT: runsRoot()
       }
     });
+
     activeProcess = child;
     activeProcessCommand = spec.command;
+    activeProcessCancelled = false;
+    pendingQuitAfterCancel = false;
+    startRunProtection();
+
+    const sendLine = (channel, line) => {
+      if (!line) return;
+      mainWindow?.webContents.send("command:log", {
+        channel,
+        line,
+        progress: parseProgress(line)
+      });
+    };
 
     const emit = (channel, chunk) => {
       const text = chunk.toString();
-      output += text;
-      for (const line of text.split(/\r?\n/).filter(Boolean)) {
-        mainWindow?.webContents.send("command:log", {
-          channel,
-          line,
-          progress: parseProgress(line)
-        });
+      const bounded = appendBoundedOutput(output, text);
+      output = bounded.text;
+      outputTruncated = outputTruncated || bounded.truncated;
+
+      const combined = pendingLines[channel] + text;
+      const lines = combined.split(/\r?\n/);
+      pendingLines[channel] = lines.pop() || "";
+      for (const line of lines) sendLine(channel, line);
+    };
+
+    const flushPendingLines = () => {
+      for (const channel of ["stdout", "stderr"]) {
+        const line = pendingLines[channel];
+        pendingLines[channel] = "";
+        if (line) sendLine(channel, line);
       }
+    };
+
+    const cleanup = () => {
+      if (activeProcess === child) {
+        activeProcess = null;
+        activeProcessCommand = null;
+      }
+      stopRunProtection();
+    };
+
+    const finishQuitIfRequested = () => {
+      if (!pendingQuitAfterCancel) return;
+      pendingQuitAfterCancel = false;
+      allowWindowClose = true;
+      setTimeout(() => app.quit(), 0);
     };
 
     child.stdout.on("data", (chunk) => emit("stdout", chunk));
     child.stderr.on("data", (chunk) => emit("stderr", chunk));
+
     child.on("error", async (error) => {
-      activeProcess = null;
-      activeProcessCommand = null;
+      if (settled) return;
+      settled = true;
+      flushPendingLines();
+      const cancelled = activeProcessCancelled;
+      cleanup();
+
+      if (cancelled) {
+        const result = {
+          ok: false,
+          cancelled: true,
+          code: null,
+          output: output.trim(),
+          outputTruncated,
+          elapsedMs: Date.now() - startedAt
+        };
+        await appendDiagnostic({
+          type: "command.cancelled",
+          command: spec.command,
+          profile: spec.profile,
+          elapsedMs: result.elapsedMs
+        });
+        resolvePromise(result);
+        finishQuitIfRequested();
+        return;
+      }
+
       await appendDiagnostic({
         type: "command.error",
         command: spec.command,
         profile: spec.profile,
         error: compactError(error)
       });
+      showCommandNotification(spec.command, false);
       rejectPromise(error);
+      finishQuitIfRequested();
     });
+
     child.on("close", async (code) => {
-      activeProcess = null;
-      activeProcessCommand = null;
+      if (settled) return;
+      settled = true;
+      flushPendingLines();
+
+      const cancelled = activeProcessCancelled;
+      const elapsedMs = Date.now() - startedAt;
+      cleanup();
+
+      const resultOutput = outputTruncated
+        ? "[ログ前半は長さ上限のため省略しました]\n" + output.trim()
+        : output.trim();
+
       const result = {
-        ok: code === 0,
+        ok: code === 0 && !cancelled,
+        cancelled,
         code,
-        output: output.trim(),
-        elapsedMs: Date.now() - startedAt
+        output: resultOutput,
+        outputTruncated,
+        elapsedMs
       };
+
+      if (cancelled) {
+        await appendDiagnostic({
+          type: "command.cancelled",
+          command: spec.command,
+          profile: spec.profile,
+          elapsedMs
+        });
+        resolvePromise(result);
+        finishQuitIfRequested();
+        return;
+      }
+
       await appendDiagnostic({
         type: "command.finished",
         command: spec.command,
         profile: spec.profile,
         ok: result.ok,
         code,
-        elapsedMs: result.elapsedMs
+        elapsedMs,
+        outputTruncated
       });
+
+      showCommandNotification(spec.command, result.ok);
+
       if (code === 0) resolvePromise(result);
       else rejectPromise(new Error(result.output || ("処理に失敗しました。終了コード: " + code)));
+
+      finishQuitIfRequested();
     });
   });
 }
@@ -452,6 +679,8 @@ async function migrateLegacyRunsIfNeeded() {
 
 function createWindow() {
   mainWindow = new BrowserWindow({
+    name: "main-window",
+    windowStatePersistence: true,
     width: 1320,
     height: 840,
     minWidth: 980,
@@ -472,9 +701,37 @@ function createWindow() {
   mainWindow.webContents.on("will-navigate", (event, url) => {
     if (url !== rendererUrl) event.preventDefault();
   });
+
+  mainWindow.on("close", (event) => {
+    if (!activeProcess || allowWindowClose) return;
+    event.preventDefault();
+
+    const choice = dialog.showMessageBoxSync(mainWindow, {
+      type: "warning",
+      title: "処理を実行中です",
+      message: "実行中の処理があります。",
+      detail: "このまま終了すると現在の処理を停止します。保存済みのCheckpointがある全体監査は、次回起動後に履歴から再開できます。",
+      buttons: ["処理を続ける", "停止して終了"],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true
+    });
+
+    if (choice === 1) {
+      void cancelActiveCommand({ quitAfter: true });
+    }
+  });
 }
 
-app.whenReady().then(async () => {
+if (hasSingleInstanceLock) {
+  app.on("second-instance", () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  });
+
+  app.whenReady().then(async () => {
   if (process.platform === "win32") {
     app.setAppUserModelId("local.elitemay.localailab");
   }
@@ -494,15 +751,10 @@ app.whenReady().then(async () => {
   });
   registerIpc("repository:update", (repoPath) => updateRepository(repoPath));
   registerIpc("command:run", (input) => runCommand(input));
-  registerIpc("command:cancel", async () => {
-    if (!activeProcess) return false;
-    const command = activeProcessCommand || "active command";
-    activeProcess.kill();
-    await appendDiagnostic({ type: "command.cancelled", command });
-    return true;
-  });
+  registerIpc("command:cancel", () => cancelActiveCommand());
   registerIpc("history:list", () => listHistory());
   registerIpc("history:result", (id) => readRunResult(id));
+  registerIpc("history:open-folder", (id) => openRunFolder(id));
   registerIpc("diagnostics:list", () => readDiagnostics());
   registerIpc("diagnostics:clear", () => clearDiagnostics());
   registerIpc("clipboard:write", (value) => {
@@ -526,8 +778,8 @@ app.whenReady().then(async () => {
   });
   createWindow();
   await updaterController.scheduleAutoCheck();
-});
-
+  });
+}
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();

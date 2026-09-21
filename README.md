@@ -267,6 +267,12 @@ https://github.com/EliteMay/local-ai-lab/releases/latest
 - 選択Repositoryの「GitHubから最新化」
 - GitHub Releases経由のアプリ内One-click Update
 - Settings / Run履歴 / DiagnosticsのuserData保存
+- 長時間Run中の自動Sleep防止と誤終了Guard
+- Background完了 / FailureのWindows通知
+- Single Instance化による同一Run Storeの競合防止
+- 履歴検索とRun保存Folderの直接Open
+- 手動停止をErrorと分離した明示State
+- Main / Renderer両方の長時間Log上限
 
 v0.2.0はUpdater Bootstrap Versionです。v0.2.0のみSetup.exeを1回手動Installし、その後はアプリ内更新を利用できます。
 

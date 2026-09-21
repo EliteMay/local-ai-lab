@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld("localAI", {
   cancelCommand: () => ipcRenderer.invoke("command:cancel"),
   listHistory: () => ipcRenderer.invoke("history:list"),
   readRunResult: (id) => ipcRenderer.invoke("history:result", id),
+  openRunFolder: (id) => ipcRenderer.invoke("history:open-folder", id),
   listDiagnostics: () => ipcRenderer.invoke("diagnostics:list"),
   clearDiagnostics: () => ipcRenderer.invoke("diagnostics:clear"),
   copyText: (text) => ipcRenderer.invoke("clipboard:write", text),

@@ -146,3 +146,81 @@ test("desktop exposes managed Bonsai runtime controls without arbitrary shell ac
   assert.match(runtime, /taskkill\.exe/);
   assert.doesNotMatch(preload, /runShell|executeShell|powershell/i);
 });
+
+
+test("desktop protects long-running commands from sleep, duplicate instances, and accidental close", async () => {
+  const main = await readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8");
+
+  assert.match(main, /requestSingleInstanceLock\(\)/);
+  assert.match(main, /second-instance/);
+  assert.match(main, /powerSaveBlocker\.start\("prevent-app-suspension"\)/);
+  assert.match(main, /powerSaveBlocker\.stop\(/);
+  assert.match(main, /showMessageBoxSync/);
+  assert.match(main, /停止して終了/);
+  assert.match(main, /windowStatePersistence:\s*true/);
+});
+
+test("desktop cancellation is explicit and kills the active process tree", async () => {
+  const main = await readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8");
+  const renderer = await readFile(new URL("../desktop/renderer/renderer.mjs", import.meta.url), "utf8");
+
+  assert.match(main, /function killProcessTree/);
+  assert.match(main, /taskkill\.exe/);
+  assert.match(main, /activeProcessCancelled\s*=\s*true/);
+  assert.match(main, /cancelled:\s*true/);
+  assert.match(renderer, /手動停止/);
+  assert.match(renderer, /保存済みのCheckpoint/);
+});
+
+test("desktop command logs are line-buffered and memory bounded", async () => {
+  const main = await readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8");
+
+  assert.match(main, /MAX_COMMAND_OUTPUT_CHARS\s*=\s*2_000_000/);
+  assert.match(main, /appendBoundedOutput/);
+  assert.match(main, /pendingLines/);
+  assert.match(main, /flushPendingLines/);
+  assert.match(main, /outputTruncated/);
+});
+
+test("desktop history can safely open one run folder and filter saved runs", async () => {
+  const main = await readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8");
+  const preload = await readFile(new URL("../desktop/preload.cjs", import.meta.url), "utf8");
+  const html = await readFile(new URL("../desktop/renderer/index.html", import.meta.url), "utf8");
+  const renderer = await readFile(new URL("../desktop/renderer/renderer.mjs", import.meta.url), "utf8");
+
+  assert.match(main, /history:open-folder/);
+  assert.match(main, /safeRunId\(runId\)/);
+  assert.match(main, /shell\.openPath\(directory\)/);
+  assert.match(preload, /openRunFolder/);
+  assert.match(html, /id="historyFilter"/);
+  assert.match(html, /id="historyCount"/);
+  assert.match(renderer, /applyHistoryFilter/);
+  assert.match(renderer, /folder\.textContent = "保存先"/);
+});
+
+test("desktop notifies when a background command completes or fails", async () => {
+  const main = await readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8");
+
+  assert.match(main, /Notification\.isSupported\(\)/);
+  assert.match(main, /mainWindow\.isFocused\(\)/);
+  assert.match(main, /showCommandNotification/);
+  assert.match(main, /notification\.show\(\)/);
+});
+
+
+test("desktop repository persistence preference actually controls startup restore", async () => {
+  const main = await readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8");
+  const renderer = await readFile(new URL("../desktop/renderer/renderer.mjs", import.meta.url), "utf8");
+
+  assert.match(main, /if \(merged\.rememberRepository === false\) merged\.defaultRepository = ""/);
+  assert.match(main, /rememberRepository && requestedRepository/);
+  assert.match(renderer, /state\.repository = selectedRepository \|\| state\.repository/);
+});
+
+test("desktop renderer bounds visible log rows during long runs", async () => {
+  const renderer = await readFile(new URL("../desktop/renderer/renderer.mjs", import.meta.url), "utf8");
+
+  assert.match(renderer, /MAX_RENDER_LOG_LINES\s*=\s*800/);
+  assert.match(renderer, /childElementCount > MAX_RENDER_LOG_LINES/);
+  assert.match(renderer, /firstElementChild\?\.remove\(\)/);
+});

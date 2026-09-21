@@ -127,6 +127,13 @@ Before / After SHAを確認
 - Model Profile / Default Repositoryの設定保存
 - Electron userDataへのRun履歴 / Settings / 最大100件の診断履歴
 - GitHub Releases One-click Update
+- 実行中だけ `prevent-app-suspension` を使うSleep防止
+- 実行中Window Close時の中断確認
+- Background完了 / Failure通知
+- Single Instance Guard
+- 履歴検索 / Run保存Folder Open
+- 手動停止StateとProcess Tree停止
+- 長時間LogのMain Output / Renderer DOM上限
 - 起動時Update確認ON/OFF
 - Manual Release page fallback
 
@@ -203,3 +210,18 @@ Prompt本文、Repository File本文、Credential等は保存しません。
 - Installer Code Signingは未導入
 - Windows実機でのSetup.exe Install / v0.2.0→次VersionのOne-click UpdateはCIだけでは確認できない
 - package-lockは現時点で未追跡
+
+
+## 長時間Runの保護
+
+全体監査は数分〜数十分かかるため、DesktopはCommand実行中だけOSのApp Suspendを防止します。Display Sleepまで強制的に止めず、処理完了・Failure・手動停止時にProtectionを解除します。
+
+実行中にWindowを閉じると確認Dialogを表示します。「停止して終了」を選んだ場合だけActive Command Process Treeを停止して終了します。Bonsai RuntimeのStart / Stop Contractは別管理で、Desktop終了を理由にBonsaiを自動停止しません。
+
+AppがForegroundでないときはCommand完了 / FailureをOS Notificationで通知します。
+
+同じAppを二重起動した場合は既存WindowをForegroundへ戻し、同一Settings / Run Storeを複数Instanceから同時操作しません。
+
+## 履歴
+
+履歴画面では実行ID、対象Folder、監査目的、Status等を検索できます。「保存先」から、safe Run IDで解決したそのRunの保存FolderだけをExplorerで開けます。Rendererから任意PathをShellへ渡すAPIは公開しません。
