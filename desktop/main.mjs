@@ -1,5 +1,5 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain } from "electron";
-import { existsSync } from "node:fs";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Notification, powerSaveBlocker, shell } from "electron";
+import { existsSync, statSync } from "node:fs";
 import { cp, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -14,9 +14,24 @@ const allowedCommands = new Set(["doctor", "inspect", "coverage", "coverage-synt
 const MAX_GOAL_CHARS = 4000;
 const MAX_CLIPBOARD_CHARS = 2_000_000;
 const MAX_DIAGNOSTIC_EVENTS = 100;
+const MAX_COMMAND_OUTPUT_CHARS = 2_000_000;
+const COMMAND_LABELS = new Map([
+  ["doctor", "接続確認"],
+  ["inspect", "フォルダ確認"],
+  ["coverage", "全体監査"],
+  ["coverage-synthesize", "結果の統合"],
+  ["test", "テスト"]
+]);
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) app.quit();
+
 let mainWindow = null;
 let activeProcess = null;
 let activeProcessCommand = null;
+let activeProcessCancelled = false;
+let activePowerBlockerId = null;
+let pendingQuitAfterCancel = false;
+let allowWindowClose = false;
 let updaterController = null;
 let bonsaiRuntimeController = null;
 
@@ -45,6 +60,12 @@ function validateRepository(repoPath) {
   if (!raw) throw new Error("対象フォルダを選択してください");
   const target = resolve(raw);
   if (!existsSync(target)) throw new Error("対象フォルダが見つかりません");
+  try {
+    if (!statSync(target).isDirectory()) throw new Error("対象フォルダではありません");
+  } catch (error) {
+    if (error?.message === "対象フォルダではありません") throw error;
+    throw new Error("対象フォルダを確認できません");
+  }
   return target;
 }
 
@@ -176,6 +197,109 @@ function buildCommand(input) {
     args.push("--run-id", safeRunId(input.runId));
   }
   return { command, profile, file: process.execPath, args, nodeMode: true };
+}
+
+function startRunProtection() {
+  if (activePowerBlockerId != null && powerSaveBlocker.isStarted(activePowerBlockerId)) {
+    return activePowerBlockerId;
+  }
+  try {
+    activePowerBlockerId = powerSaveBlocker.start("prevent-app-suspension");
+    void appendDiagnostic({ type: "command.sleep-protection.started" });
+  } catch (error) {
+    activePowerBlockerId = null;
+    void appendDiagnostic({
+      type: "command.sleep-protection.error",
+      error: compactError(error)
+    });
+  }
+  return activePowerBlockerId;
+}
+
+function stopRunProtection() {
+  if (activePowerBlockerId == null) return;
+  try {
+    if (powerSaveBlocker.isStarted(activePowerBlockerId)) {
+      powerSaveBlocker.stop(activePowerBlockerId);
+    }
+  } catch {}
+  activePowerBlockerId = null;
+  void appendDiagnostic({ type: "command.sleep-protection.stopped" });
+}
+
+function killProcessTree(pid) {
+  if (!pid) return;
+  if (process.platform === "win32") {
+    const killer = spawn("taskkill.exe", ["/PID", String(pid), "/T", "/F"], {
+      windowsHide: true,
+      shell: false,
+      stdio: "ignore"
+    });
+    killer.unref();
+    return;
+  }
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch {}
+}
+
+function appendBoundedOutput(current, chunk) {
+  const next = current + chunk;
+  if (next.length <= MAX_COMMAND_OUTPUT_CHARS) {
+    return { text: next, truncated: false };
+  }
+  return {
+    text: next.slice(-MAX_COMMAND_OUTPUT_CHARS),
+    truncated: true
+  };
+}
+
+function showCommandNotification(command, ok) {
+  if (!Notification.isSupported() || !mainWindow || mainWindow.isDestroyed() || mainWindow.isFocused()) return;
+  const label = COMMAND_LABELS.get(command) || "処理";
+  const notification = new Notification({
+    title: "Local AI Lab",
+    body: ok ? `${label}が完了しました。` : `${label}でエラーが発生しました。`,
+    silent: false
+  });
+  notification.on("click", () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  });
+  notification.show();
+}
+
+async function cancelActiveCommand({ quitAfter = false } = {}) {
+  if (!activeProcess) return { cancelled: false };
+  activeProcessCancelled = true;
+  pendingQuitAfterCancel = pendingQuitAfterCancel || quitAfter;
+  const command = activeProcessCommand || "active command";
+  const pid = activeProcess.pid;
+  await appendDiagnostic({
+    type: "command.cancel.requested",
+    command,
+    quitAfter,
+    pid
+  });
+  killProcessTree(pid);
+  return { cancelled: true };
+}
+
+async function openRunFolder(runId) {
+  const id = safeRunId(runId);
+  const directory = join(runsRoot(), id);
+  let info;
+  try {
+    info = await stat(directory);
+  } catch {
+    throw new Error("この実行履歴の保存フォルダが見つかりません。");
+  }
+  if (!info.isDirectory()) throw new Error("実行履歴の保存先が不正です。");
+  const error = await shell.openPath(directory);
+  if (error) throw new Error(`保存フォルダを開けませんでした: ${error}`);
+  return { ok: true, runId: id };
 }
 
 function parseProgress(line) {
