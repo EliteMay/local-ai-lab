@@ -557,10 +557,8 @@ async function chooseRepository(settingsMode) {
   state.repository = path;
   setText("#repoPath", path);
   setText("#repoUpdateStatus", "未コミット変更がある場合は更新しません。");
-  if (state.settings.rememberRepository) {
-    state.settings.defaultRepository = path;
-    state.settings = await window.localAI.saveSettings(state.settings);
-  }
+  state.settings.defaultRepository = path;
+  state.settings = await window.localAI.saveSettings(state.settings);
 }
 
 function formatDate(value) {
@@ -898,7 +896,6 @@ async function init() {
   $("#settingsRepo").value = state.repository;
   $("#settingsProfile").value = state.settings.modelProfile;
   setText("#profile", profileLabel(state.settings.modelProfile));
-  $("#rememberRepo").checked = state.settings.rememberRepository;
   $("#autoCheckUpdates").checked = state.settings.autoCheckUpdates !== false;
   $("#bonsaiDemoPath").value = state.settings.bonsaiDemoPath || "";
   updateBonsaiVisibility();
@@ -948,7 +945,6 @@ $("#save").addEventListener("click", async () => {
     const next = await window.localAI.saveSettings({
       defaultRepository: selectedRepository,
       modelProfile: $("#settingsProfile").value,
-      rememberRepository: $("#rememberRepo").checked,
       autoCheckUpdates: $("#autoCheckUpdates").checked,
       bonsaiDemoPath: $("#bonsaiDemoPath").value
     });

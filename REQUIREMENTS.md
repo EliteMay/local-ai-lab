@@ -402,7 +402,7 @@ PowerShellで行っている日常操作を置き換え、長時間Local AI Run�
 - 実行結果を画面で確認し、1 ButtonでClipboardへCopyできる
 - 現在のRuntime / Model Profile / Repository / Run状態を確認できる
 - 過去Runを runtime-data から再表示できる
-- Default RepositoryとModel ProfileをGUIから保存できる
+- 最後に選択したRepositoryとModel ProfileをGUIから保存し、次回起動時にRepositoryを自動復元できる
 - Command選択と実行を分離し、設定不足のまま誤実行しない
 - CoverageのBatch進捗・経過時間・Token使用量を確認できる
 - PARTIAL Runを履歴から再開準備できる
@@ -421,7 +421,7 @@ PowerShellで行っている日常操作を置き換え、長時間Local AI Run�
 - AppがForegroundでない場合は処理完了 / FailureをOS Notificationで知らせる
 - 同じUser Data / Run Storeへ複数Instanceが同時に触れないようSingle Instanceを基本とする
 - 履歴を実行ID / Folder / Goal等で検索でき、選択Runの保存Folderを安全に開ける
-- 「前回の対象フォルダを保存する」がOFFの場合、次回起動用SettingsへRepository Pathを保持しない
+- Repositoryは選択時に自動保存し、次回起動時に毎回Folder Pickerを要求しない。旧SettingsでPathが空の場合は、存在する最新Run履歴のRepository Pathから復元を試みる
 - 長時間LogはMain / Renderer両方で上限を持ち、進捗行がStream Chunk境界で分割されても解析を失わない
 
 ### Distribution / Update Contract

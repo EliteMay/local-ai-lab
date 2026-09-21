@@ -64,7 +64,9 @@ Installerは現在コード署名していないため、Windows SmartScreenが�
 ```text
 Runtime / Model状態確認
 ↓
-Repository選択
+前回のRepositoryを自動復元
+↓
+必要なときだけRepositoryを変更
 ↓
 Task選択
 ↓
@@ -80,6 +82,8 @@ Task選択
 ```
 
 Command CardのクリックはTask選択だけを行い、その場では実行しません。
+
+最後に選んだRepositoryはElectron `userData` のSettingsへ自動保存します。次回起動時はそのPathをそのまま復元し、毎回Folder Pickerを表示しません。旧VersionでPathが空になっている場合は、保存済みRun履歴から最後に使った有効なRepository Pathを復元します。Folder Pickerは「変更」を押したときだけ使用します。
 
 ## Repositoryを最新化
 
@@ -110,7 +114,7 @@ Before / After SHAを確認
 ## v0.2 Scope
 
 - Runtime / Model Profile状態の確認
-- Repository選択
+- 前回Repositoryの自動復元 / 必要時のRepository変更
 - Repositoryの安全なGitHub最新化
 - doctor
 - inspect
@@ -124,7 +128,7 @@ Before / After SHAを確認
 - PARTIAL Coverageの再開準備
 - Coverage 100% + Synthesis失敗RunのSynthesis再開準備
 - 結果のClipboard Copy
-- Model Profile / Default Repositoryの設定保存
+- Model Profile / 最後に使ったRepositoryの設定保存
 - Electron userDataへのRun履歴 / Settings / 最大100件の診断履歴
 - GitHub Releases One-click Update
 - 実行中だけ `prevent-app-suspension` を使うSleep防止
