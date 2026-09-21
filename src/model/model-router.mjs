@@ -27,6 +27,7 @@ export class ModelRouter {
     this.onRoute = typeof onRoute === "function" ? onRoute : () => {};
     this.manager = manager ?? new LMStudioModelManager({ catalog });
     this.usage = new Map();
+    this.blockedModels = new Map();
   }
 
   candidates(taskType) {
@@ -90,8 +91,15 @@ export class ModelRouter {
 
     async function call(method, input) {
       const failures = [];
+      let lastError = null;
+      let attempted = 0;
       for (let index = 0; index < candidates.length; index += 1) {
         const entry = candidates[index];
+        if (router.blockedModels.has(entry.id)) {
+          failures.push(entry.label + ": " + router.blockedModels.get(entry.id));
+          continue;
+        }
+        attempted += 1;
         const startedAt = Date.now();
         try {
           router.onRoute({
@@ -122,8 +130,16 @@ export class ModelRouter {
           }
           return result;
         } catch (error) {
+          lastError = error;
           router.#record(entry, { ok: false, durationMs: Date.now() - startedAt });
           failures.push(entry.label + ": " + error.message);
+          if (
+            error?.code === "MODEL_NOT_INSTALLED" ||
+            error?.code === "LM_STUDIO_MODEL_API" ||
+            /ECONNREFUSED|fetch failed/i.test(String(error?.message || ""))
+          ) {
+            router.blockedModels.set(entry.id, error.message);
+          }
           router.onRoute({
             type: "model_fallback",
             taskType,
@@ -135,7 +151,13 @@ export class ModelRouter {
           });
         }
       }
-      throw new Error("All routed models failed for " + taskType + ": " + failures.join(" | "));
+      if (lastError?.code === "OUTPUT_TOKEN_LIMIT" || lastError?.code === "CONTEXT_LIMIT") {
+        lastError.message += " | routed attempts: " + failures.join(" | ");
+        throw lastError;
+      }
+      const error = new Error("All routed models failed for " + taskType + ": " + failures.join(" | "));
+      error.code = attempted === 0 ? "NO_ROUTED_MODEL_AVAILABLE" : "MODEL_ROUTING_FAILED";
+      throw error;
     }
 
     return {
@@ -158,4 +180,41 @@ export class ModelRouter {
       models
     };
   }
+}
+
+
+export function mergeModelUsageSnapshots(...snapshots) {
+  const valid = snapshots.filter((item) => item && Array.isArray(item.models));
+  if (!valid.length) return null;
+  const merged = new Map();
+  for (const snapshot of valid) {
+    for (const item of snapshot.models) {
+      const key = item.modelId || item.label;
+      if (!key) continue;
+      const current = merged.get(key) ?? {
+        modelId: item.modelId ?? key,
+        label: item.label ?? key,
+        runtime: item.runtime ?? "",
+        calls: 0,
+        successes: 0,
+        failures: 0,
+        promptTokens: 0,
+        completionTokens: 0,
+        reasoningTokens: 0,
+        durationMs: 0
+      };
+      for (const field of ["calls", "successes", "failures", "promptTokens", "completionTokens", "reasoningTokens", "durationMs"]) {
+        current[field] += Number(item[field]) || 0;
+      }
+      current.averageDurationMs = current.calls ? Math.round(current.durationMs / current.calls) : 0;
+      merged.set(key, current);
+    }
+  }
+  const models = [...merged.values()];
+  return {
+    mode: "auto",
+    autoManageModels: valid.at(-1)?.autoManageModels !== false,
+    totalCalls: models.reduce((sum, item) => sum + item.calls, 0),
+    models
+  };
 }
