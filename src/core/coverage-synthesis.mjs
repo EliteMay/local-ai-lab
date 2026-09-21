@@ -1,6 +1,7 @@
 import { getAgentResponseSchema } from "./response-schemas.mjs";
 import { getRoleDefinition } from "../roles/role-definitions.mjs";
 import { reduceFindingsHierarchically } from "./hierarchical-synthesis.mjs";
+import { mergeModelUsageSnapshots } from "../model/model-router.mjs";
 
 function renderSynthesisPrompt({ goal, coverage, findings }) {
   return `Goal:\n${goal}\n\nThe whole-repository coverage pass is complete. Turn the evidence-backed audit themes below into specific, minimally disruptive improvement proposals. Each theme keeps sourceFindingIds that point back to the immutable findings.json evidence index. Do not invent repository facts. Do not request another role unless supplied evidence is insufficient.\n\nCoverage:\n${JSON.stringify(coverage)}\n\nAudit themes:\n${JSON.stringify(findings)}\n\nReturn the required structured role response. Keep it concise and prioritize related changes together.\n\n/no_think`;
@@ -120,6 +121,10 @@ export class CoverageSynthesisService {
     }
 
     const run = await this.runStore.readJson(runId, "run.json");
+    let previousModelUsage = run.modelRouting ?? null;
+    try {
+      previousModelUsage = await this.runStore.readJson(runId, "model-usage.json");
+    } catch {}
     const coverage = await this.runStore.readJson(runId, "coverage.json");
     const findings = await this.runStore.readJson(runId, "findings.json");
     if (!coverage.complete || coverage.coveragePercent !== 100) {
@@ -135,7 +140,9 @@ export class CoverageSynthesisService {
 
     await this.runStore.writeJson(runId, "synthesis.json", synthesis);
     await this.runStore.writeJson(runId, "review.json", synthesis.reviewer ?? {});
-    const modelUsage = this.modelRouter ? this.modelRouter.snapshot() : null;
+    const modelUsage = this.modelRouter
+      ? mergeModelUsageSnapshots(previousModelUsage, this.modelRouter.snapshot())
+      : previousModelUsage;
     if (modelUsage) await this.runStore.writeJson(runId, "model-usage.json", modelUsage);
 
     const status = synthesis.error ? "PARTIAL" : "COMPLETED";
