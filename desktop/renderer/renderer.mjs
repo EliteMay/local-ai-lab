@@ -188,6 +188,7 @@ function estimateRemainingSeconds() {
 }
 
 function estimateRemainingText() {
+  if (!state.running) return "—";
   const seconds = estimateRemainingSeconds();
   if (seconds != null) return "約 " + formatDuration(seconds);
   if (state.running && state.totalBatches > 0 && state.completedBatches >= state.totalBatches) {
@@ -212,6 +213,7 @@ function formatClock(value, { seconds = false } = {}) {
 }
 
 function finishEstimateText() {
+  if (!state.running) return "—";
   const seconds = estimateRemainingSeconds();
   return seconds == null ? "—" : `${formatClock(Date.now() + (seconds * 1000))}ごろ`;
 }
