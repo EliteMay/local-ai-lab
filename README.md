@@ -248,28 +248,43 @@ npm run company -- --repo "D:\path\to\repo" --goal "このRepositoryの改善点
 npm test
 ```
 
-## Desktop Controller v0.1
+## Desktop Controller v0.2
 
-PowerShellで行っている日常操作を置き換えるElectron GUIを `desktop/` に追加します。
+WindowsではGitHub ReleasesのSetup.exe版をPrimary Distributionにします。
+
+```text
+https://github.com/EliteMay/local-ai-lab/releases/latest
+```
 
 主な機能:
 
 - Runtime / Model Profile状態の確認
 - Repository選択
-- Doctor / Inspect / Coverage / Synthesize / Testsの実行
-- Coverage進捗と実行Log表示
-- 結果の1 Button Copy
-- runtime-data/runs の履歴表示
-- Default Repository / Model Profileの保存
+- Doctor / Inspect / Coverage / Synthesize / Tests
+- Coverage進捗、経過時間、Token使用量
+- PARTIAL Run / Synthesisの履歴再開
+- 選択Repositoryの「GitHubから最新化」
+- GitHub Releases経由のアプリ内One-click Update
+- Settings / Run履歴 / DiagnosticsのuserData保存
 
-起動:
+v0.2.0はUpdater Bootstrap Versionです。v0.2.0のみSetup.exeを1回手動Installし、その後はアプリ内更新を利用できます。
+
+Repository最新化はUserの明示操作だけで、未コミット変更がある場合は停止し、`git fetch --prune origin` → `git pull --ff-only` だけを許可します。AI Companyの監査Capability自体は引き続きRead-onlyです。
+
+開発起動:
 
 ```powershell
 npm install
 npm run desktop
 ```
 
-Desktop v0.1はlocal-ai-labの既存CLIを安全なAllowlist経由で呼び出します。自由ShellやTarget RepositoryへのWrite Capabilityは追加しません。
+Windows Installer build:
+
+```powershell
+npm run build:win
+```
+
+配布版Run履歴はProgram FilesではなくElectron `userData` に保存します。
 
 詳細は [desktop/README.md](desktop/README.md) を参照してください。
 
