@@ -147,6 +147,10 @@ test("coverage audit processes every planned chunk, checkpoints results, and rea
   assert.equal(result.coverage.coveragePercent, 100);
   assert.equal(result.coverage.completedChunks, result.coverage.totalChunks);
   assert.equal(result.reviewer.result.decision, "APPROVE");
+  const runRecord = JSON.parse(await readFile(join(runs, "coverage-complete", "run.json"), "utf8"));
+  assert.equal(runRecord.executionIdentity.model, "fake");
+  assert.equal(runRecord.executionIdentity.runSchemaVersion, 2);
+  assert.ok(runRecord.createdAt);
   const plannerCall = model.calls.find((call) => call.system.includes("Improvement Planner"));
   const reviewerCall = model.calls.find((call) => call.system.includes("Reviewer"));
   assert.equal(plannerCall.maxTokens, 1700);
@@ -283,4 +287,44 @@ test("synthesis-only mode respects profile planner and reviewer token budgets", 
   const reviewerCall = model.calls.find((call) => call.system.includes("Reviewer"));
   assert.equal(plannerCall.maxTokens, 1700);
   assert.equal(reviewerCall.maxTokens, 2300);
+});
+
+
+test("coverage resume refuses a different model/profile even when repository and batches match", async (t) => {
+  const { repo, runs } = await createFixture(t, "local-ai-lab-coverage-model-change-");
+  const store = new RunStore(runs);
+  const failingModel = new CoverageFakeModel({ failBatchId: "batch-0002" });
+  const firstConfig = {
+    ...config,
+    appVersion: "0.2.10",
+    activeModelProfile: "default"
+  };
+  const first = new CoverageAuditOrchestrator({ config: firstConfig, modelClient: failingModel, runStore: store });
+  const partial = await first.run({
+    repoPath: repo,
+    goal: "Audit all source files",
+    runId: "coverage-model-change"
+  });
+  assert.equal(partial.status, "PARTIAL");
+
+  const changedConfig = {
+    ...firstConfig,
+    activeModelProfile: "bonsai-2-27b",
+    model: { ...firstConfig.model, model: "bonsai-2-27b" }
+  };
+  const second = new CoverageAuditOrchestrator({
+    config: changedConfig,
+    modelClient: new CoverageFakeModel(),
+    runStore: store
+  });
+
+  await assert.rejects(
+    () => second.run({
+      repoPath: repo,
+      goal: "Audit all source files",
+      runId: "coverage-model-change",
+      resume: true
+    }),
+    /安全に再開できません/
+  );
 });
