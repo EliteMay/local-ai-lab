@@ -680,7 +680,7 @@ function populateRunSelect(items) {
 
 function applyHistoryFilter() {
   const query = String($("#historyFilter")?.value || "").trim().toLowerCase();
-  const rows = $("#historyList .history-item");
+  const rows = [...document.querySelectorAll("#historyList .history-item")];
   let visible = 0;
 
   for (const row of rows) {
