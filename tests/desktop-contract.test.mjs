@@ -57,8 +57,8 @@ test("desktop exposes recovery state for partial coverage and synthesis", async 
   assert.match(main, /reviewerDecision/);
   assert.match(renderer, /prepareSynthesis/);
   assert.match(renderer, /prepareCoverageResume/);
-  assert.match(renderer, /Synthesis再開/);
-  assert.match(renderer, /Coverage再開/);
+  assert.match(renderer, /統合を再開/);
+  assert.match(renderer, /監査を再開/);
 });
 
 test("desktop renderer has a restrictive CSP and avoids dynamic error HTML injection", async () => {
@@ -81,4 +81,42 @@ test("desktop diagnostics are bounded and exposed through narrow IPC", async () 
   assert.match(main, /diagnostics:clear/);
   assert.match(preload, /listDiagnostics/);
   assert.match(preload, /clearDiagnostics/);
+});
+
+
+test("desktop user-facing controls are understandable in Japanese", async () => {
+  const html = await readFile(new URL("../desktop/renderer/index.html", import.meta.url), "utf8");
+  const renderer = await readFile(new URL("../desktop/renderer/renderer.mjs", import.meta.url), "utf8");
+
+  for (const visibleLabel of [
+    "接続確認",
+    "フォルダ確認",
+    "全体監査",
+    "結果を統合",
+    "テスト",
+    "実行状況",
+    "対象フォルダ",
+    "使用モデル"
+  ]) {
+    assert.ok(html.includes(visibleLabel), "missing Japanese UI label: " + visibleLabel);
+  }
+
+  for (const oldVisibleLabel of [
+    ">Doctor<",
+    ">Inspect<",
+    ">Coverage Audit<",
+    ">Synthesize<",
+    ">Tests<",
+    ">TASK<",
+    ">RUN STATUS<",
+    ">PREFERENCES<"
+  ]) {
+    assert.ok(!html.includes(oldVisibleLabel), "old English UI label remains: " + oldVisibleLabel);
+  }
+
+  assert.match(renderer, /label: "接続確認"/);
+  assert.match(renderer, /label: "全体監査"/);
+  assert.match(renderer, /label: "結果を統合"/);
+  assert.match(renderer, /入力 \$\{state\.promptTokens\}/);
+  assert.match(renderer, /出力 \$\{state\.completionTokens\}/);
 });
