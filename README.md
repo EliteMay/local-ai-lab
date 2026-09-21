@@ -263,6 +263,12 @@ https://github.com/EliteMay/local-ai-lab/releases/latest
 - 前回選択Repositoryの自動復元 / 必要なときだけRepository変更
 - Doctor / Inspect / Coverage / Synthesize / Tests
 - Coverage進捗、経過時間、Token使用量
+- 現在工程、最終更新、モデル応答待ち時間、プロセス動作状態の表示
+- 完了済み処理から推定した残り時間と終了予想時刻
+- 平均 / 直近の処理時間と概算生成速度（トークン/秒）
+- CPU / メモリ / NVIDIA GPU / VRAMのローカル負荷表示（GPU情報を取得できない環境では取得不可表示）
+- 監査完了後のCoverage / 重要度別指摘数 / 重要な指摘 / Reviewer結果の概要表示
+- 10分以上新しい出力がない場合の長時間応答待ち表示（接続エラーとは別状態）
 - PARTIAL Run / Synthesisの履歴再開
 - 選択Repositoryの「GitHubから最新化」
 - GitHub Releases経由のアプリ内One-click Update
