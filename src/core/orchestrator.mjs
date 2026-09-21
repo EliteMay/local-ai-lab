@@ -4,6 +4,7 @@ import { AgentRunner } from "./agent-runner.mjs";
 import { buildRepositoryContext } from "./repository-context.mjs";
 import { RepoReader } from "../security/repo-reader.mjs";
 import { LMStudioClient } from "../model/lm-studio-client.mjs";
+import { buildExecutionIdentity } from "./run-identity.mjs";
 
 function assertText(value, name) {
   if (typeof value !== "string" || value.trim() === "") {
@@ -73,11 +74,13 @@ export class AICompanyOrchestrator {
       maxPriorResultChars: this.config.context?.maxPriorResultChars
     });
 
+    const executionIdentity = buildExecutionIdentity(this.config);
     const actualRunId = await this.runStore.createRun({
       ...(runId ? { runId } : {}),
       status: "RUNNING",
       goal,
       repoPath,
+      executionIdentity,
       capabilities: {
         repository: "read-only",
         externalWebResearch: false,
@@ -275,7 +278,9 @@ export class AICompanyOrchestrator {
       await this.runStore.writeJson(actualRunId, "research.json", research);
       await this.runStore.writeJson(actualRunId, "review.json", reviews);
       await this.runStore.writeSummary(actualRunId, summary);
+      const baseRun = await this.runStore.readJson(actualRunId, "run.json");
       await this.runStore.writeJson(actualRunId, "run.json", {
+        ...baseRun,
         runId: actualRunId,
         status: "COMPLETED",
         completedAt: new Date().toISOString(),
@@ -289,7 +294,8 @@ export class AICompanyOrchestrator {
         contextCoverage: repositoryContext.coverage,
         taskCount: brokerSnapshot.taskCount,
         modelCalls: brokerSnapshot.modelCalls,
-        reviewerDecision: finalReview?.result?.decision ?? null
+        reviewerDecision: finalReview?.result?.decision ?? null,
+        executionIdentity
       });
 
       this.progress({
@@ -297,7 +303,8 @@ export class AICompanyOrchestrator {
         runId: actualRunId,
         reviewerDecision: finalReview?.result?.decision ?? null,
         taskCount: brokerSnapshot.taskCount,
-        modelCalls: brokerSnapshot.modelCalls
+        modelCalls: brokerSnapshot.modelCalls,
+        executionIdentity
       });
 
       return {
@@ -317,7 +324,9 @@ export class AICompanyOrchestrator {
         rejectedDelegations,
         failure: error.message
       });
+      const baseRun = await this.runStore.readJson(actualRunId, "run.json").catch(() => ({}));
       await this.runStore.writeJson(actualRunId, "run.json", {
+        ...baseRun,
         runId: actualRunId,
         status: "FAILED",
         failedAt: new Date().toISOString(),
