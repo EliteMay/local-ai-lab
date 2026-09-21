@@ -314,13 +314,6 @@ export function createBonsaiRuntimeController({
     });
   }
 
-  function shutdown() {
-    if (child && child.exitCode == null) {
-      killProcessTree(child.pid);
-      child = null;
-    }
-  }
-
   registerIpc("runtime:bonsai-status", () => refreshStatus());
   registerIpc("runtime:bonsai-start", () => start());
   registerIpc("runtime:bonsai-stop", () => stop());
@@ -328,21 +321,6 @@ export function createBonsaiRuntimeController({
   return {
     refreshStatus,
     start,
-    stop,
-    shutdown,
-    async scheduleAutoStart() {
-      const settings = await readSettings();
-      if (settings.modelProfile !== "bonsai-2-27b" || settings.autoStartBonsai !== true) {
-        return;
-      }
-      setTimeout(() => {
-        void start().catch((error) => {
-          void appendDiagnostic({
-            type: "bonsai.autostart.error",
-            error: String(error?.message || error).slice(0, 500)
-          });
-        });
-      }, 800);
-    }
+    stop
   };
 }
