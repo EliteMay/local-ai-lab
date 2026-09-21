@@ -61,6 +61,7 @@ jobs:
           $ErrorActionPreference = 'SilentlyContinue'
           $tagSha = gh api "repos/$env:GITHUB_REPOSITORY/git/ref/tags/$tag" --jq ".object.sha" 2>$null
           $tagLookupExit = $LASTEXITCODE
+          $global:LASTEXITCODE = 0
           $ErrorActionPreference = $previousPreference
           if ($tagLookupExit -eq 0 -and $tagSha -ne $env:GITHUB_SHA) {
             throw "Version $version is already published from $tagSha. Bump package.json before publishing a different main commit."
@@ -189,6 +190,7 @@ jobs:
           $ErrorActionPreference = 'SilentlyContinue'
           gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
           $releaseLookupExit = $LASTEXITCODE
+          $global:LASTEXITCODE = 0
           $ErrorActionPreference = $previousPreference
           if ($releaseLookupExit -eq 0) {
             $tagSha = gh api "repos/$env:GITHUB_REPOSITORY/git/ref/tags/$tag" --jq ".object.sha"
