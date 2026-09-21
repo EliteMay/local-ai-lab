@@ -61,6 +61,7 @@ jobs:
           node --check desktop/updater.mjs
           node --check desktop/preload.cjs
           node --check desktop/renderer/renderer.mjs
+          node --check scripts/generate-app-icon.mjs
 
       - name: Build installer
         run: npm run build:win
@@ -69,6 +70,34 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+
+          $icoPath = "desktop/assets/generated/icon.ico"
+          if (-not (Test-Path $icoPath)) {
+            throw "Generated ICO not found: $icoPath"
+          }
+
+          $icoBytes = [System.IO.File]::ReadAllBytes($icoPath)
+          if ($icoBytes.Length -lt 1000) {
+            throw "Generated ICO is unexpectedly small"
+          }
+
+          $imageCount = [BitConverter]::ToUInt16($icoBytes, 4)
+          if ($imageCount -lt 7) {
+            throw "Expected at least 7 icon sizes, got $imageCount"
+          }
+
+          $widths = @()
+          for ($i = 0; $i -lt $imageCount; $i++) {
+            $widthByte = $icoBytes[6 + ($i * 16)]
+            $widths += $(if ($widthByte -eq 0) { 256 } else { [int]$widthByte })
+          }
+
+          foreach ($required in @(16, 24, 32, 48, 64, 128, 256)) {
+            if ($widths -notcontains $required) {
+              throw "ICO is missing required size: ${required}px"
+            }
+          }
+
           $exe = "dist/win-unpacked/Local AI Lab.exe"
           if (-not (Test-Path $exe)) {
             throw "Packaged executable not found: $exe"
