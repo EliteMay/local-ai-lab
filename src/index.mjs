@@ -77,7 +77,11 @@ async function createModelRouter(config, args) {
     routing,
     autoManageModels: config.autoManageModels,
     onRoute: (event) => {
-      const marker = event.type === "model_fallback" ? "FALLBACK" : "ROUTE";
+      const marker = event.type === "model_prepare"
+        ? "PREPARE"
+        : event.type === "model_fallback"
+          ? "FALLBACK"
+          : "ROUTE";
       console.log(`[Model] ${marker} ${JSON.stringify(event)}`);
     }
   });
