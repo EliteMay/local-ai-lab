@@ -57,8 +57,12 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $version = node -p "require('./package.json').version"
           $tag = "v$version"
+          $previousPreference = $ErrorActionPreference
+          $ErrorActionPreference = 'SilentlyContinue'
           $tagSha = gh api "repos/$env:GITHUB_REPOSITORY/git/ref/tags/$tag" --jq ".object.sha" 2>$null
-          if ($LASTEXITCODE -eq 0 -and $tagSha -ne $env:GITHUB_SHA) {
+          $tagLookupExit = $LASTEXITCODE
+          $ErrorActionPreference = $previousPreference
+          if ($tagLookupExit -eq 0 -and $tagSha -ne $env:GITHUB_SHA) {
             throw "Version $version is already published from $tagSha. Bump package.json before publishing a different main commit."
           }
 
@@ -73,6 +77,7 @@ jobs:
         run: |
           node --check desktop/main.mjs
           node --check desktop/updater.mjs
+          node --check desktop/model-manager.mjs
           node --check desktop/preload.cjs
           node --check desktop/renderer/renderer.mjs
           node --check scripts/generate-app-icon.mjs
@@ -180,8 +185,12 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $tag = "v$env:APP_VERSION"
+          $previousPreference = $ErrorActionPreference
+          $ErrorActionPreference = 'SilentlyContinue'
           gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
-          if ($LASTEXITCODE -eq 0) {
+          $releaseLookupExit = $LASTEXITCODE
+          $ErrorActionPreference = $previousPreference
+          if ($releaseLookupExit -eq 0) {
             $tagSha = gh api "repos/$env:GITHUB_REPOSITORY/git/ref/tags/$tag" --jq ".object.sha"
             if ($tagSha -ne $env:GITHUB_SHA) {
               throw "Release $tag already points to $tagSha, not current main $env:GITHUB_SHA."
