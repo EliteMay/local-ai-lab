@@ -260,7 +260,7 @@ https://github.com/EliteMay/local-ai-lab/releases/latest
 
 - Runtime / Model Profile状態の確認
 - Bonsai 2 27B Runtimeの手動起動 / 状態確認 / 手動停止
-- Repository選択
+- 前回選択Repositoryの自動復元 / 必要なときだけRepository変更
 - Doctor / Inspect / Coverage / Synthesize / Tests
 - Coverage進捗、経過時間、Token使用量
 - PARTIAL Run / Synthesisの履歴再開
