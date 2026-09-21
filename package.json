@@ -69,5 +69,6 @@
       "createStartMenuShortcut": true,
       "shortcutName": "Local AI Lab"
     }
-  }
+  },
+  "main": "desktop/main.mjs"
 }
