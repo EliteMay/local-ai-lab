@@ -124,6 +124,7 @@ Before / After SHAを確認
 - 実行Log表示
 - Coverage Batch進捗表示
 - 経過時間 / Batch平均からの概算残り時間
+- 結果Panelへ「今していること / 進み具合 / 経過 / 残り目安 / 次工程 / 対象規模 / Token」を実行中に表示
 - Prompt / Completion / Reasoning Token集計
 - PARTIAL Coverageの再開準備
 - Coverage 100% + Synthesis失敗RunのSynthesis再開準備
@@ -210,7 +211,7 @@ Prompt本文、Repository File本文、Credential等は保存しません。
 - LM Studio / PrismML Runtime自体の起動は自動化しない
 - Model download / Load / Unloadは自動化しない
 - 長時間ProcessはAppを閉じると継続管理できない
-- 残り時間はBatch平均からの概算
+- 残り時間は完了済みBatch平均から計算する監査部分の概算。結果統合 / 改善案作成 / レビューは工程差が大きいため正確な残り時間を表示しない
 - Installer Code Signingは未導入
 - Windows実機でのSetup.exe Install / v0.2.0→次VersionのOne-click UpdateはCIだけでは確認できない
 - package-lockは現時点で未追跡
