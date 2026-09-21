@@ -24,7 +24,8 @@ const state = {
   history: [],
   resume: false,
   latestRecoverable: null,
-  currentBatch: null
+  currentBatch: null,
+  updateState: null
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -156,6 +157,7 @@ function setRunning(value, title) {
   $$(".commands button").forEach((button) => { button.disabled = value; });
   $("#execute").disabled = value;
   $("#chooseRepo").disabled = value;
+  $("#updateRepo").disabled = value;
   $("#refresh").disabled = value;
   $("#cancel").classList.toggle("hidden", !value);
   if (title) setText("#runTitle", title);
@@ -276,10 +278,19 @@ function friendlyError(message) {
   if (text.includes("Another command is already running")) {
     return "別の処理が実行中です。完了または停止してから実行してください。";
   }
+  if (text.includes("未コミットの変更")) {
+    return text;
+  }
+  if (text.includes("spawn git ENOENT")) {
+    return "Gitが見つかりません。Git for Windowsをインストールしてから再実行してください。";
+  }
   return text;
 }
 
 function validateBeforeRun(command) {
+  if ((command === "inspect" || command === "coverage") && !state.repository) {
+    throw new Error("対象Repositoryを選択してください。");
+  }
   if (command === "coverage" && !$("#goal").value.trim()) {
     throw new Error("監査目的を入力してください。");
   }
@@ -349,6 +360,64 @@ async function run(command = state.selectedCommand, stateOverride = {}) {
   }
 }
 
+async function updateRepositoryFromGitHub() {
+  if (state.running) return;
+  if (!state.repository) {
+    setText("#repoUpdateStatus", "先に対象Repositoryを選択してください。");
+    return;
+  }
+
+  $("#updateRepo").disabled = true;
+  setText("#repoUpdateStatus", "GitHubの最新版を確認しています...");
+  try {
+    const result = await window.localAI.updateRepository(state.repository);
+    setText("#repoUpdateStatus", result.message);
+  } catch (error) {
+    setText("#repoUpdateStatus", friendlyError(error.message));
+  } finally {
+    $("#updateRepo").disabled = state.running;
+  }
+}
+
+function applyUpdateState(next) {
+  if (!next) return;
+  state.updateState = { ...(state.updateState || {}), ...next };
+  const currentVersion = state.updateState.currentVersion || "不明";
+  setText("#appVersion", `現在 v${currentVersion}`);
+  setText("#updateStatusText", state.updateState.message || "更新状態を確認できます。");
+  const progress = Math.max(0, Math.min(100, Number(state.updateState.progress) || 0));
+  $("#updateBar").style.width = progress + "%";
+
+  const canInstall = ["available", "downloaded"].includes(state.updateState.state);
+  $("#installUpdate").classList.toggle("hidden", !canInstall);
+  $("#installUpdate").disabled = state.running || state.updateState.state === "downloading";
+  $("#checkUpdate").disabled = state.updateState.state === "checking" || state.updateState.state === "downloading";
+}
+
+async function checkForAppUpdate() {
+  $("#checkUpdate").disabled = true;
+  try {
+    const result = await window.localAI.checkForUpdate();
+    applyUpdateState(result);
+  } catch (error) {
+    setText("#updateStatusText", friendlyError(error.message));
+  } finally {
+    if (state.updateState?.state !== "downloading") $("#checkUpdate").disabled = false;
+  }
+}
+
+async function installAppUpdate() {
+  $("#installUpdate").disabled = true;
+  try {
+    const result = await window.localAI.installUpdate();
+    if (result?.message) setText("#updateStatusText", result.message);
+  } catch (error) {
+    setText("#updateStatusText", friendlyError(error.message));
+  } finally {
+    if (state.updateState?.state !== "installing") $("#installUpdate").disabled = false;
+  }
+}
+
 async function chooseRepository(settingsMode) {
   const path = await window.localAI.selectRepository();
   if (!path) return;
@@ -360,6 +429,7 @@ async function chooseRepository(settingsMode) {
 
   state.repository = path;
   setText("#repoPath", path);
+  setText("#repoUpdateStatus", "未コミット変更がある場合は更新しません。");
   if (state.settings.rememberRepository) {
     state.settings.defaultRepository = path;
     state.settings = await window.localAI.saveSettings(state.settings);
@@ -618,12 +688,15 @@ async function clearDiagnostics() {
 async function init() {
   state.settings = await window.localAI.getSettings();
   state.repository = state.settings.defaultRepository;
-  setText("#repoPath", state.repository);
+  setText("#repoPath", state.repository || "未選択");
   $("#settingsRepo").value = state.repository;
   $("#settingsProfile").value = state.settings.modelProfile;
   setText("#profile", state.settings.modelProfile);
   $("#rememberRepo").checked = state.settings.rememberRepository;
+  $("#autoCheckUpdates").checked = state.settings.autoCheckUpdates !== false;
   window.localAI.onLog(appendLog);
+  window.localAI.onUpdateStatus(applyUpdateState);
+  applyUpdateState(await window.localAI.getUpdateState());
   selectCommand("coverage");
   await loadHistory();
 }
@@ -632,6 +705,7 @@ $$(".nav").forEach((button) => button.addEventListener("click", () => showView(b
 $$(".commands button").forEach((button) => button.addEventListener("click", () => selectCommand(button.dataset.command)));
 $("#execute").addEventListener("click", () => run(state.selectedCommand));
 $("#chooseRepo").addEventListener("click", () => chooseRepository(false));
+$("#updateRepo").addEventListener("click", updateRepositoryFromGitHub);
 $("#settingsRepoButton").addEventListener("click", () => chooseRepository(true));
 $("#refresh").addEventListener("click", () => run("doctor"));
 $("#reloadHistory").addEventListener("click", loadHistory);
@@ -649,16 +723,20 @@ $("#copy").addEventListener("click", async () => {
 });
 $("#copyDiagnostics").addEventListener("click", copyDiagnostics);
 $("#clearDiagnostics").addEventListener("click", clearDiagnostics);
+$("#checkUpdate").addEventListener("click", checkForAppUpdate);
+$("#installUpdate").addEventListener("click", installAppUpdate);
+$("#openRelease").addEventListener("click", () => window.localAI.openReleasePage());
 $("#save").addEventListener("click", async () => {
   try {
     const next = await window.localAI.saveSettings({
       defaultRepository: $("#settingsRepo").value,
       modelProfile: $("#settingsProfile").value,
-      rememberRepository: $("#rememberRepo").checked
+      rememberRepository: $("#rememberRepo").checked,
+      autoCheckUpdates: $("#autoCheckUpdates").checked
     });
     state.settings = next;
     state.repository = next.defaultRepository;
-    setText("#repoPath", state.repository);
+    setText("#repoPath", state.repository || "未選択");
     setText("#profile", next.modelProfile);
     setText("#saveMessage", "保存しました");
     setTimeout(() => setText("#saveMessage", ""), 1500);

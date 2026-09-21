@@ -52,9 +52,13 @@
       <section class="panel repo">
         <div class="panel-head">
           <div><p class="label">REPOSITORY</p><h2>対象Repository</h2></div>
-          <button id="chooseRepo" class="ghost">変更</button>
+          <div class="repo-actions">
+            <button id="updateRepo" class="ghost">GitHubから最新化</button>
+            <button id="chooseRepo" class="ghost">変更</button>
+          </div>
         </div>
         <code id="repoPath">読み込み中...</code>
+        <p id="repoUpdateStatus" class="option-note">未コミット変更がある場合は更新しません。</p>
       </section>
 
       <div class="grid">
@@ -172,6 +176,24 @@
         <label class="check">
           <input id="rememberRepo" type="checkbox" checked>
           <span>前回のRepositoryを保存する</span>
+        </label>
+
+        <div class="settings-section update-settings">
+          <div>
+            <strong>アプリ更新</strong>
+            <p><span id="appVersion">現在版を確認中...</span> · <span id="updateStatusText">更新状態を確認できます。</span></p>
+            <div class="track update-track" aria-label="アップデート進捗"><div id="updateBar"></div></div>
+          </div>
+          <div class="diagnostic-actions">
+            <button id="checkUpdate" class="ghost">更新を確認</button>
+            <button id="installUpdate" class="primary hidden">今すぐ更新</button>
+            <button id="openRelease" class="ghost">Releaseページ</button>
+          </div>
+        </div>
+
+        <label class="check">
+          <input id="autoCheckUpdates" type="checkbox" checked>
+          <span>起動時にGitHub Releasesを確認する</span>
         </label>
 
         <div class="settings-section">

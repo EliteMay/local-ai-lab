@@ -1,7 +1,7 @@
 # Local AI Lab Requirements
 
 更新日: 2026-09-21
-Status: Desktop v0.2 implementation in progress
+Status: Desktop v0.2 distribution candidate
 
 ## 1. 目的
 
@@ -177,14 +177,15 @@ v1はRead-only Audit Systemとする。
 
 禁止:
 
-- File create/update/delete
-- git commit
-- git push
-- Branch変更
+- AI Company / Audit AgentによるFile create/update/delete
+- AI Company / Audit Agentによるgit commit / git push
+- AI Company / Audit AgentによるBranch変更
 - Force operation
 - 任意Shell mutation
 
-Prompt上の禁止だけに依存せず、Tool/API/File-system boundaryでも書込みCapabilityを与えないことを優先する。
+Prompt上の禁止だけに依存せず、AI CompanyのTool/API/File-system boundaryでは書込みCapabilityを与えないことを優先する。
+
+Desktop ControllerにはAI監査とは分離したUser明示のRepository Maintenance操作として、clean working treeに限る fast-forward-only の `git fetch` / `git pull --ff-only` を許可できる。この操作はModel outputから自動実行せず、dirty tree、detached HEAD、non-fast-forwardでは停止する。git commit / push / reset / rebase / forceは提供しない。
 
 ### Web / External Content
 
@@ -407,6 +408,34 @@ PowerShellで行っている日常操作を置き換え、長時間Local AI Run�
 - Coverage 100%でSynthesisだけ失敗したRunを保存済みEvidenceから再Synthesisできる
 - Runtime未起動など主要FailureをUser向けに理解できるMessageで示す
 - 開発診断はElectron userDataへ上限付きで保存し、Prompt本文やFile本文は保存しない
+- Setup.exeからInstallでき、Desktop / Start Menuから起動できる
+- v0.2.0以降はGitHub Releasesを使ったアプリ内One-click Updateを利用できる
+- Update後もSettings / Run履歴 / Diagnosticsを維持する
+- 選択したLocal Git RepositoryをUser明示操作で安全にGitHub最新版へfast-forwardできる
+
+### Distribution / Update Contract
+
+- Desktop Versionの正本は `package.json#version`
+- Windows配布はNSIS Setup.exeを使用する
+- GitHub ReleasesをStable Update Providerとする
+- ReleaseにはSetup.exe / `latest.yml` / `.blockmap` を同Versionで揃える
+- v0.2.0をAuto Updater Bootstrap Versionとする
+- v0.2.0以前からv0.2.0への移行はSetup.exeを1回手動実行する
+- 起動時Update確認は設定でON/OFFできる
+- Userの明示操作なしに長時間Runを中断して再起動しない
+- Update失敗時はCurrent Versionを継続利用でき、固定GitHub Releases URLへのManual fallbackを持つ
+- Setup.exe版のRuntime DataはProgram FilesではなくElectron userDataへ保存する
+- Code Signing未導入の間はSmartScreen警告の可能性をDocumentationへ明記する
+
+### Repository Maintenance Contract
+
+- 「GitHubから最新化」は選択Repositoryへだけ作用する
+- Git working treeがcleanであることをMain Process側で確認する
+- `git fetch --prune origin` と `git pull --ff-only` だけを実行する
+- dirty tree / detached HEAD / merge-required / non-fast-forwardは停止する
+- Run実行中はRepositoryを更新しない
+- git commit / push / reset / rebase / forceは実行しない
+- AI Model / Finding / Planner outputから自動実行しない
 
 ### v0.2 Commands
 
@@ -423,7 +452,7 @@ PowerShellで行っている日常操作を置き換え、長時間Local AI Run�
 - RendererへNode / Electron APIを丸ごと公開しない
 - Main Process側で許可済みCommandだけを実行する
 - User入力をShell文字列へ連結せず、spawn argumentとして分離する
-- Target RepositoryへのWrite Capabilityは追加しない
+- AI Company / Audit AgentへTarget RepositoryのWrite Capabilityは追加しない
 - Desktop設定はElectron userDataへ保存し、Project設定を暗黙に書き換えない
 - Privileged IPCはMain Process側でSenderとPayloadを検証する
 - Rendererの外部Navigation / new windowを許可しない
@@ -433,7 +462,8 @@ PowerShellで行っている日常操作を置き換え、長時間Local AI Run�
 ### v0.2 Non-goals
 
 - 自由Terminal
-- Target Repositoryの自動修正
+- AIによるTarget Repositoryの自動修正
+- Repositoryの自動pull / 自動commit / 自動push
 - git commit / push
 - Runtime自動起動
 - Model download
