@@ -113,7 +113,7 @@
 - Status: Adopted
 - Problem: Electron標準Iconのままだと、他Electron AppとTaskbar / Desktop Shortcut上で見分けにくい。
 - Decision: Local AI Lab専用IconをRepository Assetとして管理し、Electron WindowとWindows packageの両方へ同じIconを設定する。
-- Asset: `desktop/assets/icon.svg` を編集用Source、`desktop/assets/icon.png` を配布用Rasterとして使用する。
+- Asset: `desktop/assets/icon.svg` を唯一の編集用Sourceとし、起動/Build前にsmall-size PNGとmulti-size ICOを生成する。
 - Regression Guard: Distribution testでVersion / Windows icon path / BrowserWindow icon / AppUserModelId / Binary Asset existenceを確認する。
 - Prevention: Desktop AppをSetup.exe配布する段階で、Default framework iconのままReleaseしない。
 
@@ -128,3 +128,15 @@
 - Final Fix: `signAndEditExecutable=true` に戻し、`signExecutable=false` で署名だけを明示的に無効化する。
 - Regression Guard: Distribution testで両設定を固定し、Windows CIでpackaged exeからAssociated Iconを抽出できることを確認する。
 - Prevention: Windowsで未署名buildを作る場合、Signing無効化とResource Editing無効化を同一設定として扱わない。
+
+
+## PL-011 — Desktop Iconは512pxだけで判断しない
+
+- Date: 2026-09-21
+- Type: Failure / Visual Quality
+- Status: Resolved
+- Symptom: custom IconをWindows exeへ埋め込めても、Taskbarの小サイズ表示では白い箱と細い線のように見え、識別できなかった。
+- Root Cause: 512px前提の細いAI文字・波形をそのまま縮小し、小サイズごとの判読性とmulti-size ICOを検証していなかった。
+- Final Fix: Iconを「濃紺Tile + 太い青いL + シアンDot」へ単純化し、16/24/32/48/64/128/256pxを含むICOをBuild前に生成する。
+- Regression Guard: Windows CIでICO directory entriesを解析し、必要な各Sizeが存在することを確認する。
+- Prevention: App IconはSourceの高解像度Previewだけで完成判定せず、16px / 24px / 32pxを最低限確認する。
