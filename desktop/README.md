@@ -144,10 +144,9 @@ start_llama_server.ps1
 ```
 
 - 「Bonsaiを起動」でPowerShell Windowを表示せずBackground起動する
+- 起動・停止はUserがButtonを押した場合だけ行い、Desktopの起動・終了では自動実行しない
 - 「Bonsaiを停止」はDesktop自身が起動したProcessだけを対象にする
 - 別PowerShellで起動済みなら「外部で起動中」と表示し、DesktopからKillしない
-- 「アプリ起動時にBonsaiも起動する」は明示的にONにした場合だけ動く
-- Desktop終了時、Desktop自身が起動したBonsaiは停止する
 - Bonsai停止中の監査は開始前に止め、起動が必要であることを日本語で案内する
 
 BonsaiのModel download、`setup.ps1`、PrismML Binary setupは自動化しません。すでにSetup済みのBonsai-demoをDesktopから管理する機能です。
