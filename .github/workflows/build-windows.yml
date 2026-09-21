@@ -65,6 +65,34 @@ jobs:
       - name: Build installer
         run: npm run build:win
 
+      - name: Verify Windows executable icon
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = "dist/win-unpacked/Local AI Lab.exe"
+          if (-not (Test-Path $exe)) {
+            throw "Packaged executable not found: $exe"
+          }
+
+          Add-Type -AssemblyName System.Drawing
+          $icon = [System.Drawing.Icon]::ExtractAssociatedIcon((Resolve-Path $exe).Path)
+          if ($null -eq $icon) {
+            throw "Windows executable does not expose an associated icon"
+          }
+          if ($icon.Width -lt 16 -or $icon.Height -lt 16) {
+            throw "Embedded executable icon is unexpectedly small"
+          }
+
+          $bitmap = $icon.ToBitmap()
+          $output = Join-Path $env:RUNNER_TEMP "local-ai-lab-exe-icon.png"
+          $bitmap.Save($output, [System.Drawing.Imaging.ImageFormat]::Png)
+          $bitmap.Dispose()
+          $icon.Dispose()
+
+          if ((Get-Item $output).Length -lt 200) {
+            throw "Extracted executable icon is unexpectedly small"
+          }
+
       - name: Verify installer and update metadata
         shell: pwsh
         run: |

@@ -1,6 +1,6 @@
 {
   "name": "local-ai-lab",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "private": true,
   "type": "module",
   "description": "Local AI repository audit lab with a Windows Electron run controller.",
@@ -59,9 +59,10 @@
         }
       ],
       "artifactName": "local_ai_lab_${version}_setup.${ext}",
-      "signAndEditExecutable": false,
+      "signAndEditExecutable": true,
       "forceCodeSigning": false,
-      "icon": "desktop/assets/icon.png"
+      "icon": "desktop/assets/icon.png",
+      "signExecutable": false
     },
     "nsis": {
       "oneClick": false,
