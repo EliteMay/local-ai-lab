@@ -2,6 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Local AI Lab</title>
   <link rel="stylesheet" href="./styles.css">
@@ -9,8 +10,11 @@
 <body>
 <div class="shell">
   <aside>
-    <div class="brand"><div class="logo">AI</div><div><b>Local AI Lab</b><small>Desktop Controller</small></div></div>
-    <nav>
+    <div class="brand">
+      <div class="logo">AI</div>
+      <div><b>Local AI Lab</b><small>Run Controller</small></div>
+    </div>
+    <nav aria-label="メインナビゲーション">
       <button class="nav active" data-view="home">ホーム</button>
       <button class="nav" data-view="history">履歴</button>
       <button class="nav" data-view="settings">設定</button>
@@ -20,66 +24,171 @@
 
   <main>
     <section class="view active" id="home">
-      <header><div><p class="eyebrow">LOCAL WORKSPACE</p><h1>ホーム</h1><p>PowerShellで行っていた操作をここから実行します。</p></div><button id="refresh" class="ghost">状態を更新</button></header>
+      <header>
+        <div>
+          <p class="eyebrow">LOCAL AI WORKSPACE</p>
+          <h1>ホーム</h1>
+          <p>監査を開始し、長時間Runの進行・再開・結果確認をここで管理します。</p>
+        </div>
+        <button id="refresh" class="ghost">接続状態を更新</button>
+      </header>
 
-      <div class="status">
+      <div class="status" aria-label="現在の実行環境">
         <div><span>Runtime</span><strong id="runtime">未確認</strong></div>
         <div><span>Profile</span><strong id="profile">default</strong></div>
         <div><span>Model</span><strong id="model">未確認</strong></div>
         <div><span>接続</span><strong id="connection">未確認</strong></div>
       </div>
 
+      <section class="panel resume-card hidden" id="resumeCard">
+        <div>
+          <p class="label">CONTINUE</p>
+          <h2 id="resumeTitle">続きから再開できます</h2>
+          <p id="resumeDescription" class="subtle"></p>
+        </div>
+        <button id="resumeAction" class="primary">再開準備</button>
+      </section>
+
       <section class="panel repo">
-        <div class="panel-head"><div><p class="label">REPOSITORY</p><h2>対象Repository</h2></div><button id="chooseRepo" class="ghost">変更</button></div>
+        <div class="panel-head">
+          <div><p class="label">REPOSITORY</p><h2>対象Repository</h2></div>
+          <button id="chooseRepo" class="ghost">変更</button>
+        </div>
         <code id="repoPath">読み込み中...</code>
       </section>
 
       <div class="grid">
         <section class="panel">
-          <div class="panel-head"><div><p class="label">COMMANDS</p><h2>実行</h2></div></div>
-          <div class="commands">
-            <button data-command="doctor"><b>Doctor</b><span>RuntimeとModelを確認</span></button>
+          <div class="panel-head">
+            <div><p class="label">TASK</p><h2>実行する処理を選択</h2></div>
+            <span id="selectionHint" class="mini-status">選択してから実行します</span>
+          </div>
+
+          <div class="commands" role="group" aria-label="実行処理">
+            <button data-command="doctor"><b>Doctor</b><span>RuntimeとModelの接続確認</span></button>
             <button data-command="inspect"><b>Inspect</b><span>RepositoryをRead-only確認</span></button>
-            <button data-command="coverage" class="wide selected"><b>Coverage Audit</b><span>Repository全体を監査</span></button>
-            <button data-command="coverage-synthesize"><b>Synthesize</b><span>Findingを再統合</span></button>
+            <button data-command="coverage" class="wide selected"><b>Coverage Audit</b><span>Repository全体をEvidence付きで監査</span></button>
+            <button data-command="coverage-synthesize"><b>Synthesize</b><span>保存済みEvidenceから再統合</span></button>
             <button data-command="test"><b>Tests</b><span>Test Suiteを実行</span></button>
           </div>
+
           <div class="options" id="coverageOptions">
             <label for="goal">監査目的</label>
             <textarea id="goal" rows="4">このRepositoryの全監査対象ファイルを読み、改善点と改善方法をEvidence付きで提案する</textarea>
+            <p id="coverageMode" class="option-note">新しいCoverage Auditとして実行します。</p>
           </div>
+
           <div class="options hidden" id="synthOptions">
-            <label for="runId">Run ID</label>
-            <input id="runId" placeholder="run-2026-...">
+            <label for="runId">Synthesis対象Run</label>
+            <select id="runId">
+              <option value="">履歴からRunを選択してください</option>
+            </select>
+            <p class="option-note">Coverage 100%の保存済みEvidenceを利用するため、Repository全体は再監査しません。</p>
+          </div>
+
+          <div class="execute-strip">
+            <div>
+              <span>選択中</span>
+              <strong id="selectedTask">Coverage Audit</strong>
+            </div>
+            <button id="execute" class="primary">Coverage Auditを実行</button>
           </div>
         </section>
 
-        <section class="panel">
-          <div class="panel-head"><div><p class="label">RUN STATUS</p><h2 id="runTitle">待機中</h2></div><button id="cancel" class="danger hidden">停止</button></div>
-          <div class="track"><div id="bar"></div></div>
-          <div class="meta"><span id="progress">実行待ち</span><span id="runLabel">—</span></div>
+        <section class="panel run-panel">
+          <div class="panel-head">
+            <div><p class="label">RUN STATUS</p><h2 id="runTitle">待機中</h2></div>
+            <button id="cancel" class="danger hidden">停止</button>
+          </div>
+
+          <div class="run-summary">
+            <div><span>現在工程</span><strong id="stage">実行待ち</strong></div>
+            <div><span>経過時間</span><strong id="elapsed">—</strong></div>
+            <div><span>推定残り</span><strong id="estimate">—</strong></div>
+          </div>
+
+          <div class="track" aria-label="実行進捗"><div id="bar"></div></div>
+          <div class="meta">
+            <span id="progress">実行待ち</span>
+            <span id="runLabel">—</span>
+          </div>
+
+          <div class="token-line">
+            <span id="batchMetric">Batch —</span>
+            <span id="tokenMetric">Tokens —</span>
+          </div>
+
           <div id="log" class="log" aria-live="polite"></div>
         </section>
       </div>
 
       <section class="panel result">
-        <div class="panel-head"><div><p class="label">RESULT</p><h2>結果</h2></div><button id="copy" class="ghost" disabled>結果をコピー</button></div>
+        <div class="panel-head">
+          <div><p class="label">RESULT</p><h2>結果</h2></div>
+          <button id="copy" class="ghost" disabled>結果をコピー</button>
+        </div>
         <pre id="result">まだ結果はありません。</pre>
       </section>
     </section>
 
     <section class="view" id="history">
-      <header><div><p class="eyebrow">RUN ARCHIVE</p><h1>履歴</h1><p>runtime-dataに保存されたRunを確認します。</p></div><button id="reloadHistory" class="ghost">再読み込み</button></header>
+      <header>
+        <div>
+          <p class="eyebrow">RUN ARCHIVE</p>
+          <h1>履歴</h1>
+          <p>保存済みRunの状態を確認し、途中Runを安全に再開します。</p>
+        </div>
+        <button id="reloadHistory" class="ghost">再読み込み</button>
+      </header>
       <div id="historyList" class="history"></div>
     </section>
 
     <section class="view" id="settings">
-      <header><div><p class="eyebrow">PREFERENCES</p><h1>設定</h1><p>既定RepositoryとModel Profileを保存します。</p></div></header>
+      <header>
+        <div>
+          <p class="eyebrow">PREFERENCES</p>
+          <h1>設定</h1>
+          <p>既定Repository、Model Profile、ローカル診断を管理します。</p>
+        </div>
+      </header>
+
       <section class="panel settings">
-        <label><span>Model Profile</span><select id="settingsProfile"><option value="default">Default / LM Studio / Qwen3-8B</option><option value="bonsai-2-27b">Bonsai 2 27B / PrismML llama.cpp</option></select></label>
-        <label><span>Default Repository</span><div class="row"><input id="settingsRepo" readonly><button id="settingsRepoButton" class="ghost">選択</button></div></label>
-        <label class="check"><input id="rememberRepo" type="checkbox" checked><span>前回のRepositoryを保存する</span></label>
-        <div class="save-row"><span id="saveMessage"></span><button id="save" class="primary">保存</button></div>
+        <label>
+          <span>Model Profile</span>
+          <select id="settingsProfile">
+            <option value="default">Default / LM Studio / Qwen3-8B</option>
+            <option value="bonsai-2-27b">Bonsai 2 27B / PrismML llama.cpp</option>
+          </select>
+        </label>
+
+        <label>
+          <span>Default Repository</span>
+          <div class="row">
+            <input id="settingsRepo" readonly>
+            <button id="settingsRepoButton" class="ghost">選択</button>
+          </div>
+        </label>
+
+        <label class="check">
+          <input id="rememberRepo" type="checkbox" checked>
+          <span>前回のRepositoryを保存する</span>
+        </label>
+
+        <div class="settings-section">
+          <div>
+            <strong>開発診断</strong>
+            <p>直近100件までのCommand開始・終了・失敗等をuserDataへ保存します。PromptやFile本文は保存しません。</p>
+          </div>
+          <div class="diagnostic-actions">
+            <button id="copyDiagnostics" class="ghost">診断ログをコピー</button>
+            <button id="clearDiagnostics" class="ghost">診断ログを消去</button>
+          </div>
+        </div>
+
+        <div class="save-row">
+          <span id="saveMessage"></span>
+          <button id="save" class="primary">保存</button>
+        </div>
       </section>
     </section>
   </main>
