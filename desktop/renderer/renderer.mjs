@@ -249,7 +249,7 @@ function selectCommand(command, { preserveResume = false } = {}) {
 
 function setRunning(value, title) {
   state.running = value;
-  $$(".commands button").forEach((button) => { button.disabled = value; });
+  $(".commands button").forEach((button) => { button.disabled = value; });
   $("#execute").disabled = value;
   $("#chooseRepo").disabled = value;
   $("#updateRepo").disabled = value;
@@ -258,6 +258,8 @@ function setRunning(value, title) {
   $("#stopBonsai").disabled = value;
   $("#refreshBonsai").disabled = value;
   $("#cancel").classList.toggle("hidden", !value);
+  $("#cancel").disabled = !value;
+  setText("#runProtection", value ? "スリープ防止中" : "待機中");
   if (title) setText("#runTitle", title);
 }
 
@@ -442,14 +444,25 @@ async function run(command = state.selectedCommand, stateOverride = {}) {
 
   try {
     const result = await window.localAI.runCommand(payload);
-    succeeded = true;
-    state.result = result.output || "完了しました。";
-    setText("#result", state.result);
-    $("#copy").disabled = false;
-    $("#bar").style.width = "100%";
-    setText("#progress", "完了");
-    setStage(command === "doctor" ? "接続確認完了" : "処理完了");
-    if (command === "doctor") applyDoctor(state.result);
+
+    if (result?.cancelled) {
+      state.result = command === "coverage"
+        ? "処理を停止しました。保存済みのCheckpointがある場合は、履歴から続きへ戻れます。"
+        : "処理を停止しました。";
+      setText("#result", state.result);
+      $("#copy").disabled = false;
+      setText("#progress", "停止");
+      setStage("手動停止");
+    } else {
+      succeeded = true;
+      state.result = result.output || "完了しました。";
+      setText("#result", state.result);
+      $("#copy").disabled = false;
+      $("#bar").style.width = "100%";
+      setText("#progress", "完了");
+      setStage(command === "doctor" ? "接続確認完了" : "処理完了");
+      if (command === "doctor") applyDoctor(state.result);
+    }
   } catch (error) {
     state.result = friendlyError(error.message);
     setText("#result", state.result);
@@ -665,6 +678,44 @@ function populateRunSelect(items) {
   }
 }
 
+function applyHistoryFilter() {
+  const query = String($("#historyFilter")?.value || "").trim().toLowerCase();
+  const rows = $("#historyList .history-item");
+  let visible = 0;
+
+  for (const row of rows) {
+    const match = !query || String(row.dataset.searchText || "").includes(query);
+    row.classList.toggle("hidden", !match);
+    if (match) visible += 1;
+  }
+
+  $("#historyNoMatches")?.remove();
+  setText("#historyCount", query ? `${visible} / ${state.history.length}件` : `${state.history.length}件`);
+
+  if (query && state.history.length > 0 && visible === 0) {
+    const empty = createPanelMessage("検索条件に一致する履歴はありません。");
+    empty.id = "historyNoMatches";
+    $("#historyList").appendChild(empty);
+  }
+}
+
+async function cancelCurrentRun() {
+  if (!state.running) return;
+  $("#cancel").disabled = true;
+  setStage("停止処理中");
+  setText("#progress", "停止しています...");
+  try {
+    const result = await window.localAI.cancelCommand();
+    if (!result?.cancelled) {
+      setText("#progress", "すでに終了しています");
+    }
+  } catch (error) {
+    state.result = friendlyError(error.message);
+    setText("#result", state.result);
+    $("#cancel").disabled = false;
+  }
+}
+
 async function loadHistory() {
   const list = $("#historyList");
   list.textContent = "";
@@ -683,6 +734,7 @@ async function loadHistory() {
 
     list.textContent = "";
     if (!items.length) {
+      setText("#historyCount", "0件");
       list.appendChild(createPanelMessage("まだ保存済みの実行履歴はありません。"));
       return;
     }
@@ -690,6 +742,14 @@ async function loadHistory() {
     for (const item of items) {
       const row = document.createElement("article");
       row.className = "history-item";
+      row.dataset.searchText = [
+        item.runId,
+        item.repoName,
+        item.repoPath,
+        item.goal,
+        item.status,
+        item.reviewerDecision
+      ].filter(Boolean).join(" ").toLowerCase();
 
       const left = document.createElement("div");
       const heading = document.createElement("div");
@@ -763,6 +823,27 @@ async function loadHistory() {
         actions.appendChild(synth);
       }
 
+      const folder = document.createElement("button");
+      folder.className = "ghost";
+      folder.textContent = "保存先";
+      folder.addEventListener("click", async () => {
+        const original = folder.textContent;
+        folder.disabled = true;
+        try {
+          await window.localAI.openRunFolder(item.runId);
+          folder.textContent = "開きました";
+        } catch (error) {
+          folder.textContent = "開けません";
+          folder.title = friendlyError(error.message);
+        } finally {
+          setTimeout(() => {
+            folder.textContent = original;
+            folder.disabled = false;
+          }, 1200);
+        }
+      });
+      actions.appendChild(folder);
+
       const copy = document.createElement("button");
       copy.className = "ghost";
       copy.textContent = "コピー";
@@ -777,6 +858,8 @@ async function loadHistory() {
       row.append(left, actions);
       list.appendChild(row);
     }
+
+    applyHistoryFilter();
   } catch (error) {
     list.textContent = "";
     list.appendChild(createPanelMessage("履歴を読み込めませんでした: " + friendlyError(error.message)));
@@ -835,7 +918,8 @@ $("#refreshBonsai").addEventListener("click", refreshBonsaiStatus);
 $("#settingsProfile").addEventListener("change", () => updateBonsaiVisibility($("#settingsProfile").value));
 $("#refresh").addEventListener("click", () => run("doctor"));
 $("#reloadHistory").addEventListener("click", loadHistory);
-$("#cancel").addEventListener("click", () => window.localAI.cancelCommand());
+$("#historyFilter").addEventListener("input", applyHistoryFilter);
+$("#cancel").addEventListener("click", cancelCurrentRun);
 $("#resumeAction").addEventListener("click", () => {
   const item = state.latestRecoverable;
   if (!item) return;
