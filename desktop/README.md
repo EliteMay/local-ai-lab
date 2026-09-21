@@ -184,6 +184,21 @@ start_llama_server.ps1
 
 BonsaiのModel download、`setup.ps1`、PrismML Binary setupは自動化しません。すでにSetup済みのBonsai-demoをDesktopから管理する機能です。
 
+## 長時間Runの見える化
+
+Desktopは長時間のCoverage Auditで「固まったように見える」状態を減らすため、次を同時に表示します。
+
+- 現在工程 / 進捗 / 経過時間
+- 完了Batch平均による推定残り / 終了予想
+- 最終出力時刻 / 応答待ち時間 / Child Process生存状態
+- 平均処理時間 / 直近処理時間 / 概算生成速度
+- CPU / Memory / NVIDIA GPU / VRAM
+- 監査完了後のCoverage / 重要度別Finding / 重要Finding / Reviewer概要
+
+15秒以上出力がない場合はProcessが生存していれば「応答待ち」、10分以上なら「長時間応答待ち」と表示します。これはConnection Failureとは分離します。
+
+GPU情報は固定のread-only nvidia-smi Queryで取得し、利用できない環境では「取得不可」にフォールバックします。Metrics取得Failureで監査自体を失敗させません。
+
 ## Security Boundary
 
 - Rendererは `nodeIntegration: false`
