@@ -56,3 +56,38 @@
 - Trade-off: file:// Renderer URLに強く結び付くため、将来Custom Protocolへ移行する場合はSender validationを同時に更新する必要がある。
 - Regression Guard: Desktop security contract test。
 - Reuse Condition: ElectronでRendererからMain ProcessへFile / Process / Clipboard等のCapabilityを渡す場合。
+
+
+## PL-005 — Installer化ではRuntime DataをProgram Filesへ書かない
+
+- Date: 2026-09-21
+- Type: Distribution / Reliability
+- Status: Adopted
+- Problem: Developer起動ではRepository直下の `runtime-data/runs` が使えるが、そのままSetup.exe化するとInstall先がProgram Files等の書込みに不向きなPathになり得る。
+- Risk: Coverage Checkpoint / Synthesis /履歴保存がPermission Errorで失敗し、Auto UpdateでApp本体を置き換える際にUser Dataも巻き込む。
+- Adopted Pattern: Setup.exe版はElectron `userData/runtime-data/runs` をRuntime Data rootにし、CLI child processへ `LOCAL_AI_RUNTIME_DATA_ROOT` を渡す。Developer起動は従来Pathを維持する。
+- Migration: 既存local-ai-lab Repositoryを既定Repositoryとして認識できる場合、初回配布版起動時に旧Run DataをuserDataへCopyする。
+- Regression Guard: Desktop distribution contract test。
+- Prevention: Installer化するときはSource PathとWritable User Data Pathを同一視しない。
+
+## PL-006 — Repository同期はAI Write Capabilityと分離する
+
+- Date: 2026-09-21
+- Type: Security / UX
+- Status: Adopted
+- Problem: UserはGUIからPC上のRepositoryを最新版にしたいが、AI Company v1のAudit ContractはTarget Repository Read-onlyを維持する必要がある。
+- Decision: `GitHubから最新化` はModel/Agent ToolではなくUserが明示的に押すDesktop Maintenance Capabilityとして分離する。
+- Safety: clean working treeを要求し、`git fetch --prune origin` + `git pull --ff-only` のみ許可。dirty / detached HEAD / non-fast-forwardでは停止し、commit / push / reset / rebase / forceを提供しない。
+- Regression Guard: Desktop distribution contract test。
+- Prevention: User maintenance operationとAI autonomous permissionを同じCapabilityとして扱わない。
+
+## PL-007 — Auto Updater導入VersionはBootstrap Releaseとして扱う
+
+- Date: 2026-09-21
+- Type: Distribution
+- Status: Adopted
+- Problem: Updaterを持たない旧Versionは、自分自身を遠隔でUpdater搭載Versionへ更新できない。
+- Decision: v0.2.0をAuto Updater Bootstrap Versionとし、このVersionだけSetup.exeを1回手動Installする。以後はGitHub Releases + electron-updaterでOne-click Updateする。
+- Release Contract: package version / Setup.exe / latest.yml / blockmapを同Versionで生成し、同じReleaseへ公開する。同じVersion Releaseが既に存在する場合は後からAssetを差し替えない。
+- Failure Fallback: Update失敗時はCurrent Versionを継続利用し、固定GitHub Releases URLをManual fallbackにする。
+- Remaining Risk: Code Signing未導入のためSmartScreen警告が出る可能性がある。
