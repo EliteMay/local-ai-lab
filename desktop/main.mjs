@@ -39,8 +39,10 @@ function safeGoal(value) {
 }
 
 function validateRepository(repoPath) {
-  const target = resolve(String(repoPath || ""));
-  if (!target || !existsSync(target)) throw new Error("Repository path does not exist");
+  const raw = String(repoPath || "").trim();
+  if (!raw) throw new Error("Repository path is required");
+  const target = resolve(raw);
+  if (!existsSync(target)) throw new Error("Repository path does not exist");
   return target;
 }
 
