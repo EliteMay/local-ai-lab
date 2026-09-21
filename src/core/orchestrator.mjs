@@ -310,7 +310,7 @@ export class AICompanyOrchestrator {
         taskCount: brokerSnapshot.taskCount,
         modelCalls: brokerSnapshot.modelCalls,
         executionIdentity,
-        modelRouting: failedModelUsage
+        modelRouting: modelUsage
       });
 
       return {
@@ -349,7 +349,8 @@ export class AICompanyOrchestrator {
         contextCoverage: repositoryContext.coverage,
         taskCount: brokerSnapshot.taskCount,
         modelCalls: brokerSnapshot.modelCalls,
-        executionIdentity
+        executionIdentity,
+        modelRouting: failedModelUsage
       });
       this.progress({ type: "run_failed", runId: actualRunId, error: error.message });
       throw error;
