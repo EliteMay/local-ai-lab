@@ -375,6 +375,8 @@ test("desktop blocks mutable settings and update actions while a run is active",
 
   assert.match(main, /処理実行中は設定を変更できません/);
   for (const selector of [
+    "#modelRoutingMode",
+    "#autoManageModels",
     "#settingsProfile",
     "#settingsRepoButton",
     "#bonsaiFolderButton",
@@ -419,5 +421,8 @@ test("desktop exposes deterministic multi-model routing and safe catalog managem
   assert.match(renderer, /model-route/);
   assert.match(renderer, /model-fallback/);
   assert.match(manager, /findCatalogModel/);
+  assert.match(manager, /処理実行中はモデルをダウンロードできません/);
+  assert.match(manager, /処理実行中はモデルを読み込めません/);
+  assert.match(manager, /処理実行中はモデルを解放できません/);
   assert.doesNotMatch(preload, /modelUrl|downloadUrl|shellCommand/);
 });
