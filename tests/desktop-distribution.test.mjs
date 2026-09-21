@@ -98,18 +98,30 @@ test("renderer exposes app update controls and startup update preference", async
 });
 
 
-test("desktop uses a dedicated Local AI Lab icon for Windows and the app window", async () => {
+test("desktop builds a dedicated multi-size Local AI Lab icon", async () => {
   const pkg = JSON.parse(await read("../package.json"));
   const main = await read("../desktop/main.mjs");
   const source = await read("../desktop/assets/icon.svg");
   const generator = await read("../scripts/generate-app-icon.mjs");
 
+  assert.equal(pkg.version, "0.2.5");
   assert.equal(pkg.build?.win?.icon, "desktop/assets/generated/icon.ico");
   assert.equal(pkg.build?.win?.signAndEditExecutable, true);
   assert.equal(pkg.build?.win?.signExecutable, false);
-  assert.match(main, /icon:\s*join\(__dirname, "assets", "icon\.png"\)/);
+  assert.match(main, /icon:\s*join\(__dirname, "assets", "generated", process\.platform === "win32" \? "icon\.ico" : "icon\.png"\)/);
   assert.match(main, /setAppUserModelId\("local\.elitemay\.localailab"\)/);
-  assert.ok(icon.length > 1000);
+
   assert.match(source, /<svg/);
-  assert.match(source, />AI<\/text>/);
+  assert.doesNotMatch(source, /<text/);
+  assert.match(source, /#0B1220/);
+  assert.match(source, /#6096FF/);
+  assert.match(source, /#56E1D2/);
+
+  assert.match(generator, /\[16, 24, 32, 48, 64, 128, 256, 512\]/);
+  assert.match(generator, /pngToIco/);
+  assert.equal(pkg.scripts?.["icon:build"], "node scripts/generate-app-icon.mjs");
+  assert.match(pkg.scripts?.desktop || "", /npm run icon:build/);
+  assert.match(pkg.scripts?.["build:win"] || "", /npm run icon:build/);
+  assert.equal(pkg.devDependencies?.sharp, "^0.34.4");
+  assert.equal(pkg.devDependencies?.["png-to-ico"], "^3.0.1");
 });
