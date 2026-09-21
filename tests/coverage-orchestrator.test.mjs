@@ -230,7 +230,7 @@ test("partial coverage keeps successful checkpoints and resume skips completed b
   assert.match(resumedCoverageCalls[0].user, /Batch: batch-0002/);
 });
 
-test("resume refuses a changed batch layout even when repository files are unchanged", async (t) => {
+test("resume refuses changed audit settings even when repository files are unchanged", async (t) => {
   const { repo, runs } = await createFixture(t, "local-ai-lab-coverage-plan-change-");
   const store = new RunStore(runs);
   const first = new CoverageAuditOrchestrator({ config, modelClient: new CoverageFakeModel(), runStore: store });
@@ -248,7 +248,7 @@ test("resume refuses a changed batch layout even when repository files are uncha
       runId: "coverage-plan-change",
       resume: true
     }),
-    /coverage batch plan changed/
+    /安全に再開できません/
   );
 });
 
