@@ -19,11 +19,15 @@ function mergeConfig(base, override) {
 
 async function loadConfig(args = []) {
   const defaultUrl = new URL("../config/default.json", import.meta.url);
-  const base = JSON.parse(await readFile(defaultUrl, "utf8"));
+  const packageUrl = new URL("../package.json", import.meta.url);
+  const [base, pkg] = await Promise.all([
+    readFile(defaultUrl, "utf8").then(JSON.parse),
+    readFile(packageUrl, "utf8").then(JSON.parse)
+  ]);
   const profile = getOption(args, "--model-profile") ?? process.env.LOCAL_AI_MODEL_PROFILE;
 
   if (!profile) {
-    return { ...base, activeModelProfile: "default" };
+    return { ...base, activeModelProfile: "default", appVersion: pkg.version };
   }
   if (!/^[a-z0-9][a-z0-9-]*$/i.test(profile)) {
     throw new Error(`Invalid model profile name: ${profile}`);
@@ -32,7 +36,7 @@ async function loadConfig(args = []) {
   const profileUrl = new URL(`../config/model-profiles/${profile}.json`, import.meta.url);
   try {
     const override = JSON.parse(await readFile(profileUrl, "utf8"));
-    return { ...mergeConfig(base, override), activeModelProfile: profile };
+    return { ...mergeConfig(base, override), activeModelProfile: profile, appVersion: pkg.version };
   } catch (error) {
     if (error?.code === "ENOENT") {
       throw new Error(`Unknown model profile: ${profile}`);

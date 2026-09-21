@@ -1,4 +1,5 @@
-import { access, mkdir, readFile, writeFile } from "node:fs/promises";
+import { access, mkdir } from "node:fs/promises";
+import { atomicWriteJson, atomicWriteText, readJsonWithBackup, readTextWithBackup } from "./atomic-file.mjs";
 import { resolve, sep } from "node:path";
 
 const ALLOWED_FILES = new Set([
@@ -55,20 +56,24 @@ export class RunStore {
     }
     const path = this.#path(runId, fileName);
     await mkdir(resolve(this.root, runId), { recursive: true });
-    await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+    await atomicWriteJson(path, value);
   }
 
   async readJson(runId, fileName) {
     if (!ALLOWED_FILES.has(fileName) || !fileName.endsWith(".json")) {
       throw new Error(`RunStore cannot read file: ${fileName}`);
     }
-    return JSON.parse(await readFile(this.#path(runId, fileName), "utf8"));
+    return readJsonWithBackup(this.#path(runId, fileName));
   }
 
   async writeSummary(runId, markdown) {
     const path = this.#path(runId, "summary.md");
     await mkdir(resolve(this.root, runId), { recursive: true });
-    await writeFile(path, String(markdown), "utf8");
+    await atomicWriteText(path, String(markdown));
+  }
+
+  async readSummary(runId) {
+    return readTextWithBackup(this.#path(runId, "summary.md"));
   }
 
   #path(runId, fileName) {

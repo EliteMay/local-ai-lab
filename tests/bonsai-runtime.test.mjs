@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
   buildBonsaiStartSpec,
+  containsBonsaiModel,
   validateBonsaiDemoPath
 } from "../desktop/bonsai-runtime.mjs";
 
@@ -46,4 +47,12 @@ test("Bonsai folder validation requires the official start script location", asy
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+
+test("Bonsai server identity requires the expected model id", () => {
+  assert.equal(containsBonsaiModel({ data: [{ id: "bonsai-2-27b" }] }), true);
+  assert.equal(containsBonsaiModel({ models: [{ key: "local/bonsai-2-27b" }] }), true);
+  assert.equal(containsBonsaiModel({ data: [{ id: "other-model" }] }), false);
+  assert.equal(containsBonsaiModel({ error: "unauthorized" }), false);
 });

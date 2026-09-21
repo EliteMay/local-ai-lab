@@ -8,6 +8,7 @@ import { createUpdaterController } from "./updater.mjs";
 import { createBonsaiRuntimeController } from "./bonsai-runtime.mjs";
 import { createSystemMetricsSampler } from "./system-metrics.mjs";
 import { buildRunOverview } from "./run-overview.mjs";
+import { atomicWriteJson, atomicWriteText, readJsonWithBackup, readTextWithBackup } from "../src/core/atomic-file.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(__dirname, "..");
@@ -92,6 +93,10 @@ function settingsPath() {
   return join(app.getPath("userData"), "settings.json");
 }
 
+function settingsBackupPath() {
+  return join(app.getPath("userData"), "settings.backup.json");
+}
+
 function runsRoot() {
   return app.isPackaged
     ? join(app.getPath("userData"), "runtime-data", "runs")
@@ -129,7 +134,7 @@ async function findLastRepositoryFromHistory() {
 
 async function writeSettings(next) {
   await mkdir(dirname(settingsPath()), { recursive: true });
-  await writeFile(settingsPath(), JSON.stringify(next, null, 2) + "\n", "utf8");
+  await atomicWriteJson(settingsPath(), next, { backupPath: settingsBackupPath() });
 }
 
 async function readSettings() {
@@ -142,7 +147,7 @@ async function readSettings() {
 
   let parsed = {};
   try {
-    parsed = JSON.parse(await readFile(settingsPath(), "utf8"));
+    parsed = await readJsonWithBackup(settingsPath(), { backupPath: settingsBackupPath() });
   } catch {}
 
   const { rememberRepository: _legacyRememberRepository, ...current } = parsed || {};
@@ -183,7 +188,7 @@ async function saveSettings(input) {
 
 async function readDiagnostics() {
   try {
-    const parsed = JSON.parse(await readFile(diagnosticsPath(), "utf8"));
+    const parsed = await readJsonWithBackup(diagnosticsPath());
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
@@ -205,7 +210,7 @@ async function appendDiagnostic(event) {
       }
     ].slice(-MAX_DIAGNOSTIC_EVENTS);
     await mkdir(dirname(diagnosticsPath()), { recursive: true });
-    await writeFile(diagnosticsPath(), JSON.stringify(next, null, 2) + "\n", "utf8");
+    await atomicWriteJson(diagnosticsPath(), next);
   } catch {
     // Diagnostics must never break the primary task.
   }
@@ -213,7 +218,7 @@ async function appendDiagnostic(event) {
 
 async function clearDiagnostics() {
   await mkdir(dirname(diagnosticsPath()), { recursive: true });
-  await writeFile(diagnosticsPath(), "[]\n", "utf8");
+  await atomicWriteJson(diagnosticsPath(), []);
   return true;
 }
 
@@ -343,7 +348,7 @@ function commandStatus() {
     command: activeProcessCommand,
     startedAt: activeProcessStartedAt,
     lastOutputAt: activeProcessLastOutputAt,
-    processAlive: Boolean(activeProcess && !activeProcess.killed)
+    processAlive: Boolean(activeProcess && activeProcess.exitCode == null)
   };
 }
 
@@ -360,6 +365,38 @@ async function openRunFolder(runId) {
   const error = await shell.openPath(directory);
   if (error) throw new Error(`保存フォルダを開けませんでした: ${error}`);
   return { ok: true, runId: id };
+}
+
+function runIdFromOutput(text) {
+  const match = String(text || "").match(/(?:Coverage\] Run|Coverage run:|Synthesis run:|Stored run:)\s+(run-[\w.-]+)/);
+  return match?.[1] || null;
+}
+
+async function persistRunConsoleLog(text) {
+  const runId = runIdFromOutput(text);
+  if (!runId) return;
+  const id = safeRunId(runId);
+  const directory = join(runsRoot(), id);
+  if (!existsSync(directory)) return;
+  await atomicWriteText(join(directory, "desktop-log.txt"), String(text || ""));
+}
+
+async function markRunInterruptedFromOutput(text, reason = "user-cancelled") {
+  const runId = runIdFromOutput(text);
+  if (!runId) return null;
+  const id = safeRunId(runId);
+  const runPath = join(runsRoot(), id, "run.json");
+  const run = await readOptionalJsonFile(runPath, null);
+  if (!run || run.status !== "RUNNING") return id;
+
+  await atomicWriteJson(runPath, {
+    ...run,
+    status: "INTERRUPTED",
+    interruptedAt: new Date().toISOString(),
+    interruptionReason: reason
+  });
+  await appendDiagnostic({ type: "run.interrupted", runId: id, reason });
+  return id;
 }
 
 function parseProgress(line) {
@@ -512,6 +549,12 @@ async function runCommand(input) {
           outputTruncated,
           elapsedMs: Date.now() - startedAt
         };
+        try {
+          await persistRunConsoleLog(result.output);
+          await markRunInterruptedFromOutput(result.output, "user-cancelled");
+        } catch (error) {
+          await appendDiagnostic({ type: "run.cancel.persist.error", error: compactError(error) });
+        }
         await appendDiagnostic({
           type: "command.cancelled",
           command: spec.command,
@@ -556,7 +599,22 @@ async function runCommand(input) {
         elapsedMs
       };
 
+      try {
+        await persistRunConsoleLog(resultOutput);
+      } catch (error) {
+        await appendDiagnostic({
+          type: "run.console-log.persist.error",
+          command: spec.command,
+          error: compactError(error)
+        });
+      }
+
       if (cancelled) {
+        try {
+          await markRunInterruptedFromOutput(resultOutput, "user-cancelled");
+        } catch (error) {
+          await appendDiagnostic({ type: "run.cancel.persist.error", error: compactError(error) });
+        }
         await appendDiagnostic({
           type: "command.cancelled",
           command: spec.command,
@@ -588,6 +646,14 @@ async function runCommand(input) {
   });
 }
 
+async function readOptionalJsonFile(path, fallback) {
+  try {
+    return await readJsonWithBackup(path);
+  } catch {
+    return fallback;
+  }
+}
+
 async function listHistory() {
   const root = runsRoot();
   if (!existsSync(root)) return [];
@@ -598,22 +664,21 @@ async function listHistory() {
     if (!/^run-[a-zA-Z0-9._-]+$/.test(name)) continue;
     const directory = join(root, name);
     const info = await stat(directory);
-    let run = {};
-    let coverage = {};
-    let findings = [];
-    let synthesis = {};
-    try { run = JSON.parse(await readFile(join(directory, "run.json"), "utf8")); } catch {}
-    try { coverage = JSON.parse(await readFile(join(directory, "coverage.json"), "utf8")); } catch {}
-    try { findings = JSON.parse(await readFile(join(directory, "findings.json"), "utf8")); } catch {}
-    try { synthesis = JSON.parse(await readFile(join(directory, "synthesis.json"), "utf8")); } catch {}
+    const [run, coverage, findings, synthesis] = await Promise.all([
+      readOptionalJsonFile(join(directory, "run.json"), {}),
+      readOptionalJsonFile(join(directory, "coverage.json"), {}),
+      readOptionalJsonFile(join(directory, "findings.json"), []),
+      readOptionalJsonFile(join(directory, "synthesis.json"), {})
+    ]);
 
     const status = run.status || coverage.status || (coverage.complete ? "COMPLETED" : "UNKNOWN");
     const coveragePercent = coverage.coveragePercent ?? null;
     const synthesisError = run.synthesisError || synthesis.error || null;
+    const identity = run.executionIdentity || {};
     items.push({
       runId: name,
       createdAt: run.createdAt || info.birthtime?.toISOString?.() || info.mtime.toISOString(),
-      updatedAt: run.completedAt || info.mtime.toISOString(),
+      updatedAt: run.completedAt || run.interruptedAt || info.mtime.toISOString(),
       status,
       coveragePercent,
       coverageComplete: coverage.complete === true,
@@ -624,7 +689,11 @@ async function listHistory() {
       reviewerDecision: run.reviewerDecision || synthesis.reviewer?.result?.decision || null,
       repoPath: typeof run.repoPath === "string" ? run.repoPath : "",
       repoName: typeof run.repoPath === "string" && run.repoPath ? basename(run.repoPath) : "",
-      goal: typeof run.goal === "string" ? run.goal : ""
+      goal: typeof run.goal === "string" ? run.goal : "",
+      model: identity.model || "",
+      modelProfile: identity.modelProfile || "",
+      appVersion: identity.appVersion || "",
+      interruptionReason: run.interruptionReason || ""
     });
   }
 
@@ -639,19 +708,52 @@ async function readRunResult(runId) {
       return {
         runId: id,
         fileName: name,
-        content: await readFile(join(directory, name), "utf8")
+        content: await readTextWithBackup(join(directory, name))
       };
     } catch {}
   }
   throw new Error("読み込める結果ファイルが見つかりません");
 }
 
+async function readRunDetails(runId) {
+  const id = safeRunId(runId);
+  const directory = join(runsRoot(), id);
+  const info = await stat(directory).catch(() => null);
+  if (!info?.isDirectory()) throw new Error("この実行履歴が見つかりません");
+
+  const [run, coverage, findings, synthesis, review, plan, batches] = await Promise.all([
+    readOptionalJsonFile(join(directory, "run.json"), {}),
+    readOptionalJsonFile(join(directory, "coverage.json"), {}),
+    readOptionalJsonFile(join(directory, "findings.json"), []),
+    readOptionalJsonFile(join(directory, "synthesis.json"), {}),
+    readOptionalJsonFile(join(directory, "review.json"), {}),
+    readOptionalJsonFile(join(directory, "coverage-plan.json"), {}),
+    readOptionalJsonFile(join(directory, "batch-results.json"), [])
+  ]);
+
+  let summary = "";
+  let consoleLog = "";
+  try { summary = await readTextWithBackup(join(directory, "summary.md")); } catch {}
+  try { consoleLog = await readTextWithBackup(join(directory, "desktop-log.txt")); } catch {}
+
+  return {
+    runId: id,
+    run,
+    coverage,
+    findings: Array.isArray(findings) ? findings : (findings.findings || []),
+    planner: synthesis?.planner?.result || synthesis?.planner || null,
+    reviewer: synthesis?.reviewer?.result || review?.result || synthesis?.reviewer || review || null,
+    reduction: synthesis?.reduction || null,
+    excluded: Array.isArray(plan?.excluded) ? plan.excluded : [],
+    files: Array.isArray(plan?.files) ? plan.files : [],
+    batchResults: Array.isArray(batches) ? batches : [],
+    summary,
+    consoleLog
+  };
+}
+
 async function readOptionalRunJson(directory, name, fallback) {
-  try {
-    return JSON.parse(await readFile(join(directory, name), "utf8"));
-  } catch {
-    return fallback;
-  }
+  return readOptionalJsonFile(join(directory, name), fallback);
 }
 
 async function readRunOverview(runId) {
@@ -750,6 +852,34 @@ async function isLocalAiLabRepository(repoPath) {
   }
 }
 
+async function reconcileInterruptedRuns() {
+  const root = runsRoot();
+  if (!existsSync(root)) return { interrupted: 0 };
+
+  const names = await readdir(root);
+  let interrupted = 0;
+  for (const name of names) {
+    if (!/^run-[a-zA-Z0-9._-]+$/.test(name)) continue;
+    const runPath = join(root, name, "run.json");
+    const run = await readOptionalJsonFile(runPath, null);
+    if (!run || run.status !== "RUNNING") continue;
+
+    const now = new Date().toISOString();
+    await atomicWriteJson(runPath, {
+      ...run,
+      status: "INTERRUPTED",
+      interruptedAt: now,
+      interruptionReason: "app-restart-or-crash"
+    });
+    interrupted += 1;
+    await appendDiagnostic({
+      type: "run.reconciled.interrupted",
+      runId: name
+    });
+  }
+  return { interrupted };
+}
+
 async function migrateLegacyRunsIfNeeded() {
   if (!app.isPackaged) return { migrated: false };
   const destination = runsRoot();
@@ -829,6 +959,7 @@ if (hasSingleInstanceLock) {
     app.setAppUserModelId("local.elitemay.localailab");
   }
   await migrateLegacyRunsIfNeeded();
+  await reconcileInterruptedRuns();
   registerIpc("settings:get", () => readSettings());
   registerIpc("settings:save", (input) => saveSettings(input));
   registerIpc("repository:select", async () => {
@@ -850,6 +981,7 @@ if (hasSingleInstanceLock) {
   registerIpc("history:list", () => listHistory());
   registerIpc("history:result", (id) => readRunResult(id));
   registerIpc("history:overview", (id) => readRunOverview(id));
+  registerIpc("history:details", (id) => readRunDetails(id));
   registerIpc("history:open-folder", (id) => openRunFolder(id));
   registerIpc("diagnostics:list", () => readDiagnostics());
   registerIpc("diagnostics:clear", () => clearDiagnostics());

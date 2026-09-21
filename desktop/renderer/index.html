@@ -191,6 +191,16 @@
           </div>
           <p class="result-detail-label">詳細</p>
         </div>
+        <div id="resultTabs" class="result-tabs hidden" role="tablist" aria-label="監査結果の詳細">
+          <button class="result-tab active" data-result-tab="issues" role="tab" aria-selected="true">問題</button>
+          <button class="result-tab" data-result-tab="evidence" role="tab" aria-selected="false">根拠</button>
+          <button class="result-tab" data-result-tab="planner" role="tab" aria-selected="false">改善案</button>
+          <button class="result-tab" data-result-tab="reviewer" role="tab" aria-selected="false">レビュー</button>
+          <button class="result-tab" data-result-tab="excluded" role="tab" aria-selected="false">除外</button>
+          <button class="result-tab" data-result-tab="technical" role="tab" aria-selected="false">技術情報</button>
+          <button class="result-tab" data-result-tab="log" role="tab" aria-selected="false">生ログ</button>
+        </div>
+        <div id="resultDetailView" class="result-detail-view hidden" aria-live="polite"></div>
         <pre id="result" aria-live="polite">まだ結果はありません。</pre>
       </section>
     </section>

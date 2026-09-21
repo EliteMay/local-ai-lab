@@ -62,9 +62,22 @@ export function validateBonsaiDemoPath(demoPath) {
   return root;
 }
 
+export function containsBonsaiModel(payload) {
+  const items = Array.isArray(payload?.data)
+    ? payload.data
+    : Array.isArray(payload?.models)
+      ? payload.models
+      : [];
+  return items.some((item) => {
+    const id = String(item?.id || item?.key || item?.model || "").toLowerCase();
+    return id === "bonsai-2-27b" || id.endsWith("/bonsai-2-27b");
+  });
+}
+
 export function probeBonsaiServer(timeoutMs = PROBE_TIMEOUT_MS) {
   return new Promise((resolvePromise) => {
     let settled = false;
+    let body = "";
     const finish = (value) => {
       if (settled) return;
       settled = true;
@@ -75,10 +88,30 @@ export function probeBonsaiServer(timeoutMs = PROBE_TIMEOUT_MS) {
       host: BONSAI_HOST,
       port: BONSAI_PORT,
       path: BONSAI_MODELS_PATH,
-      timeout: timeoutMs
+      timeout: timeoutMs,
+      headers: { accept: "application/json" }
     }, (response) => {
-      response.resume();
-      finish(response.statusCode >= 200 && response.statusCode < 500);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        response.resume();
+        finish(false);
+        return;
+      }
+
+      response.setEncoding("utf8");
+      response.on("data", (chunk) => {
+        body += chunk;
+        if (body.length > 65536) {
+          request.destroy();
+          finish(false);
+        }
+      });
+      response.on("end", () => {
+        try {
+          finish(containsBonsaiModel(JSON.parse(body)));
+        } catch {
+          finish(false);
+        }
+      });
     });
 
     request.on("timeout", () => {
@@ -298,9 +331,35 @@ export function createBonsaiRuntimeController({
     killProcessTree(pid);
 
     const deadline = Date.now() + 15000;
+    let reachable = true;
+    let processAlive = true;
     while (Date.now() < deadline) {
-      if (!(await probeBonsaiServer(800))) break;
+      processAlive = Boolean(child && child.exitCode == null);
+      reachable = await probeBonsaiServer(800);
+      if (!processAlive && !reachable) break;
       await delay(500);
+    }
+
+    processAlive = Boolean(child && child.exitCode == null);
+    reachable = await probeBonsaiServer(800);
+    if (processAlive || reachable) {
+      const message = processAlive
+        ? "BonsaiのProcess終了を確認できませんでした。"
+        : "Processは終了しましたが、8080番でBonsai APIがまだ応答しています。";
+      await appendDiagnostic({
+        type: "bonsai.stop.failed",
+        pid,
+        processAlive,
+        apiReachable: reachable
+      });
+      publish({
+        status: "error",
+        managed: processAlive,
+        pid: processAlive ? pid : null,
+        message: "Bonsaiの停止確認に失敗しました。",
+        lastError: message
+      });
+      throw new Error(message + " 状態確認を押して再確認してください。");
     }
 
     child = null;
