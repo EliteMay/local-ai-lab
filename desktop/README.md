@@ -47,7 +47,7 @@ Repositoryの更新はRemote ProviderをGitHubへ固定せず「リモートか�
 - **1モデル固定**: 従来のQwen3-8B / Bonsai Profileを固定利用
 - **役割ごとの指定**: 現時点ではRouting Config側で管理し、将来GUI編集へ拡張できる構造
 
-自動振り分けでは、Code比率が高いCoverageにQwen2.5 Coder 7B、一般CoverageにQwen3 8B、改善案にPhi-4 Mini Reasoning、最終Reviewに起動済みBonsai 2 27Bを優先します。候補が未導入・停止・Request Failureなら次候補へ限定Fallbackします。
+自動振り分けでは、Code比率が高いCoverageにQwen2.5 Coder 7B、一般CoverageにQwen3 8B、改善案にMinistral 3 8B Reasoning、最終Reviewに起動済みBonsai 2 27Bを優先します。候補が未導入・停止・Request Failureなら次候補へ限定Fallbackします。
 
 一度成功したModelはTaskごとのRun Pinとして保存されます。途中ResumeでPinned Modelが使えない場合は別ModelへSilent切替せず、復旧してから再開するよう停止します。
 
