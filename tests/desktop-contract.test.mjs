@@ -301,3 +301,69 @@ test("desktop clears future ETA when a run is no longer active", async () => {
   assert.match(estimate, /if \(!state\.running\) return "—";/);
   assert.match(finish, /if \(!state\.running\) return "—";/);
 });
+
+
+test("desktop reliability foundation keeps settings and checkpoints recoverable", async () => {
+  const main = await readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8");
+  const runStore = await readFile(new URL("../src/core/run-store.mjs", import.meta.url), "utf8");
+  const atomic = await readFile(new URL("../src/core/atomic-file.mjs", import.meta.url), "utf8");
+
+  assert.match(main, /settings\.backup\.json/);
+  assert.match(main, /readJsonWithBackup/);
+  assert.match(main, /atomicWriteJson/);
+  assert.match(runStore, /atomicWriteJson/);
+  assert.match(runStore, /readJsonWithBackup/);
+  assert.match(atomic, /rename\(target, backupPath\)/);
+  assert.match(atomic, /handle\.sync\(\)/);
+});
+
+test("desktop reconciles stale and user-cancelled runs as interrupted", async () => {
+  const main = await readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8");
+  const renderer = await readFile(new URL("../desktop/renderer/renderer.mjs", import.meta.url), "utf8");
+
+  assert.match(main, /reconcileInterruptedRuns/);
+  assert.match(main, /status:\s*"INTERRUPTED"/);
+  assert.match(main, /app-restart-or-crash/);
+  assert.match(main, /markRunInterruptedFromOutput/);
+  assert.match(main, /user-cancelled/);
+  assert.match(renderer, /"INTERRUPTED"/);
+  assert.match(renderer, /同じモデル設定でのみ監査を再開/);
+});
+
+test("desktop result viewer exposes saved findings evidence plans reviews and raw log", async () => {
+  const main = await readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8");
+  const preload = await readFile(new URL("../desktop/preload.cjs", import.meta.url), "utf8");
+  const html = await readFile(new URL("../desktop/renderer/index.html", import.meta.url), "utf8");
+  const renderer = await readFile(new URL("../desktop/renderer/renderer.mjs", import.meta.url), "utf8");
+
+  assert.match(main, /history:details/);
+  assert.match(main, /readRunDetails/);
+  assert.match(main, /desktop-log\.txt/);
+  assert.match(preload, /readRunDetails/);
+  for (const id of ["resultTabs", "resultDetailView"]) {
+    assert.ok(html.includes(`id="${id}"`), "missing result viewer element: " + id);
+  }
+  for (const label of ["問題", "根拠", "改善案", "レビュー", "除外", "技術情報", "生ログ"]) {
+    assert.ok(html.includes(label), "missing result viewer tab: " + label);
+  }
+  assert.match(renderer, /renderResultTab/);
+  assert.match(renderer, /readRunDetails/);
+  assert.match(renderer, /promptSchemaVersion/);
+});
+
+test("desktop reduces idle system metrics polling while keeping active runs responsive", async () => {
+  const renderer = await readFile(new URL("../desktop/renderer/renderer.mjs", import.meta.url), "utf8");
+  assert.match(renderer, /TELEMETRY_ACTIVE_INTERVAL_MS\s*=\s*5000/);
+  assert.match(renderer, /TELEMETRY_IDLE_INTERVAL_MS\s*=\s*45000/);
+  assert.match(renderer, /state\.running \? TELEMETRY_ACTIVE_INTERVAL_MS : TELEMETRY_IDLE_INTERVAL_MS/);
+  assert.match(renderer, /restartTelemetryPolling/);
+});
+
+test("desktop Bonsai health check verifies model identity and stop completion", async () => {
+  const runtime = await readFile(new URL("../desktop/bonsai-runtime.mjs", import.meta.url), "utf8");
+  assert.match(runtime, /containsBonsaiModel/);
+  assert.match(runtime, /statusCode < 200 \|\| response\.statusCode >= 300/);
+  assert.match(runtime, /processAlive \|\| reachable/);
+  assert.match(runtime, /bonsai\.stop\.failed/);
+  assert.match(runtime, /停止確認に失敗/);
+});
