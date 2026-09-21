@@ -183,7 +183,7 @@ function formatBytes(value) {
 }
 
 function updateModelRoutingMetrics() {
-  const mode = state.settings?.modelRoutingMode || $("#modelRoutingMode")?.value || "auto";
+  const mode = $("#modelRoutingMode")?.value || state.settings?.modelRoutingMode || "auto";
   setText("#routingMode", mode === "auto" ? "自動振り分け" : "1モデル固定");
   setText("#currentRoutedModel", state.currentRoutedModel || (mode === "fixed" ? profileLabel(state.settings?.modelProfile, "fixed") : "待機中"));
   setText("#currentModelTask", state.currentModelTask ? (MODEL_TASK_LABELS[state.currentModelTask] || state.currentModelTask) : "—");
@@ -322,6 +322,7 @@ function showView(name) {
   $$(".nav").forEach((button) => button.classList.toggle("active", button.dataset.view === name));
   $$(".view").forEach((view) => view.classList.toggle("active", view.id === name));
   if (name === "history") loadHistory();
+  if (name === "settings") void refreshModels();
 }
 
 function setText(selector, value) {
@@ -508,6 +509,13 @@ function renderRunOverview(overview) {
   setText("#resultFiles", `${files}（除外 ${excluded}）`);
   setText("#resultFindings", String(overview.findingCount ?? 0));
   setText("#resultReviewer", overview.reviewerDecision ? reviewerDecisionLabel(overview.reviewerDecision) : "—");
+  const modelUsage = Array.isArray(overview.modelUsage) ? overview.modelUsage : [];
+  setText(
+    "#resultModels",
+    modelUsage.length
+      ? modelUsage.map((item) => `${item.label} ${item.calls}回${item.failures ? `（失敗 ${item.failures}）` : ""}`).join(" · ")
+      : "固定モデル / 記録なし"
+  );
   setText("#severityCritical", String(overview.severity?.critical ?? 0));
   setText("#severityHigh", String(overview.severity?.high ?? 0));
   setText("#severityMedium", String(overview.severity?.medium ?? 0));
@@ -575,6 +583,8 @@ function updateLiveResult() {
   const lines = [
     "実行中",
     `処理: ${COMMAND_META[state.selectedCommand]?.label || state.selectedCommand}`,
+    `モデル運用: ${isAutoRouting() ? "自動振り分け" : "1モデル固定"}`,
+    `使用モデル: ${state.currentRoutedModel || (isAutoRouting() ? "選択中" : profileLabel(state.settings?.modelProfile, "fixed"))}`,
     `現在の作業: ${state.currentStage || "開始準備中"}`,
     `状態: ${health.text}`
   ];
@@ -676,6 +686,7 @@ function resetRunMetrics() {
   setText("#lastUpdate", "—");
   setText("#runHealth", "開始準備中");
   updateSpeedMetrics();
+  updateModelRoutingMetrics();
 }
 
 function updateTokenMetric() {
@@ -725,6 +736,8 @@ function setRunning(value, title) {
   $("#startBonsai").disabled = value;
   $("#stopBonsai").disabled = value;
   $("#refreshBonsai").disabled = value;
+  if ($("#refreshModels")) $("#refreshModels").disabled = value;
+  $("#modelCatalog button").forEach((button) => { button.disabled = value; });
   $("#cancel").classList.toggle("hidden", !value);
   $("#cancel").disabled = !value;
   setText("#runProtection", value ? "スリープ防止中" : "待機中");
@@ -768,6 +781,14 @@ function appendLog(payload) {
   if (!progress) {
     updateOperationalMetrics();
     updateLiveResult();
+    return;
+  }
+
+  if (progress.type === "model-prepare") {
+    state.currentRoutedModel = (progress.label || progress.modelId || "不明") + " を準備中";
+    state.currentModelTask = progress.taskType || "";
+    updateModelRoutingMetrics();
+    setStage("モデルを準備中: " + (progress.label || progress.modelId || "不明"));
     return;
   }
 
