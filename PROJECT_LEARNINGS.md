@@ -165,8 +165,20 @@
 
 - Date: 2026-09-21
 - Type: Privacy / UX
-- Status: Resolved
+- Status: Superseded by PL-015
 - Symptom: 「前回の対象フォルダを保存する」をOFFにしても `defaultRepository` がsettings.jsonへ残っていた。
 - Root Cause: Checkboxは自動保存動作だけを制御し、settings serialization自体には反映していなかった。
 - Final Fix: OFF時はPersisted `defaultRepository` を空にし、現在Sessionの選択FolderだけRenderer Stateで維持する。
 - Regression Guard: Desktop Contract TestでRead / Save両方のPersistence条件を確認する。
+
+
+## PL-015 — Primary Repositoryは毎回選ばせない
+
+- Date: 2026-09-21
+- Type: UX / Persistence
+- Status: Adopted
+- Problem: Local AI Labは日常的に同じRepositoryを監査する使い方が中心なのに、Repository記憶をOptional Settingにすると起動のたびにFolder Pickerへ戻る可能性があり、Primary Flowへ不要な摩擦が生じる。
+- Decision: 最後に選んだRepositoryを選択時に自動保存し、次回起動時に自動復元する。「前回の対象フォルダを保存する」Toggleは廃止する。
+- Migration: 旧VersionでdefaultRepositoryが空でも、保存済みRun履歴から最後に使った存在するRepository Pathを復元する。
+- Boundary: Pathが削除・移動されていて復元できない場合だけ未選択に戻し、Userへ再選択を求める。
+- Regression Guard: Desktop Contract TestでRemember Toggleが存在しないこと、自動保存と履歴Fallbackが実装されていることを確認する。
