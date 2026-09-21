@@ -1020,7 +1020,7 @@ function setRunning(value, title) {
   $("#stopBonsai").disabled = value;
   $("#refreshBonsai").disabled = value;
   if ($("#refreshModels")) $("#refreshModels").disabled = value;
-  $("#modelCatalog button").forEach((button) => { button.disabled = value; });
+  document.querySelectorAll("#modelCatalog button").forEach((button) => { button.disabled = value; });
   $("#modelRoutingMode").disabled = value;
   $("#autoManageModels").disabled = value;
   $("#settingsProfile").disabled = value;
