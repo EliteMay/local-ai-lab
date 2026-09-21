@@ -1,6 +1,19 @@
 import { LMStudioClient } from "./lm-studio-client.mjs";
 import { LMStudioModelManager } from "./lm-studio-model-manager.mjs";
+import { createHash } from "node:crypto";
 import { findCatalogModel } from "./model-catalog.mjs";
+
+function stableValue(value) {
+  if (Array.isArray(value)) return value.map(stableValue);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, stableValue(value[key])]));
+  }
+  return value;
+}
+
+function stableHash(value) {
+  return createHash("sha256").update(JSON.stringify(stableValue(value))).digest("hex");
+}
 
 function emptyUsage(entry) {
   return {
@@ -28,12 +41,38 @@ export class ModelRouter {
     this.manager = manager ?? new LMStudioModelManager({ catalog });
     this.usage = new Map();
     this.blockedModels = new Map();
+    this.pins = new Map();
+  }
+
+  identity() {
+    return {
+      mode: "auto",
+      catalogHash: stableHash(this.catalog),
+      routingHash: stableHash(this.routing),
+      autoManageModels: this.autoManageModels
+    };
+  }
+
+  importPins(pins = {}) {
+    if (!pins || typeof pins !== "object" || Array.isArray(pins)) return;
+    for (const [taskType, modelId] of Object.entries(pins)) {
+      const entry = findCatalogModel(this.catalog, modelId);
+      if (!entry || entry.autoRoute === false) {
+        const error = new Error("Saved model routing pin is no longer available: " + taskType + " -> " + modelId);
+        error.code = "MODEL_ROUTING_PIN_INVALID";
+        throw error;
+      }
+      this.pins.set(taskType, modelId);
+    }
   }
 
   candidates(taskType) {
-    const ids = this.routing.routes?.[taskType]
-      ?? this.routing.routes?.[this.routing.defaultRoute]
-      ?? [];
+    const pinnedId = this.pins.get(taskType);
+    const ids = pinnedId
+      ? [pinnedId]
+      : (this.routing.routes?.[taskType]
+        ?? this.routing.routes?.[this.routing.defaultRoute]
+        ?? []);
     return ids
       .map((id) => findCatalogModel(this.catalog, id))
       .filter((entry) => entry?.autoRoute !== false);
@@ -86,10 +125,11 @@ export class ModelRouter {
 
   clientFor(taskType) {
     const router = this;
-    const candidates = this.candidates(taskType);
-    if (!candidates.length) throw new Error("No model route for task: " + taskType);
+    if (!this.candidates(taskType).length) throw new Error("No model route for task: " + taskType);
 
     async function call(method, input) {
+      const pinnedAtStart = router.pins.get(taskType) ?? null;
+      const candidates = router.candidates(taskType);
       const failures = [];
       let lastError = null;
       let attempted = 0;
@@ -122,6 +162,16 @@ export class ModelRouter {
           const result = await client[method](input);
           const meta = result?.meta ?? result;
           router.#record(entry, { ok: true, durationMs: Date.now() - startedAt, meta });
+          if (!router.pins.has(taskType)) {
+            router.pins.set(taskType, entry.id);
+            router.onRoute({
+              type: "model_pin",
+              taskType,
+              modelId: entry.id,
+              label: entry.label,
+              runtime: entry.runtime
+            });
+          }
           if (result?.meta && typeof result.meta === "object") {
             result.meta = {
               ...result.meta,
@@ -149,6 +199,14 @@ export class ModelRouter {
             error: error.message,
             fallbackIndex: index
           });
+          if (pinnedAtStart) {
+            const pinnedError = new Error(
+              "前回まで使用していたモデル " + entry.label + " をこの処理で利用できません。モデルを復旧してから再開してください。"
+            );
+            pinnedError.code = "PINNED_MODEL_UNAVAILABLE";
+            pinnedError.cause = error;
+            throw pinnedError;
+          }
         }
       }
       if (lastError?.code === "OUTPUT_TOKEN_LIMIT" || lastError?.code === "CONTEXT_LIMIT") {
@@ -174,8 +232,8 @@ export class ModelRouter {
       averageDurationMs: item.calls ? Math.round(item.durationMs / item.calls) : 0
     }));
     return {
-      mode: "auto",
-      autoManageModels: this.autoManageModels,
+      ...this.identity(),
+      pins: Object.fromEntries(this.pins),
       totalCalls: models.reduce((sum, item) => sum + item.calls, 0),
       models
     };
@@ -187,7 +245,14 @@ export function mergeModelUsageSnapshots(...snapshots) {
   const valid = snapshots.filter((item) => item && Array.isArray(item.models));
   if (!valid.length) return null;
   const merged = new Map();
+  const pins = {};
   for (const snapshot of valid) {
+    for (const [taskType, modelId] of Object.entries(snapshot.pins ?? {})) {
+      if (pins[taskType] && pins[taskType] !== modelId) {
+        throw new Error("Model routing pin changed for " + taskType + ": " + pins[taskType] + " -> " + modelId);
+      }
+      pins[taskType] = modelId;
+    }
     for (const item of snapshot.models) {
       const key = item.modelId || item.label;
       if (!key) continue;
@@ -213,7 +278,10 @@ export function mergeModelUsageSnapshots(...snapshots) {
   const models = [...merged.values()];
   return {
     mode: "auto",
+    catalogHash: valid.at(-1)?.catalogHash ?? null,
+    routingHash: valid.at(-1)?.routingHash ?? null,
     autoManageModels: valid.at(-1)?.autoManageModels !== false,
+    pins,
     totalCalls: models.reduce((sum, item) => sum + item.calls, 0),
     models
   };
