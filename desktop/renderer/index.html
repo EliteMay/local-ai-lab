@@ -40,6 +40,19 @@
         <div><span>接続</span><strong id="connection">未確認</strong></div>
       </div>
 
+      <section class="panel runtime-card hidden" id="bonsaiRuntimeCard">
+        <div>
+          <p class="label">Bonsai実行環境</p>
+          <h2 id="bonsaiRuntimeTitle">停止中</h2>
+          <p id="bonsaiRuntimeMessage" class="subtle">アプリからBonsaiを起動できます。</p>
+        </div>
+        <div class="runtime-actions">
+          <button id="startBonsai" class="primary">Bonsaiを起動</button>
+          <button id="stopBonsai" class="danger hidden">Bonsaiを停止</button>
+          <button id="refreshBonsai" class="ghost">状態確認</button>
+        </div>
+      </section>
+
       <section class="panel resume-card hidden" id="resumeCard">
         <div>
           <p class="label">再開</p>
@@ -164,6 +177,23 @@
             <option value="bonsai-2-27b">Bonsai 2 27B / PrismML llama.cpp</option>
           </select>
         </label>
+
+        <div id="bonsaiSettings" class="bonsai-settings hidden">
+          <label>
+            <span>Bonsaiのフォルダ</span>
+            <div class="row">
+              <input id="bonsaiDemoPath" readonly placeholder="Bonsai-demoフォルダを選択">
+              <button id="bonsaiFolderButton" class="ghost">選択</button>
+            </div>
+          </label>
+
+          <label class="check">
+            <input id="autoStartBonsai" type="checkbox">
+            <span>アプリ起動時にBonsaiも起動する</span>
+          </label>
+
+          <p class="option-note">例: D:\AI\Bonsai-demo。アプリが起動したBonsaiだけを停止できます。</p>
+        </div>
 
         <label>
           <span>既定の対象フォルダ</span>
