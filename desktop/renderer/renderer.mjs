@@ -534,7 +534,7 @@ function selectCommand(command, { preserveResume = false } = {}) {
 
 function setRunning(value, title) {
   state.running = value;
-  $(".commands button").forEach((button) => { button.disabled = value; });
+  $$(".commands button").forEach((button) => { button.disabled = value; });
   $("#execute").disabled = value;
   $("#chooseRepo").disabled = value;
   $("#updateRepo").disabled = value;
