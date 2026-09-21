@@ -938,15 +938,16 @@ $("#installUpdate").addEventListener("click", installAppUpdate);
 $("#openRelease").addEventListener("click", () => window.localAI.openReleasePage());
 $("#save").addEventListener("click", async () => {
   try {
+    const selectedRepository = $("#settingsRepo").value;
     const next = await window.localAI.saveSettings({
-      defaultRepository: $("#settingsRepo").value,
+      defaultRepository: selectedRepository,
       modelProfile: $("#settingsProfile").value,
       rememberRepository: $("#rememberRepo").checked,
       autoCheckUpdates: $("#autoCheckUpdates").checked,
       bonsaiDemoPath: $("#bonsaiDemoPath").value
     });
     state.settings = next;
-    state.repository = next.defaultRepository;
+    state.repository = selectedRepository || state.repository;
     setText("#repoPath", state.repository || "未選択");
     setText("#profile", profileLabel(next.modelProfile));
     updateBonsaiVisibility(next.modelProfile);
