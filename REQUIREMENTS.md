@@ -1,7 +1,7 @@
 # Local AI Lab Requirements
 
-更新日: 2026-09-20
-Status: Desktop v0.1 implementation in progress
+更新日: 2026-09-21
+Status: Desktop v0.2 implementation in progress
 
 ## 1. 目的
 
@@ -390,9 +390,9 @@ v1完成には最低限次を満たす。
 - Audit EvidenceをCurrent Project Stateの第二Source of Truthにしない
 - 未確認事項を確認済みとして扱わない
 
-## 19. Desktop Controller v0.1
+## 19. Desktop Controller v0.2
 
-PowerShellで行っている日常操作を置き換えるWindows向けElectron Desktop Controllerを追加する。
+PowerShellで行っている日常操作を置き換え、長時間Local AI Runを開始・監視・再開できるWindows向けElectron Desktop Controllerを提供する。
 
 ### Primary Goal
 
@@ -401,8 +401,14 @@ PowerShellで行っている日常操作を置き換えるWindows向けElectron 
 - 現在のRuntime / Model Profile / Repository / Run状態を確認できる
 - 過去Runを runtime-data から再表示できる
 - Default RepositoryとModel ProfileをGUIから保存できる
+- Command選択と実行を分離し、設定不足のまま誤実行しない
+- CoverageのBatch進捗・経過時間・Token使用量を確認できる
+- PARTIAL Runを履歴から再開準備できる
+- Coverage 100%でSynthesisだけ失敗したRunを保存済みEvidenceから再Synthesisできる
+- Runtime未起動など主要FailureをUser向けに理解できるMessageで示す
+- 開発診断はElectron userDataへ上限付きで保存し、Prompt本文やFile本文は保存しない
 
-### v0.1 Commands
+### v0.2 Commands
 
 - doctor
 - inspect
@@ -419,8 +425,12 @@ PowerShellで行っている日常操作を置き換えるWindows向けElectron 
 - User入力をShell文字列へ連結せず、spawn argumentとして分離する
 - Target RepositoryへのWrite Capabilityは追加しない
 - Desktop設定はElectron userDataへ保存し、Project設定を暗黙に書き換えない
+- Privileged IPCはMain Process側でSenderとPayloadを検証する
+- Rendererの外部Navigation / new windowを許可しない
+- Rendererへrestrictive CSPを設定する
+- Diagnosticsは最大件数を持ち、Secret / Prompt本文 / File本文を保存しない
 
-### v0.1 Non-goals
+### v0.2 Non-goals
 
 - 自由Terminal
 - Target Repositoryの自動修正
