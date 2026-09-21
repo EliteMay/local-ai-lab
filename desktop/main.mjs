@@ -14,6 +14,7 @@ const MAX_CLIPBOARD_CHARS = 2_000_000;
 const MAX_DIAGNOSTIC_EVENTS = 100;
 let mainWindow = null;
 let activeProcess = null;
+let activeProcessCommand = null;
 
 function safeProfile(value) {
   const profile = String(value || "default");
@@ -217,6 +218,7 @@ async function runCommand(input) {
       env: { ...process.env, FORCE_COLOR: "0" }
     });
     activeProcess = child;
+    activeProcessCommand = spec.command;
 
     const emit = (channel, chunk) => {
       const text = chunk.toString();
@@ -234,6 +236,7 @@ async function runCommand(input) {
     child.stderr.on("data", (chunk) => emit("stderr", chunk));
     child.on("error", async (error) => {
       activeProcess = null;
+      activeProcessCommand = null;
       await appendDiagnostic({
         type: "command.error",
         command: spec.command,
@@ -244,6 +247,7 @@ async function runCommand(input) {
     });
     child.on("close", async (code) => {
       activeProcess = null;
+      activeProcessCommand = null;
       const result = {
         ok: code === 0,
         code,
@@ -355,7 +359,7 @@ app.whenReady().then(() => {
   registerIpc("command:run", (input) => runCommand(input));
   registerIpc("command:cancel", async () => {
     if (!activeProcess) return false;
-    const command = activeProcess.spawnargs?.join(" ").slice(0, 120) || "active command";
+    const command = activeProcessCommand || "active command";
     activeProcess.kill();
     await appendDiagnostic({ type: "command.cancelled", command });
     return true;
