@@ -47,10 +47,11 @@ function isSuccessfulRecord(record) {
 }
 
 export class AICompanyOrchestrator {
-  constructor({ config, modelClient = null, runStore = null, onProgress = null } = {}) {
+  constructor({ config, modelClient = null, modelRouter = null, runStore = null, onProgress = null } = {}) {
     if (!config) throw new Error("config is required");
     this.config = config;
-    this.modelClient = modelClient ?? new LMStudioClient(config.model);
+    this.modelRouter = modelRouter;
+    this.modelClient = modelClient ?? (modelRouter ? null : new LMStudioClient(config.model));
     this.runStore = runStore ?? new RunStore(config.runtimeData?.runsRoot ?? "runtime-data/runs");
     this.onProgress = typeof onProgress === "function" ? onProgress : null;
   }
@@ -69,6 +70,7 @@ export class AICompanyOrchestrator {
     const broker = new TaskBroker({ limits: this.config.limits });
     const runner = new AgentRunner({
       modelClient: this.modelClient,
+      modelRouter: this.modelRouter,
       broker,
       maxPriorResultChars: this.config.context?.maxPriorResultChars
     });
@@ -274,6 +276,8 @@ export class AICompanyOrchestrator {
       await this.runStore.writeJson(actualRunId, "findings.json", findings);
       await this.runStore.writeJson(actualRunId, "research.json", research);
       await this.runStore.writeJson(actualRunId, "review.json", reviews);
+      const modelUsage = this.modelRouter ? this.modelRouter.snapshot() : null;
+      if (modelUsage) await this.runStore.writeJson(actualRunId, "model-usage.json", modelUsage);
       await this.runStore.writeSummary(actualRunId, summary);
       await this.runStore.writeJson(actualRunId, "run.json", {
         runId: actualRunId,
@@ -289,7 +293,8 @@ export class AICompanyOrchestrator {
         contextCoverage: repositoryContext.coverage,
         taskCount: brokerSnapshot.taskCount,
         modelCalls: brokerSnapshot.modelCalls,
-        reviewerDecision: finalReview?.result?.decision ?? null
+        reviewerDecision: finalReview?.result?.decision ?? null,
+        modelRouting: modelUsage
       });
 
       this.progress({
@@ -297,7 +302,8 @@ export class AICompanyOrchestrator {
         runId: actualRunId,
         reviewerDecision: finalReview?.result?.decision ?? null,
         taskCount: brokerSnapshot.taskCount,
-        modelCalls: brokerSnapshot.modelCalls
+        modelCalls: brokerSnapshot.modelCalls,
+        modelRouting: failedModelUsage
       });
 
       return {
@@ -317,6 +323,8 @@ export class AICompanyOrchestrator {
         rejectedDelegations,
         failure: error.message
       });
+      const failedModelUsage = this.modelRouter ? this.modelRouter.snapshot() : null;
+      if (failedModelUsage) await this.runStore.writeJson(actualRunId, "model-usage.json", failedModelUsage);
       await this.runStore.writeJson(actualRunId, "run.json", {
         runId: actualRunId,
         status: "FAILED",
