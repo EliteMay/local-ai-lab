@@ -2,6 +2,15 @@
 
 Local AI Labの監査・再統合・検証Runを、Windows向けElectron GUIから開始・監視・再開するDesktop Controllerです。
 
+## 表示言語
+
+Userが直接見る画面は日本語を基本にします。
+
+- 操作名・状態・説明は、日本語だけで意味が分かる表現を優先する
+- `doctor` / `coverage` / `coverage-synthesize` 等の内部Command名はCode内部に残してよい
+- Local AI Lab、GitHub、LM Studio、Qwen3-8B、Bonsai 2 27B等の固有名詞はそのまま表示できる
+- Debug LogやModel/API由来のRaw出力は診断目的で英語を含む場合があるが、主要操作の理解をRaw Logへ依存させない
+
 ## 配布
 
 Windows利用ではGitHub ReleasesのSetup.exeを基本導線にします。

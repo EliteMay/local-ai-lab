@@ -398,6 +398,7 @@ PowerShellで行っている日常操作を置き換え、長時間Local AI Run�
 ### Primary Goal
 
 - PowerShellへCommandを手入力せず local-ai-lab を操作できる
+- User向け画面は日本語だけでも操作内容・状態・次の行動を理解できる表示を基本とし、内部Command名や技術識別子をそのまま主要Labelへ出さない
 - 実行結果を画面で確認し、1 ButtonでClipboardへCopyできる
 - 現在のRuntime / Model Profile / Repository / Run状態を確認できる
 - 過去Runを runtime-data から再表示できる

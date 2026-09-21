@@ -21,28 +21,28 @@ let updaterController = null;
 function safeProfile(value) {
   const profile = String(value || "default");
   if (profile === "default") return profile;
-  if (!/^[a-z0-9][a-z0-9-]*$/i.test(profile)) throw new Error("Invalid model profile");
+  if (!/^[a-z0-9][a-z0-9-]*$/i.test(profile)) throw new Error("モデル設定の値が不正です");
   return profile;
 }
 
 function safeRunId(value) {
   const runId = String(value || "");
-  if (!/^run-[a-zA-Z0-9._-]+$/.test(runId)) throw new Error("Invalid run id");
+  if (!/^run-[a-zA-Z0-9._-]+$/.test(runId)) throw new Error("実行IDが不正です");
   return runId;
 }
 
 function safeGoal(value) {
   const goal = String(value || "").trim();
-  if (!goal) throw new Error("Coverage goal is required");
-  if (goal.length > MAX_GOAL_CHARS) throw new Error(`Coverage goal is too long (max ${MAX_GOAL_CHARS} chars)`);
+  if (!goal) throw new Error("監査目的を入力してください");
+  if (goal.length > MAX_GOAL_CHARS) throw new Error(`監査目的が長すぎます（最大${MAX_GOAL_CHARS}文字）`);
   return goal;
 }
 
 function validateRepository(repoPath) {
   const raw = String(repoPath || "").trim();
-  if (!raw) throw new Error("Repository path is required");
+  if (!raw) throw new Error("対象フォルダを選択してください");
   const target = resolve(raw);
-  if (!existsSync(target)) throw new Error("Repository path does not exist");
+  if (!existsSync(target)) throw new Error("対象フォルダが見つかりません");
   return target;
 }
 
@@ -143,9 +143,9 @@ async function clearDiagnostics() {
 }
 
 function buildCommand(input) {
-  if (!input || typeof input !== "object") throw new Error("Invalid command payload");
+  if (!input || typeof input !== "object") throw new Error("実行内容が不正です");
   const command = String(input.command || "");
-  if (!allowedCommands.has(command)) throw new Error("Command is not allowed");
+  if (!allowedCommands.has(command)) throw new Error("この処理は実行できません");
   const profile = safeProfile(input.modelProfile);
   const profileArgs = profile === "default" ? [] : ["--model-profile", profile];
 
@@ -215,13 +215,13 @@ function parseProgress(line) {
   const coverage = line.match(/coverage=(\d+(?:\.\d+)?)%/i);
   if (coverage) return { type: "coverage", percent: Number(coverage[1]) };
 
-  if (/\[Synthesis\]\s+START/.test(line)) return { type: "stage", stage: "Synthesis準備" };
-  if (/\[Synthesis\]\s+Planner START/.test(line)) return { type: "stage", stage: "Planner実行中" };
-  if (/\[Synthesis\]\s+Planner DONE/.test(line)) return { type: "stage", stage: "Planner完了" };
-  if (/\[Synthesis\]\s+Reviewer START/.test(line)) return { type: "stage", stage: "Reviewer実行中" };
-  if (/\[Synthesis\]\s+Reviewer DONE/.test(line)) return { type: "stage", stage: "Reviewer完了" };
-  if (/\[Synthesis\]\s+Run COMPLETED/.test(line)) return { type: "stage", stage: "Synthesis完了" };
-  if (/\[Coverage\]\s+Run PARTIAL/.test(line)) return { type: "stage", stage: "Coverage完了 / Synthesis要再開" };
+  if (/\[Synthesis\]\s+START/.test(line)) return { type: "stage", stage: "結果の統合を準備中" };
+  if (/\[Synthesis\]\s+Planner START/.test(line)) return { type: "stage", stage: "改善案を作成中" };
+  if (/\[Synthesis\]\s+Planner DONE/.test(line)) return { type: "stage", stage: "改善案の作成完了" };
+  if (/\[Synthesis\]\s+Reviewer START/.test(line)) return { type: "stage", stage: "レビュー中" };
+  if (/\[Synthesis\]\s+Reviewer DONE/.test(line)) return { type: "stage", stage: "レビュー完了" };
+  if (/\[Synthesis\]\s+Run COMPLETED/.test(line)) return { type: "stage", stage: "結果の統合完了" };
+  if (/\[Coverage\]\s+Run PARTIAL/.test(line)) return { type: "stage", stage: "監査完了 / 結果の統合を再開可能" };
   if (/\[Coverage\]\s+Run COMPLETED/.test(line)) return { type: "stage", stage: "監査完了" };
   return null;
 }
@@ -291,7 +291,7 @@ async function runCommand(input) {
         elapsedMs: result.elapsedMs
       });
       if (code === 0) resolvePromise(result);
-      else rejectPromise(new Error(result.output || ("Command failed with code " + code)));
+      else rejectPromise(new Error(result.output || ("処理に失敗しました。終了コード: " + code)));
     });
   });
 }
@@ -351,7 +351,7 @@ async function readRunResult(runId) {
       };
     } catch {}
   }
-  throw new Error("No readable result file found");
+  throw new Error("読み込める結果ファイルが見つかりません");
 }
 
 async function runGit(repoPath, args) {
@@ -369,25 +369,25 @@ async function runGit(repoPath, args) {
     child.on("close", (code) => {
       const result = { code, stdout: stdout.trim(), stderr: stderr.trim() };
       if (code === 0) resolvePromise(result);
-      else rejectPromise(new Error(result.stderr || result.stdout || `git exited with code ${code}`));
+      else rejectPromise(new Error(result.stderr || result.stdout || `Git処理に失敗しました。終了コード: ${code}`));
     });
   });
 }
 
 async function updateRepository(repoPath) {
-  if (activeProcess) throw new Error("Run実行中はRepositoryを更新できません。");
+  if (activeProcess) throw new Error("処理実行中は対象フォルダを更新できません。");
   const repository = validateRepository(repoPath);
 
   const inside = await runGit(repository, ["rev-parse", "--is-inside-work-tree"]);
-  if (inside.stdout !== "true") throw new Error("選択したFolderはGit Repositoryではありません。");
+  if (inside.stdout !== "true") throw new Error("選択したフォルダはGitリポジトリではありません。");
 
   const dirty = await runGit(repository, ["status", "--porcelain"]);
   if (dirty.stdout) {
-    throw new Error("未コミットの変更があるため更新を中止しました。変更をCommit・退避・破棄してから再実行してください。");
+    throw new Error("未コミットの変更があるため更新を中止しました。変更を保存・退避・破棄してから再実行してください。");
   }
 
   const branch = await runGit(repository, ["symbolic-ref", "--short", "HEAD"]);
-  if (!branch.stdout) throw new Error("Detached HEADでは安全に更新できません。");
+  if (!branch.stdout) throw new Error("現在のGit状態では安全に更新できません。通常のブランチへ戻してから再実行してください。");
 
   const before = (await runGit(repository, ["rev-parse", "HEAD"])).stdout;
   await runGit(repository, ["fetch", "--prune", "origin"]);
@@ -492,7 +492,7 @@ app.whenReady().then(async () => {
   registerIpc("diagnostics:clear", () => clearDiagnostics());
   registerIpc("clipboard:write", (value) => {
     const text = String(value || "");
-    if (text.length > MAX_CLIPBOARD_CHARS) throw new Error("Clipboard payload is too large");
+    if (text.length > MAX_CLIPBOARD_CHARS) throw new Error("コピーする内容が大きすぎます");
     clipboard.writeText(text);
     return true;
   });

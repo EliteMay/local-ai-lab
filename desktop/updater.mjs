@@ -74,8 +74,8 @@ export function createUpdaterController({
       type: "error",
       title: "アップデートに失敗しました",
       message: "自動アップデートを完了できませんでした。",
-      detail: `${message}\n\n現在のバージョンはそのまま利用できます。必要ならGitHub Releasesから手動で更新してください。`,
-      buttons: ["Releaseページを開く", "閉じる"],
+      detail: `${message}\n\n現在のバージョンはそのまま利用できます。必要なら配布ページから手動で更新してください。`,
+      buttons: ["配布ページを開く", "閉じる"],
       defaultId: 1,
       cancelId: 1,
       noLink: true
@@ -88,8 +88,8 @@ export function createUpdaterController({
     promptedVersion = version;
     const win = getMainWindow();
     const detail = isBusy()
-      ? "現在Runが実行中です。更新はRun完了後に行ってください。"
-      : "「今すぐ更新」を押すとダウンロード後にアプリを再起動して更新します。設定とRun履歴はuserData側に保存されるため維持されます。";
+      ? "現在処理を実行中です。更新は処理完了後に行ってください。"
+      : "「今すぐ更新」を押すとダウンロード後にアプリを再起動して更新します。設定と実行履歴はアプリの保存領域に残ります。";
 
     const result = await dialog.showMessageBox(win || undefined, {
       type: "info",
@@ -113,7 +113,7 @@ export function createUpdaterController({
         state: "development",
         latestVersion: app.getVersion(),
         progress: 0,
-        message: "開発モードでは自動更新を実行しません。Setup.exe版で確認してください。"
+        message: "開発モードでは自動更新を実行しません。インストール版で確認してください。"
       });
       return { ok: true, skipped: true, updateAvailable: false, ...state };
     }
@@ -174,7 +174,7 @@ export function createUpdaterController({
       return { ok: false, message: "開発モードでは自動更新できません。" };
     }
     if (isBusy()) {
-      return { ok: false, message: "Run実行中はアプリを更新できません。Run完了後に再実行してください。" };
+      return { ok: false, message: "処理実行中はアプリを更新できません。処理完了後に再実行してください。" };
     }
     if (installInProgress) {
       return { ok: true, message: "アップデートをダウンロード中です。" };
@@ -206,9 +206,9 @@ export function createUpdaterController({
           state: "downloaded",
           latestVersion,
           progress: 100,
-          message: "ダウンロード済みです。Run完了後に「今すぐ更新」を押してください。"
+          message: "ダウンロード済みです。処理完了後に「今すぐ更新」を押してください。"
         });
-        return { ok: false, message: "Runが開始されたため再起動を保留しました。" };
+        return { ok: false, message: "処理が開始されたため再起動を保留しました。" };
       }
 
       await setState({
@@ -278,7 +278,7 @@ export function createUpdaterController({
       void setState({
         state: "error",
         progress: 0,
-        message: `Updater error: ${error?.message || error}`
+        message: `更新エラー: ${error?.message || error}`
       });
     });
   }
@@ -290,7 +290,7 @@ export function createUpdaterController({
   registerIpc("update:install", () => downloadAndInstall());
   registerIpc("update:open-release", async () => {
     await shell.openExternal(RELEASE_URL);
-    return { ok: true, message: "Releaseページを開きました。" };
+    return { ok: true, message: "配布ページを開きました。" };
   });
 
   return {
