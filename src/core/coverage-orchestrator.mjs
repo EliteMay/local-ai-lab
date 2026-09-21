@@ -5,6 +5,8 @@ import { buildCoveragePlan, publicCoveragePlan } from "./coverage-plan.mjs";
 import { COVERAGE_BATCH_SCHEMA, getAgentResponseSchema } from "./response-schemas.mjs";
 import { getRoleDefinition } from "../roles/role-definitions.mjs";
 import { assertResumeIdentity, buildExecutionIdentity } from "./run-identity.mjs";
+import { classifyCoveragePlan } from "../model/model-catalog.mjs";
+import { mergeModelUsageSnapshots } from "../model/model-router.mjs";
 
 function sameStringSet(left, right) {
   if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false;
@@ -65,7 +67,8 @@ function combineModelMeta(items) {
       total_tokens: promptTokens + completionTokens
     },
     reasoningTokens,
-    calls: items.length
+    calls: items.length,
+    routes: items.map((item) => item?.route).filter(Boolean)
   };
 }
 
@@ -114,12 +117,18 @@ function makeCoverage(plan, batchResults) {
 }
 
 export class CoverageAuditOrchestrator {
-  constructor({ config, modelClient = null, runStore = null, onProgress = null } = {}) {
+  constructor({ config, modelClient = null, modelRouter = null, runStore = null, onProgress = null } = {}) {
     if (!config) throw new Error("config is required");
     this.config = config;
-    this.modelClient = modelClient ?? new LMStudioClient(config.model);
+    this.modelRouter = modelRouter;
+    this.modelClient = modelClient ?? (modelRouter ? null : new LMStudioClient(config.model));
+    this.coverageTaskType = "coverage-general";
     this.runStore = runStore ?? new RunStore(config.runtimeData?.runsRoot ?? "runtime-data/runs");
     this.onProgress = typeof onProgress === "function" ? onProgress : () => {};
+  }
+
+  #clientFor(taskType) {
+    return this.modelRouter ? this.modelRouter.clientFor(taskType) : this.modelClient;
   }
 
   #emit(event) {
@@ -132,7 +141,7 @@ export class CoverageAuditOrchestrator {
 
   async #requestBatch(batch, goal, { maxTokens, correction = false } = {}) {
     const prompt = renderBatchPrompt({ goal, batch });
-    const detailed = await this.modelClient.chatJsonDetailed({
+    const detailed = await this.#clientFor(this.coverageTaskType).chatJsonDetailed({
       system: "You are the whole-repository Coverage Auditor. Inspect every supplied source chunk and return only a compact index of evidence-backed issues. You cannot modify files.",
       user: correction
         ? `${prompt}\n\nPrevious attempt failed validation. Return a smaller valid response and ensure inspectedChunks exactly matches the required IDs.`
@@ -256,7 +265,7 @@ export class CoverageAuditOrchestrator {
     }
 
     const plannerRole = getRoleDefinition("improvement-planner");
-    const planner = await this.modelClient.chatJsonDetailed({
+    const planner = await this.#clientFor("planner").chatJsonDetailed({
       system: plannerRole.system,
       user: renderSynthesisPrompt({ goal, coverage, findings }),
       jsonSchema: getAgentResponseSchema("improvement-planner"),
@@ -264,7 +273,7 @@ export class CoverageAuditOrchestrator {
     });
 
     const reviewerRole = getRoleDefinition("reviewer");
-    const reviewer = await this.modelClient.chatJsonDetailed({
+    const reviewer = await this.#clientFor("reviewer").chatJsonDetailed({
       system: reviewerRole.system,
       user: renderReviewPrompt({ goal, coverage, findings, planner: planner.value }),
       jsonSchema: getAgentResponseSchema("reviewer"),
@@ -290,14 +299,27 @@ export class CoverageAuditOrchestrator {
     await reader.assertRepositoryExists();
     const plan = await buildCoveragePlan(reader, this.config.coverage);
     const publicPlan = publicCoveragePlan(plan);
+    if (this.modelRouter) {
+      this.coverageTaskType = classifyCoveragePlan(plan, this.modelRouter.routing);
+      this.#emit({ type: "model_route_plan", taskType: this.coverageTaskType });
+    }
 
     let actualRunId = runId;
     let batchResults = [];
     let baseRun = null;
+    let previousModelUsage = null;
 
     if (resume) {
       baseRun = await this.runStore.readJson(runId, "run.json");
       assertResumeIdentity(baseRun.executionIdentity, executionIdentity);
+      try {
+        previousModelUsage = await this.runStore.readJson(runId, "model-usage.json");
+      } catch {
+        previousModelUsage = baseRun.modelRouting ?? null;
+      }
+      if (this.modelRouter) {
+        this.modelRouter.importPins(baseRun.modelRouting?.pins ?? previousModelUsage?.pins ?? {});
+      }
       const savedPlan = await this.runStore.readJson(runId, "coverage-plan.json");
       if (fileFingerprint(savedPlan) !== fileFingerprint(publicPlan)) {
         throw new Error("Repository or coverage batch plan changed since the saved run; refusing unsafe resume");
@@ -353,6 +375,16 @@ export class CoverageAuditOrchestrator {
       if (result.status === "completed") completedIds.add(batch.id);
       await this.runStore.writeJson(actualRunId, "batch-results.json", batchResults);
       await this.runStore.writeJson(actualRunId, "coverage.json", makeCoverage(plan, batchResults));
+      if (this.modelRouter) {
+        const liveModelUsage = mergeModelUsageSnapshots(previousModelUsage, this.modelRouter.snapshot());
+        await this.runStore.writeJson(actualRunId, "model-usage.json", liveModelUsage);
+        const currentRun = await this.runStore.readJson(actualRunId, "run.json");
+        await this.runStore.writeJson(actualRunId, "run.json", {
+          ...currentRun,
+          modelRouting: liveModelUsage
+        });
+        baseRun = { ...currentRun, modelRouting: liveModelUsage };
+      }
     }
 
     const coverage = makeCoverage(plan, batchResults);
@@ -370,6 +402,10 @@ export class CoverageAuditOrchestrator {
     }
     await this.runStore.writeJson(actualRunId, "synthesis.json", synthesis);
     await this.runStore.writeJson(actualRunId, "review.json", synthesis.reviewer ?? {});
+    const modelUsage = this.modelRouter
+      ? mergeModelUsageSnapshots(previousModelUsage, this.modelRouter.snapshot())
+      : null;
+    if (modelUsage) await this.runStore.writeJson(actualRunId, "model-usage.json", modelUsage);
 
     const status = coverage.complete && !synthesis.error ? "COMPLETED" : "PARTIAL";
     const completedAt = new Date().toISOString();
@@ -382,13 +418,15 @@ export class CoverageAuditOrchestrator {
       goal,
       repoPath,
       executionIdentity,
+      modelRouting: modelUsage,
       coverage,
       synthesisError: synthesis.error,
       reviewerDecision: synthesis.reviewer?.result?.decision ?? null,
       capabilities: { repository: "read-only", mutation: false }
     });
 
-    const summary = `# Full Coverage Audit ${actualRunId}\n\n- Status: ${status}\n- Auditable files: ${coverage.auditableFiles}\n- Excluded files: ${coverage.excludedFiles}\n- Completed chunks: ${coverage.completedChunks}/${coverage.totalChunks}\n- Coverage: ${coverage.coveragePercent}%\n- Findings: ${findings.length}\n- Reviewer: ${synthesis.reviewer?.result?.decision ?? "not available"}\n- Resume supported: yes (same repository fingerprint, model/profile, config hash, and prompt/schema version required)\n- App version: ${executionIdentity.appVersion}\n- Model: ${executionIdentity.model} (${executionIdentity.modelProfile})\n\nTarget repository access remained read-only.\n`;
+    const summary = `# Full Coverage Audit ${actualRunId}\n\n- Status: ${status}\n- Auditable files: ${coverage.auditableFiles}\n- Excluded files: ${coverage.excludedFiles}\n- Completed chunks: ${coverage.completedChunks}/${coverage.totalChunks}\n- Coverage: ${coverage.coveragePercent}%\n- Findings: ${findings.length}\n- Reviewer: ${synthesis.reviewer?.result?.decision ?? "not available"}\n- Resume supported: yes (same repository fingerprint, model/profile, config hash, and prompt/schema version required)\n- App version: ${executionIdentity.appVersion}\n- Model: ${executionIdentity.modelRoutingMode === "auto" ? "auto routing" : `${executionIdentity.model} (${executionIdentity.modelProfile})`}
+- Model pins: ${modelUsage?.pins ? JSON.stringify(modelUsage.pins) : "fixed"}\n\nTarget repository access remained read-only.\n`;
     await this.runStore.writeSummary(actualRunId, summary);
 
     this.#emit({ type: "coverage_run_completed", runId: actualRunId, status, coverage, findings: findings.length, synthesisError: synthesis.error });
