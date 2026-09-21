@@ -787,6 +787,7 @@ async function runGit(repoPath, args, { timeoutMs = 30000 } = {}) {
     let stdout = "";
     let stderr = "";
     let settled = false;
+    let timer = null;
     const child = spawn("git", ["-C", cwd, ...args], {
       windowsHide: true,
       shell: false
@@ -809,7 +810,7 @@ async function runGit(repoPath, args, { timeoutMs = 30000 } = {}) {
       else finish(rejectPromise, new Error(result.stderr || result.stdout || `Git処理に失敗しました。終了コード: ${code}`));
     });
 
-    const timer = setTimeout(() => {
+    timer = setTimeout(() => {
       try { child.kill(); } catch {}
       const error = new Error(`Git処理が${Math.round(timeoutMs / 1000)}秒以内に完了しませんでした。`);
       error.code = "GIT_TIMEOUT";
