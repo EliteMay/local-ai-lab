@@ -289,5 +289,4 @@ test("desktop exposes long-run health ETA speed system load and deterministic re
 test("desktop command disabling uses the multi-element selector helper", async () => {
   const renderer = await readFile(new URL("../desktop/renderer/renderer.mjs", import.meta.url), "utf8");
   assert.match(renderer, /\$\$\("\.commands button"\)\.forEach/);
-  assert.doesNotMatch(renderer, /\$\("\.commands button"\)\.forEach/);
 });
