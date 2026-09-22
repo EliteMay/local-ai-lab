@@ -426,3 +426,26 @@ test("desktop exposes deterministic multi-model routing and safe catalog managem
   assert.match(manager, /処理実行中はモデルを解放できません/);
   assert.doesNotMatch(preload, /modelUrl|downloadUrl|shellCommand/);
 });
+
+
+test("desktop compares and exports saved runs through narrow IPC", async () => {
+  const main = await readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8");
+  const preload = await readFile(new URL("../desktop/preload.cjs", import.meta.url), "utf8");
+  const renderer = await readFile(new URL("../desktop/renderer/renderer.mjs", import.meta.url), "utf8");
+  const html = await readFile(new URL("../desktop/renderer/index.html", import.meta.url), "utf8");
+
+  assert.match(main, /history:compare/);
+  assert.match(main, /history:export/);
+  assert.match(main, /compareRunDetails/);
+  assert.match(main, /safeRunId\(input\?\.baselineRunId\)/);
+  assert.match(main, /safeRunId\(input\?\.currentRunId\)/);
+  assert.match(main, /dialog\.showSaveDialog/);
+  assert.match(main, /defaultPath: `\$\{id\}-audit-export\.json`/);
+  assert.match(preload, /compareRuns: \(baselineRunId, currentRunId\)/);
+  assert.match(preload, /exportRun: \(id\)/);
+  assert.doesNotMatch(preload, /exportRun: \([^)]*path/i);
+  assert.match(renderer, /compareBaselineRunId/);
+  assert.match(renderer, /別の対象フォルダの実行履歴とは比較できません/);
+  assert.match(html, /id="historyComparePanel"/);
+  assert.match(html, /id="compareBaselineStatus"/);
+});
