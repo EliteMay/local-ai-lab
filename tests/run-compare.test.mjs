@@ -15,7 +15,7 @@ test("run comparison separates added, resolved and persisting findings", () => {
   const baseline = {
     runId: "run-old",
     run: { repoPath: "D:/repo", createdAt: "2026-09-20T00:00:00Z", completedAt: "2026-09-20T00:10:00Z" },
-    coverage: { coveragePercent: 90 },
+    coverage: { coveragePercent: 90, complete: true },
     findings: [
       finding("old problem", "high", "src/a.js", 10),
       finding("same problem", "medium", "src/b.js", 20)
@@ -25,7 +25,7 @@ test("run comparison separates added, resolved and persisting findings", () => {
   const current = {
     runId: "run-new",
     run: { repoPath: "D:/repo", createdAt: "2026-09-21T00:00:00Z", completedAt: "2026-09-21T00:08:00Z" },
-    coverage: { coveragePercent: 100 },
+    coverage: { coveragePercent: 100, complete: true },
     findings: [
       finding("same problem", "medium", "src/b.js", 20),
       finding("new problem", "critical", "src/c.js", 30)
@@ -48,8 +48,8 @@ test("run comparison separates added, resolved and persisting findings", () => {
 
 test("run comparison rejects different repositories", () => {
   assert.throws(() => compareRunDetails(
-    { runId: "run-a", run: { repoPath: "D:/repo-a" }, findings: [] },
-    { runId: "run-b", run: { repoPath: "D:/repo-b" }, findings: [] }
+    { runId: "run-a", run: { repoPath: "D:/repo-a", goal: "audit" }, coverage: { complete: true }, findings: [] },
+    { runId: "run-b", run: { repoPath: "D:/repo-b", goal: "audit" }, coverage: { complete: true }, findings: [] }
   ), /別の対象フォルダ/);
 });
 
@@ -70,8 +70,21 @@ test("finding comparison survives line shifts in the same file", () => {
 
 test("comparison treats equivalent Windows repository paths as the same target", () => {
   const result = compareRunDetails(
-    { runId: "run-a", run: { repoPath: "D:\\Repo\\" }, coverage: {}, findings: [] },
-    { runId: "run-b", run: { repoPath: "d:/repo" }, coverage: {}, findings: [] }
+    { runId: "run-a", run: { repoPath: "D:\\Repo\\", goal: "audit" }, coverage: { complete: true }, findings: [] },
+    { runId: "run-b", run: { repoPath: "d:/repo", goal: "audit" }, coverage: { complete: true }, findings: [] }
   );
   assert.equal(result.delta.coveragePercent, null);
+});
+
+
+test("run comparison requires complete coverage and the same audit goal", () => {
+  assert.throws(() => compareRunDetails(
+    { runId: "run-a", run: { repoPath: "D:/repo", goal: "audit" }, coverage: { complete: false }, findings: [] },
+    { runId: "run-b", run: { repoPath: "D:/repo", goal: "audit" }, coverage: { complete: true }, findings: [] }
+  ), /100%完了/);
+
+  assert.throws(() => compareRunDetails(
+    { runId: "run-a", run: { repoPath: "D:/repo", goal: "security" }, coverage: { complete: true }, findings: [] },
+    { runId: "run-b", run: { repoPath: "D:/repo", goal: "performance" }, coverage: { complete: true }, findings: [] }
+  ), /監査目的/);
 });
