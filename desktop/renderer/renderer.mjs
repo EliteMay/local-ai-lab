@@ -1322,7 +1322,9 @@ async function run(command = state.selectedCommand, stateOverride = {}) {
     command,
     repoPath: state.repository,
     goal: $("#goal").value,
-    runId: $("#runId").value.trim(),
+    runId: command === "coverage-synthesize" || (command === "coverage" && state.resume)
+      ? $("#runId").value.trim()
+      : "",
     modelProfile: state.settings.modelProfile,
     modelRoutingMode: state.settings.modelRoutingMode || "auto",
     autoManageModels: state.settings.autoManageModels !== false,

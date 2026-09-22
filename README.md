@@ -66,14 +66,15 @@ Web / Electron制作に関係する共通Ruleは `EliteMay/web-project-guide` �
 - Windows
 - Node.js 20+
 - Default Runtime: LM Studio
-- Default Model: Qwen3-8B
+- Default Model Operation: Auto Routing（Task種別に応じてCatalog内Modelを決定）
+- Baseline / Fixed Default Model: Qwen3-8B
 - Optional Runtime: PrismML llama.cpp
 - Optional Model Profile: Bonsai 2 27B
 - 初期対象: PC上のローカルGit Repository
 
 ## Model Profile切替
 
-Defaultは従来どおりLM Studio + Qwen3-8Bです。Bonsai 2 27Bは明示的にProfileを指定したときだけ使用します。
+既定はAuto Routingです。Qwen3-8BはBaselineおよびFixed Modeの既定Modelとして残します。Bonsai 2 27BはAuto RoutingのReviewer候補、または明示的なFixed Profileとして利用できます。
 
 Default確認:
 
@@ -399,3 +400,14 @@ Brokered v1 modeでは`tasks.json` / `research.json`等も使用します。`run
 - Agent数が多いほど良いと仮定しない
 - Single / Fixed Pipeline / Brokered / Full Coverageを実測比較する
 - 速度改善はCoverageやEvidence品質を落として達成しない
+
+
+## v0.3.3 run safety hardening
+
+v0.3.3では、新規監査と既存Runの再開・統合を明確に分離し、新規監査が過去のRun IDへ書き込まないようにしました。RunStore側でも既存Run IDの再作成を拒否するため、Renderer以外の経路から誤ったIDが渡っても履歴を上書きしません。
+
+Desktopの状態変更操作は共通Operation Lockで直列化し、監査、Repository更新、Model Download / Load / Unload、Bonsai Runtimeの起動停止、アプリ更新が互いに割り込まないようにします。
+
+「モデル自動管理」をOFFにした場合は、既にLoad済みのLM Studio Modelだけを利用し、未Load Modelを自動Loadしません。必要Modelが利用できない場合は定義済みFallbackへ進みます。
+
+LM StudioでAPI Token認証を有効にした場合、推論Requestにも `LM_API_TOKEN` を送ります。Prism / Bonsai接続にはLM Studio Tokenを送信しません。Fetch transportのResponse上限もStreaming中に適用し、上限超過Responseを一度RAMへ全読込してから判定しない構造へ変更しました。

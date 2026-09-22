@@ -42,7 +42,20 @@ let bonsaiRuntimeController = null;
 let desktopModelManager = null;
 let activeProcessStartedAt = null;
 let activeProcessLastOutputAt = null;
+let activeOperation = null;
 const sampleSystemMetrics = createSystemMetricsSampler();
+
+async function withOperation(name, action) {
+  if (activeOperation) {
+    throw new Error(`別の処理（${activeOperation}）が実行中です。完了してから再実行してください。`);
+  }
+  activeOperation = name;
+  try {
+    return await action();
+  } finally {
+    if (activeOperation === name) activeOperation = null;
+  }
+}
 
 function safeRoutingMode(value) {
   const mode = String(value || "auto");
@@ -186,7 +199,7 @@ async function readSettings() {
 }
 
 async function saveSettings(input) {
-  if (activeProcess) throw new Error("処理実行中は設定を変更できません。完了または停止してから保存してください。");
+  if (activeOperation) throw new Error("処理実行中は設定を変更できません。完了または停止してから保存してください。");
   const requestedRepository = String(input?.defaultRepository || "").trim();
   const next = {
     defaultRepository: requestedRepository ? validateRepository(requestedRepository) : "",
@@ -381,7 +394,8 @@ function commandStatus() {
     command: activeProcessCommand,
     startedAt: activeProcessStartedAt,
     lastOutputAt: activeProcessLastOutputAt,
-    processAlive: Boolean(activeProcess && activeProcess.exitCode == null)
+    processAlive: Boolean(activeProcess && activeProcess.exitCode == null),
+    operation: activeOperation
   };
 }
 
@@ -533,7 +547,7 @@ function parseProgress(line) {
 }
 
 async function runCommand(input) {
-  if (activeProcess) throw new Error("Another command is already running");
+  return withOperation("run", async () => {
   const spec = buildCommand(input);
   const startedAt = Date.now();
   await appendDiagnostic({
@@ -732,6 +746,7 @@ async function runCommand(input) {
 
       finishQuitIfRequested();
     });
+  });
   });
 }
 
@@ -947,7 +962,7 @@ async function runGit(repoPath, args, { timeoutMs = 30000 } = {}) {
 }
 
 async function updateRepository(repoPath) {
-  if (activeProcess) throw new Error("処理実行中は対象フォルダを更新できません。");
+  return withOperation("repository-sync", async () => {
   const repository = validateRepository(repoPath);
 
   const inside = await runGit(repository, ["rev-parse", "--is-inside-work-tree"]);
@@ -986,6 +1001,7 @@ async function updateRepository(repoPath) {
       : "すでにリモートの最新版です。",
     detail: pull.stdout
   };
+  });
 }
 
 async function isLocalAiLabRepository(repoPath) {
@@ -1143,20 +1159,23 @@ if (hasSingleInstanceLock) {
     registerIpc,
     readSettings,
     appendDiagnostic,
-    getMainWindow: () => mainWindow
+    getMainWindow: () => mainWindow,
+    withOperation
   });
   desktopModelManager = createDesktopModelManager({
     registerIpc,
     readSettings,
     appendDiagnostic,
-    isBusy: () => Boolean(activeProcess)
+    isBusy: () => Boolean(activeProcess),
+    withOperation
   });
   updaterController = createUpdaterController({
     registerIpc,
     readSettings,
     appendDiagnostic,
     getMainWindow: () => mainWindow,
-    isBusy: () => Boolean(activeProcess)
+    isBusy: () => Boolean(activeOperation && activeOperation !== "app-update"),
+    withOperation
   });
   createWindow();
   await updaterController.scheduleAutoCheck();

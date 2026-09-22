@@ -31,7 +31,8 @@ export function createUpdaterController({
   readSettings,
   appendDiagnostic,
   getMainWindow,
-  isBusy
+  isBusy,
+  withOperation
 }) {
   let checkPromise = null;
   let installInProgress = false;
@@ -105,7 +106,7 @@ export function createUpdaterController({
     });
 
     if (!isBusy() && result.response === 0) {
-      await downloadUpdate();
+      await withOperation("app-update", () => downloadUpdate());
     }
   }
 
@@ -348,9 +349,9 @@ export function createUpdaterController({
 
   registerIpc("update:state", () => updateState);
   registerIpc("update:check", () => checkForUpdate({ prompt: false }));
-  registerIpc("update:install", () => (
+  registerIpc("update:install", () => withOperation("app-update", () => (
     updateState.state === "downloaded" ? installDownloadedUpdate() : downloadUpdate()
-  ));
+  )));
   registerIpc("update:open-release", async () => {
     await shell.openExternal(RELEASE_URL);
     return { ok: true, message: "配布ページを開きました。" };

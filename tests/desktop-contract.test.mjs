@@ -449,3 +449,27 @@ test("desktop compares and exports saved runs through narrow IPC", async () => {
   assert.match(html, /id="historyComparePanel"/);
   assert.match(html, /id="compareBaselineStatus"/);
 });
+
+test("desktop never sends a selected historical run id for a fresh coverage audit", async () => {
+  const renderer = await readFile(new URL("../desktop/renderer/renderer.mjs", import.meta.url), "utf8");
+  assert.match(renderer, /command === "coverage-synthesize" \|\| \(command === "coverage" && state\.resume\)/);
+  assert.doesNotMatch(renderer, /runId:\s*\$\("#runId"\)\.value\.trim\(\),/);
+});
+
+test("desktop serializes state-changing operations through one main-process lock", async () => {
+  const main = await readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8");
+  const modelManager = await readFile(new URL("../desktop/model-manager.mjs", import.meta.url), "utf8");
+  const bonsai = await readFile(new URL("../desktop/bonsai-runtime.mjs", import.meta.url), "utf8");
+  const updater = await readFile(new URL("../desktop/updater.mjs", import.meta.url), "utf8");
+
+  assert.match(main, /let activeOperation = null/);
+  assert.match(main, /function withOperation|async function withOperation/);
+  assert.match(main, /withOperation\("run"/);
+  assert.match(main, /withOperation\("repository-sync"/);
+  assert.match(modelManager, /withOperation\("model-download"/);
+  assert.match(modelManager, /withOperation\("model-load"/);
+  assert.match(modelManager, /withOperation\("model-unload"/);
+  assert.match(bonsai, /withOperation\("model-runtime-start"/);
+  assert.match(bonsai, /withOperation\("model-runtime-stop"/);
+  assert.match(updater, /withOperation\("app-update"/);
+});

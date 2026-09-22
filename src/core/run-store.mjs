@@ -28,12 +28,21 @@ export class RunStore {
 
   async createRun(metadata = {}) {
     const runId = metadata.runId ?? `run-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+    this.#assertRunId(runId);
+
+    await mkdir(this.root, { recursive: true });
     const directory = resolve(this.root, runId);
-    if (!isInside(this.root, directory)) {
-      throw new Error("Invalid run id");
+    try {
+      await mkdir(directory);
+    } catch (error) {
+      if (error?.code === "EEXIST") {
+        const duplicate = new Error(`Run already exists: ${runId}`);
+        duplicate.code = "RUN_ID_ALREADY_EXISTS";
+        throw duplicate;
+      }
+      throw error;
     }
 
-    await mkdir(directory, { recursive: true });
     await this.writeJson(runId, "run.json", {
       runId,
       createdAt: new Date().toISOString(),
@@ -43,6 +52,7 @@ export class RunStore {
   }
 
   async hasRun(runId) {
+    this.#assertRunId(runId);
     try {
       await access(resolve(this.root, runId, "run.json"));
       return true;
@@ -91,10 +101,18 @@ export class RunStore {
     return readTextWithBackup(this.#path(runId, "summary.md"));
   }
 
-  #path(runId, fileName) {
-    if (typeof runId !== "string" || runId.trim() === "") {
-      throw new Error("runId is required");
+  #assertRunId(runId) {
+    if (typeof runId !== "string" || !/^run-[a-zA-Z0-9._-]+$/.test(runId)) {
+      throw new Error("Invalid run id");
     }
+    const directory = resolve(this.root, runId);
+    if (!isInside(this.root, directory)) {
+      throw new Error("Run path escapes runtime-data root");
+    }
+  }
+
+  #path(runId, fileName) {
+    this.#assertRunId(runId);
     if (!ALLOWED_FILES.has(fileName)) {
       throw new Error(`RunStore file is not allowed: ${fileName}`);
     }
