@@ -78,7 +78,8 @@ export function createDesktopModelManager({ registerIpc, readSettings, appendDia
     if (entry.runtime !== "lm-studio") throw new Error("このモデルは専用の実行環境から起動します。");
     const settings = await readSettings();
     const result = await activeManager.ensureLoaded(entry, {
-      autoManage: settings.autoManageModels !== false
+      autoManage: settings.autoManageModels !== false,
+      allowLoad: true
     });
     await appendDiagnostic({
       type: "model.loaded",
