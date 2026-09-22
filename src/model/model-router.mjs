@@ -185,6 +185,7 @@ export class ModelRouter {
           failures.push(entry.label + ": " + error.message);
           if (
             error?.code === "MODEL_NOT_INSTALLED" ||
+            error?.code === "MODEL_NOT_LOADED" ||
             error?.code === "LM_STUDIO_MODEL_API" ||
             /ECONNREFUSED|fetch failed/i.test(String(error?.message || ""))
           ) {
