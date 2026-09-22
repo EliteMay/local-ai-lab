@@ -1,10 +1,32 @@
 import { loadModelCatalog, findCatalogModel } from "../src/model/model-catalog.mjs";
 import { LMStudioModelManager } from "../src/model/lm-studio-model-manager.mjs";
 
-export function createDesktopModelManager({ registerIpc, readSettings, appendDiagnostic, isBusy }) {
+export function createDesktopModelManager({
+  registerIpc,
+  readSettings,
+  appendDiagnostic,
+  isBusy,
+  withOperation,
+  beginOperation,
+  endOperation
+}) {
   let catalog = null;
   let manager = null;
   const jobs = new Map();
+  let downloadOperation = null;
+  let downloadModelId = "";
+
+  function isTerminalDownloadStatus(value) {
+    return ["completed", "complete", "failed", "error", "cancelled", "canceled"].includes(String(value || "").toLowerCase());
+  }
+
+  function releaseDownloadOperation(modelId = "") {
+    if (!downloadOperation) return;
+    if (modelId && downloadModelId && modelId !== downloadModelId) return;
+    endOperation(downloadOperation);
+    downloadOperation = null;
+    downloadModelId = "";
+  }
 
   async function ensure() {
     if (!catalog) catalog = await loadModelCatalog();
@@ -19,8 +41,10 @@ export function createDesktopModelManager({ registerIpc, readSettings, appendDia
       const { manager: active } = await ensure();
       const next = await active.downloadStatus(job.job_id);
       jobs.set(modelId, next);
+      if (isTerminalDownloadStatus(next?.status)) releaseDownloadOperation(modelId);
       return next;
     } catch (error) {
+      releaseDownloadOperation(modelId);
       return { ...job, status: "failed", error: error.message };
     }
   }
@@ -56,46 +80,63 @@ export function createDesktopModelManager({ registerIpc, readSettings, appendDia
 
   async function download(modelId) {
     if (isBusy()) throw new Error("処理実行中はモデルをダウンロードできません。");
-    const { catalog: activeCatalog, manager: activeManager } = await ensure();
-    const entry = findCatalogModel(activeCatalog, modelId);
-    if (!entry) throw new Error("モデルが見つかりません");
-    const result = await activeManager.download(entry);
-    jobs.set(entry.id, result);
-    await appendDiagnostic({
-      type: "model.download.started",
-      modelId: entry.id,
-      status: result.status,
-      hasJob: Boolean(result.job_id)
-    });
-    return result;
+    const token = beginOperation("model-download", { modelId });
+    try {
+      const { catalog: activeCatalog, manager: activeManager } = await ensure();
+      const entry = findCatalogModel(activeCatalog, modelId);
+      if (!entry) throw new Error("モデルが見つかりません");
+      const result = await activeManager.download(entry);
+      jobs.set(entry.id, result);
+      await appendDiagnostic({
+        type: "model.download.started",
+        modelId: entry.id,
+        status: result.status,
+        hasJob: Boolean(result.job_id)
+      });
+      if (result?.job_id && !isTerminalDownloadStatus(result?.status)) {
+        downloadOperation = token;
+        downloadModelId = entry.id;
+      } else {
+        endOperation(token);
+      }
+      return result;
+    } catch (error) {
+      endOperation(token);
+      throw error;
+    }
   }
 
   async function load(modelId) {
     if (isBusy()) throw new Error("処理実行中はモデルを読み込めません。");
-    const { catalog: activeCatalog, manager: activeManager } = await ensure();
-    const entry = findCatalogModel(activeCatalog, modelId);
-    if (!entry) throw new Error("モデルが見つかりません");
-    if (entry.runtime !== "lm-studio") throw new Error("このモデルは専用の実行環境から起動します。");
-    const settings = await readSettings();
-    const result = await activeManager.ensureLoaded(entry, {
-      autoManage: settings.autoManageModels !== false
-    });
-    await appendDiagnostic({
-      type: "model.loaded",
-      modelId: entry.id,
-      alreadyLoaded: result.alreadyLoaded
-    });
-    return { ok: true, modelId: entry.id, instanceId: result.instanceId };
+    return withOperation("model-load", async () => {
+      const { catalog: activeCatalog, manager: activeManager } = await ensure();
+      const entry = findCatalogModel(activeCatalog, modelId);
+      if (!entry) throw new Error("モデルが見つかりません");
+      if (entry.runtime !== "lm-studio") throw new Error("このモデルは専用の実行環境から起動します。");
+      const settings = await readSettings();
+      const result = await activeManager.ensureLoaded(entry, {
+        autoManage: settings.autoManageModels !== false,
+        allowLoad: true
+      });
+      await appendDiagnostic({
+        type: "model.loaded",
+        modelId: entry.id,
+        alreadyLoaded: result.alreadyLoaded
+      });
+      return { ok: true, modelId: entry.id, instanceId: result.instanceId };
+    }, { modelId });
   }
 
   async function unload(modelId) {
     if (isBusy()) throw new Error("処理実行中はモデルを解放できません。");
-    const { catalog: activeCatalog, manager: activeManager } = await ensure();
-    const entry = findCatalogModel(activeCatalog, modelId);
-    if (!entry) throw new Error("モデルが見つかりません");
-    const result = await activeManager.unloadEntry(entry);
-    await appendDiagnostic({ type: "model.unloaded", modelId: entry.id, unloaded: result.unloaded });
-    return { ok: true, modelId: entry.id, ...result };
+    return withOperation("model-unload", async () => {
+      const { catalog: activeCatalog, manager: activeManager } = await ensure();
+      const entry = findCatalogModel(activeCatalog, modelId);
+      if (!entry) throw new Error("モデルが見つかりません");
+      const result = await activeManager.unloadEntry(entry);
+      await appendDiagnostic({ type: "model.unloaded", modelId: entry.id, unloaded: result.unloaded });
+      return { ok: true, modelId: entry.id, ...result };
+    }, { modelId });
   }
 
   registerIpc("models:list", () => snapshot());
