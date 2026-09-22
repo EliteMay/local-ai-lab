@@ -425,7 +425,7 @@ PowerShellで行っている日常操作を置き換え、長時間Local AI Run�
 - AppがForegroundでない場合は処理完了 / FailureをOS Notificationで知らせる
 - 同じUser Data / Run Storeへ複数Instanceが同時に触れないようSingle Instanceを基本とする
 - 履歴を実行ID / Folder / Goal等で検索でき、選択Runの保存Folderを安全に開ける
-- 同じ対象Repositoryの保存済みRunを2件選び、Findingを新規 / 解消または消失 / 継続へ分類し、重要度・Coverage・Model Call数の差分を比較できる
+- 同じ対象Repository・同じ監査目的・Coverage完了の保存済みRunを2件選び、Findingを新規 / 解消または消失 / 継続へ分類し、重要度・Coverage・Model Call数の差分を比較できる
 - 保存済みRunのEvidence / Planner / Reviewer / Coverage / Model Usage等を、UserがSave Dialogで選んだJSONへ書き出せる。Rendererから任意保存Pathを指定させない
 - Repositoryは選択時に自動保存し、次回起動時に毎回Folder Pickerを要求しない。旧SettingsでPathが空の場合は、存在する最新Run履歴のRepository Pathから復元を試みる
 - 長時間LogはMain / Renderer両方で上限を持ち、進捗行がStream Chunk境界で分割されても解析を失わない
