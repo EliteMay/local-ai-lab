@@ -142,7 +142,8 @@ export function createBonsaiRuntimeController({
   registerIpc,
   readSettings,
   appendDiagnostic,
-  getMainWindow
+  getMainWindow,
+  withOperation
 }) {
   let child = null;
   let logs = [];
@@ -373,13 +374,16 @@ export function createBonsaiRuntimeController({
     });
   }
 
+  const startManaged = () => withOperation("bonsai-start", () => start());
+  const stopManaged = () => withOperation("bonsai-stop", () => stop());
+
   registerIpc("runtime:bonsai-status", () => refreshStatus());
-  registerIpc("runtime:bonsai-start", () => start());
-  registerIpc("runtime:bonsai-stop", () => stop());
+  registerIpc("runtime:bonsai-start", () => startManaged());
+  registerIpc("runtime:bonsai-stop", () => stopManaged());
 
   return {
     refreshStatus,
-    start,
-    stop
+    start: startManaged,
+    stop: stopManaged
   };
 }
