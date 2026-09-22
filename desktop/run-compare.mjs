@@ -85,7 +85,10 @@ export function compareRunDetails(baseline, current) {
   }
   const baselineGoal = normalizedText(baseline?.run?.goal);
   const currentGoal = normalizedText(current?.run?.goal);
-  if (baselineGoal && currentGoal && baselineGoal !== currentGoal) {
+  if (!baselineGoal || !currentGoal) {
+    throw new Error("監査目的を確認できない実行履歴は比較できません");
+  }
+  if (baselineGoal !== currentGoal) {
     throw new Error("監査目的が異なる実行履歴は比較できません");
   }
 
