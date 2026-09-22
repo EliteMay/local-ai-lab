@@ -449,3 +449,9 @@ test("desktop compares and exports saved runs through narrow IPC", async () => {
   assert.match(html, /id="historyComparePanel"/);
   assert.match(html, /id="compareBaselineStatus"/);
 });
+
+test("desktop never sends a selected historical run id for a fresh coverage audit", async () => {
+  const renderer = await readFile(new URL("../desktop/renderer/renderer.mjs", import.meta.url), "utf8");
+  assert.match(renderer, /command === "coverage-synthesize" \|\| \(command === "coverage" && state\.resume\)/);
+  assert.doesNotMatch(renderer, /runId:\s*\$\("#runId"\)\.value\.trim\(\),/);
+});
