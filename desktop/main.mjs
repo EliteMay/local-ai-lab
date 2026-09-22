@@ -8,6 +8,7 @@ import { createUpdaterController } from "./updater.mjs";
 import { createBonsaiRuntimeController } from "./bonsai-runtime.mjs";
 import { createSystemMetricsSampler } from "./system-metrics.mjs";
 import { buildRunOverview } from "./run-overview.mjs";
+import { compareRunDetails } from "./run-compare.mjs";
 import { createDesktopModelManager } from "./model-manager.mjs";
 import { atomicWriteJson, atomicWriteText, readJsonWithBackup, readTextWithBackup } from "../src/core/atomic-file.mjs";
 
@@ -817,6 +818,39 @@ async function readRunDetails(runId) {
   };
 }
 
+async function compareRuns(input) {
+  const baselineRunId = safeRunId(input?.baselineRunId);
+  const currentRunId = safeRunId(input?.currentRunId);
+  if (baselineRunId === currentRunId) throw new Error("同じ実行履歴同士は比較できません");
+  const [baseline, current] = await Promise.all([
+    readRunDetails(baselineRunId),
+    readRunDetails(currentRunId)
+  ]);
+  return compareRunDetails(baseline, current);
+}
+
+async function exportRun(runId) {
+  const id = safeRunId(runId);
+  const details = await readRunDetails(id);
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: "監査結果を書き出す",
+    defaultPath: `${id}-audit-export.json`,
+    filters: [{ name: "JSON", extensions: ["json"] }]
+  });
+  if (result.canceled || !result.filePath) return { canceled: true };
+
+  const payload = {
+    schemaVersion: 1,
+    exportedAt: new Date().toISOString(),
+    appVersion: app.getVersion(),
+    runId: id,
+    details
+  };
+  await writeFile(result.filePath, JSON.stringify(payload, null, 2) + "\n", "utf8");
+  await appendDiagnostic({ type: "history.exported", runId: id });
+  return { canceled: false, runId: id };
+}
+
 async function readOptionalRunJson(directory, name, fallback) {
   return readOptionalJsonFile(join(directory, name), fallback);
 }
@@ -1066,6 +1100,8 @@ if (hasSingleInstanceLock) {
   registerIpc("history:result", (id) => readRunResult(id));
   registerIpc("history:overview", (id) => readRunOverview(id));
   registerIpc("history:details", (id) => readRunDetails(id));
+  registerIpc("history:compare", (input) => compareRuns(input));
+  registerIpc("history:export", (id) => exportRun(id));
   registerIpc("history:open-folder", (id) => openRunFolder(id));
   registerIpc("diagnostics:list", () => readDiagnostics());
   registerIpc("diagnostics:clear", () => clearDiagnostics());
