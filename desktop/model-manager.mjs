@@ -1,8 +1,11 @@
 import { loadModelCatalog, findCatalogModel } from "../src/model/model-catalog.mjs";
 import { LMStudioModelManager } from "../src/model/lm-studio-model-manager.mjs";
 
-export function createDesktopModelManager({ registerIpc, readSettings, appendDiagnostic, isBusy }) {
+export function createDesktopModelManager({ registerIpc, readSettings, appendDiagnostic, runExclusive }) {
   let catalog = null;
+  const withOperation = typeof runExclusive === "function"
+    ? runExclusive
+    : async (_type, task) => task();
   let manager = null;
   const jobs = new Map();
 
@@ -55,7 +58,6 @@ export function createDesktopModelManager({ registerIpc, readSettings, appendDia
   }
 
   async function download(modelId) {
-    if (isBusy()) throw new Error("処理実行中はモデルをダウンロードできません。");
     const { catalog: activeCatalog, manager: activeManager } = await ensure();
     const entry = findCatalogModel(activeCatalog, modelId);
     if (!entry) throw new Error("モデルが見つかりません");
@@ -71,14 +73,14 @@ export function createDesktopModelManager({ registerIpc, readSettings, appendDia
   }
 
   async function load(modelId) {
-    if (isBusy()) throw new Error("処理実行中はモデルを読み込めません。");
     const { catalog: activeCatalog, manager: activeManager } = await ensure();
     const entry = findCatalogModel(activeCatalog, modelId);
     if (!entry) throw new Error("モデルが見つかりません");
     if (entry.runtime !== "lm-studio") throw new Error("このモデルは専用の実行環境から起動します。");
     const settings = await readSettings();
     const result = await activeManager.ensureLoaded(entry, {
-      autoManage: settings.autoManageModels !== false
+      autoManage: settings.autoManageModels !== false,
+      allowLoad: true
     });
     await appendDiagnostic({
       type: "model.loaded",
@@ -89,7 +91,6 @@ export function createDesktopModelManager({ registerIpc, readSettings, appendDia
   }
 
   async function unload(modelId) {
-    if (isBusy()) throw new Error("処理実行中はモデルを解放できません。");
     const { catalog: activeCatalog, manager: activeManager } = await ensure();
     const entry = findCatalogModel(activeCatalog, modelId);
     if (!entry) throw new Error("モデルが見つかりません");
@@ -99,9 +100,15 @@ export function createDesktopModelManager({ registerIpc, readSettings, appendDia
   }
 
   registerIpc("models:list", () => snapshot());
-  registerIpc("models:download", (modelId) => download(String(modelId || "")));
-  registerIpc("models:load", (modelId) => load(String(modelId || "")));
-  registerIpc("models:unload", (modelId) => unload(String(modelId || "")));
+  registerIpc("models:download", (modelId) =>
+    withOperation("model-download", () => download(String(modelId || "")))
+  );
+  registerIpc("models:load", (modelId) =>
+    withOperation("model-load", () => load(String(modelId || "")))
+  );
+  registerIpc("models:unload", (modelId) =>
+    withOperation("model-unload", () => unload(String(modelId || "")))
+  );
 
   return { snapshot };
 }
