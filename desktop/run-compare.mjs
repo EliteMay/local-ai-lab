@@ -78,19 +78,31 @@ export function compareRunDetails(baseline, current) {
 
   const before = findings(baseline.findings);
   const after = findings(current.findings);
-  const beforeMap = new Map(before.map((item) => [findingComparisonKey(item), item]));
-  const afterMap = new Map(after.map((item) => [findingComparisonKey(item), item]));
+  const beforeBuckets = new Map();
+  for (const item of before) {
+    const key = findingComparisonKey(item);
+    const bucket = beforeBuckets.get(key) || [];
+    bucket.push(item);
+    beforeBuckets.set(key, bucket);
+  }
 
   const added = [];
   const resolved = [];
   const persisting = [];
 
-  for (const [key, item] of afterMap) {
-    if (beforeMap.has(key)) persisting.push(compactFinding(item));
-    else added.push(compactFinding(item));
+  for (const item of after) {
+    const key = findingComparisonKey(item);
+    const bucket = beforeBuckets.get(key);
+    if (bucket?.length) {
+      bucket.pop();
+      persisting.push(compactFinding(item));
+      if (!bucket.length) beforeBuckets.delete(key);
+    } else {
+      added.push(compactFinding(item));
+    }
   }
-  for (const [key, item] of beforeMap) {
-    if (!afterMap.has(key)) resolved.push(compactFinding(item));
+  for (const bucket of beforeBuckets.values()) {
+    for (const item of bucket) resolved.push(compactFinding(item));
   }
 
   const beforeSeverity = severityCounts(before);
