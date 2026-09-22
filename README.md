@@ -281,6 +281,7 @@ v0.3.2では、新しい全体監査を開始するときに、保存済みRun�
 - 同じ対象Repository
 - 同じ監査目的
 - 同じAI / Routing / Coverage設定とPrompt Schema
+- Repository全体から判定した監査Route（一般監査 / コード監査）が一致
 - Batchを構成するChunk ID・File Path・File SHA-256から作る内容Fingerprintが一致
 
 条件が合わないBatchは通常どおりModelへ再監査させます。履歴が壊れている・古くて互換性を確認できない場合も再利用を諦め、通常監査へFallbackします。過去Findingを再利用した場合は元Run / 元Batch / 元Finding IDをEvidenceへ残します。
