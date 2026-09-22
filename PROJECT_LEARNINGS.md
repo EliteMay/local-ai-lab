@@ -252,7 +252,7 @@
 - Type: Performance / Reliability
 - Status: Adopted
 - Problem: 同じRepositoryを繰り返し監査すると、変更していないFile / Batchまで毎回Local LLMへ送り直し、時間とTokenを消費する。一方で単純な「前回結果の流用」は、監査目的・Prompt・Model設定・Batch境界が変わった場合に古いEvidenceを現在結果として混ぜる危険がある。
-- Decision: 新規Coverage Runだけを対象に、同じRepository・Goal・Execution Identityを持つ最新の互換Runを候補にし、Chunk ID / File Path / File SHA-256から作るBatch Fingerprintが一致したBatchだけ再利用する。
+- Decision: 新規Coverage Runだけを対象に、同じRepository・Goal・Execution Identityを持つ最新の互換Runを候補にする。Auto RoutingではRepository構成から決まるCoverage Task Routeも一致させ、そのうえでChunk ID / File Path / File SHA-256から作るBatch Fingerprintが一致したBatchだけ再利用する。
 - Stability: Auto Routingでは再利用元のTask Pinを引き継ぐ。互換性を確認できない場合や履歴破損時はCache missとしてLive AuditへFallbackし、Primary Runを失敗させない。
 - Evidence: Reused Batchは元Run / 元Batch / 元Finding IDを保持し、CoverageへreusedBatches / reusedChunksを記録する。再利用分を新規Model Call / Tokenとして水増ししない。
 - Boundary: Resumeは従来の完全Fingerprint一致Checkpointsを維持し、新規Runの差分再利用と混同しない。Target RepositoryはRead-onlyのまま。
