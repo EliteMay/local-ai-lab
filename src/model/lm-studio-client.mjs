@@ -188,7 +188,7 @@ export class LMStudioClient {
     nativeModelDetailsPath = "/api/v1/models",
     transport = "fetch",
     maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES,
-    apiToken = ""
+    apiToken = undefined
   }) {
     this.baseUrl = String(baseUrl).replace(/\/$/, "");
     this.serverRoot = serverRootFromBaseUrl(this.baseUrl);
@@ -201,7 +201,11 @@ export class LMStudioClient {
     this.nativeModelDetailsPath = nativeModelDetailsPath;
     this.transport = transport;
     this.maxResponseBytes = maxResponseBytes;
-    this.apiToken = String(apiToken || "");
+    this.apiToken = String(
+      apiToken === undefined && providerName === "LM Studio"
+        ? process.env.LM_API_TOKEN || ""
+        : apiToken || ""
+    );
   }
 
   async #requestUrl(url, options = {}) {
