@@ -346,6 +346,7 @@ export class CoverageAuditOrchestrator {
     let baseRun = null;
     let previousModelUsage = null;
     let reuseBaseline = null;
+    let reusableBatchCount = 0;
 
     if (!resume && reuseCoverage) {
       try {
@@ -356,15 +357,23 @@ export class CoverageAuditOrchestrator {
           executionIdentity
         });
         if (reuseBaseline) {
-          if (this.modelRouter) {
-            this.modelRouter.importPins(reuseBaseline.run?.modelRouting?.pins ?? {});
+          reusableBatchCount = plan.batches.reduce((count, batch) => {
+            const fingerprint = coverageBatchFingerprint(plan, batch);
+            return count + (fingerprint && reuseBaseline.reusable.has(fingerprint) ? 1 : 0);
+          }, 0);
+          if (reusableBatchCount > 0) {
+            if (this.modelRouter) {
+              this.modelRouter.importPins(reuseBaseline.run?.modelRouting?.pins ?? {});
+            }
+            this.#emit({
+              type: "coverage_reuse_ready",
+              sourceRunId: reuseBaseline.runId,
+              reusableBatches: reusableBatchCount,
+              totalBatches: plan.totalBatches
+            });
+          } else {
+            reuseBaseline = null;
           }
-          this.#emit({
-            type: "coverage_reuse_ready",
-            sourceRunId: reuseBaseline.runId,
-            reusableBatches: reuseBaseline.reusable.size,
-            totalBatches: plan.totalBatches
-          });
         }
       } catch (error) {
         reuseBaseline = null;
@@ -426,7 +435,7 @@ export class CoverageAuditOrchestrator {
         excludedFiles: plan.excludedFiles,
         totalChunks: plan.totalChunks,
         totalBatches: plan.totalBatches,
-        reusableBatches: reuseBaseline?.reusable?.size ?? 0,
+        reusableBatches: reusableBatchCount,
         reuseSourceRunId: reuseBaseline?.runId ?? null
       });
     }
