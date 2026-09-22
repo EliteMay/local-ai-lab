@@ -32,6 +32,7 @@ if (!hasSingleInstanceLock) app.quit();
 
 let mainWindow = null;
 let activeProcess = null;
+let activeOperation = null;
 let activeProcessCommand = null;
 let activeProcessCancelled = false;
 let activePowerBlockerId = null;
@@ -96,6 +97,18 @@ function registerIpc(channel, handler) {
     assertTrustedSender(event);
     return handler(...args);
   });
+}
+
+async function withOperation(kind, work) {
+  if (activeOperation) {
+    throw new Error("別の処理が実行中です。完了してから再実行してください。");
+  }
+  activeOperation = kind;
+  try {
+    return await work();
+  } finally {
+    if (activeOperation === kind) activeOperation = null;
+  }
 }
 
 function settingsPath() {
@@ -186,7 +199,7 @@ async function readSettings() {
 }
 
 async function saveSettings(input) {
-  if (activeProcess) throw new Error("処理実行中は設定を変更できません。完了または停止してから保存してください。");
+  if (activeProcess || activeOperation) throw new Error("処理実行中は設定を変更できません。完了または停止してから保存してください。");
   const requestedRepository = String(input?.defaultRepository || "").trim();
   const next = {
     defaultRepository: requestedRepository ? validateRepository(requestedRepository) : "",
@@ -278,8 +291,15 @@ function buildCommand(input) {
       "--goal", safeGoal(input.goal),
       "--reuse-coverage", String(reuseCoverage)
     );
-    if (input.runId) args.push("--run-id", safeRunId(input.runId));
-    if (input.resume) args.push("--resume");
+    if (input.runId && !input.resume) {
+      throw new Error("新しい全体監査に既存の実行IDは指定できません。");
+    }
+    if (input.resume && !input.runId) {
+      throw new Error("監査の再開には実行IDが必要です。");
+    }
+    if (input.resume) {
+      args.push("--run-id", safeRunId(input.runId), "--resume");
+    }
   }
   if (command === "coverage-synthesize") {
     args.push("--run-id", safeRunId(input.runId));
@@ -533,8 +553,9 @@ function parseProgress(line) {
 }
 
 async function runCommand(input) {
-  if (activeProcess) throw new Error("Another command is already running");
+  if (activeProcess || activeOperation) throw new Error("Another command is already running");
   const spec = buildCommand(input);
+  activeOperation = "run";
   const startedAt = Date.now();
   await appendDiagnostic({
     type: "command.started",
@@ -606,6 +627,7 @@ async function runCommand(input) {
         activeProcessStartedAt = null;
         activeProcessLastOutputAt = null;
       }
+      if (activeOperation === "run") activeOperation = null;
       stopRunProtection();
     };
 
@@ -947,7 +969,7 @@ async function runGit(repoPath, args, { timeoutMs = 30000 } = {}) {
 }
 
 async function updateRepository(repoPath) {
-  if (activeProcess) throw new Error("処理実行中は対象フォルダを更新できません。");
+  return withOperation("repository-sync", async () => {
   const repository = validateRepository(repoPath);
 
   const inside = await runGit(repository, ["rev-parse", "--is-inside-work-tree"]);
@@ -1149,14 +1171,15 @@ if (hasSingleInstanceLock) {
     registerIpc,
     readSettings,
     appendDiagnostic,
-    isBusy: () => Boolean(activeProcess)
+    isBusy: () => Boolean(activeProcess || activeOperation),
+    withOperation
   });
   updaterController = createUpdaterController({
     registerIpc,
     readSettings,
     appendDiagnostic,
     getMainWindow: () => mainWindow,
-    isBusy: () => Boolean(activeProcess)
+    isBusy: () => Boolean(activeProcess || activeOperation)
   });
   createWindow();
   await updaterController.scheduleAutoCheck();
