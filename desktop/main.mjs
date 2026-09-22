@@ -278,8 +278,14 @@ function buildCommand(input) {
       "--goal", safeGoal(input.goal),
       "--reuse-coverage", String(reuseCoverage)
     );
-    if (input.runId) args.push("--run-id", safeRunId(input.runId));
-    if (input.resume) args.push("--resume");
+    if (input.resume) {
+      if (!input.runId) throw new Error("再開する実行履歴を選択してください");
+      args.push("--run-id", safeRunId(input.runId), "--resume");
+    } else if (input.runId) {
+      const error = new Error("新規の全体監査では既存の実行IDを指定できません");
+      error.code = "NEW_RUN_ID_NOT_ALLOWED";
+      throw error;
+    }
   }
   if (command === "coverage-synthesize") {
     args.push("--run-id", safeRunId(input.runId));
