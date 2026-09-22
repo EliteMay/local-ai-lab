@@ -1008,6 +1008,7 @@ async function updateRepository(repoPath) {
       : "すでにリモートの最新版です。",
     detail: pull.stdout
   };
+  });
 }
 
 async function isLocalAiLabRepository(repoPath) {
