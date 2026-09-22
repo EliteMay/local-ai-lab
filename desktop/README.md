@@ -270,3 +270,12 @@ AppがForegroundでないときはCommand完了 / FailureをOS Notificationで�
 ## 履歴
 
 履歴画面では実行ID、対象Folder、監査目的、Status等を検索できます。「保存先」から、safe Run IDで解決したそのRunの保存FolderだけをExplorerで開けます。Rendererから任意PathをShellへ渡すAPIは公開しません。
+
+
+## v0.3.2 変更なし監査Batchの再利用
+
+全体監査の新規Runでは、既定で保存済みRunから変更のないBatchを探します。同じRepository・監査目的・AI/監査設定で、Batch内容Fingerprintまで一致した場合だけ保存済みFindingを再利用し、それ以外は通常どおりLocal Modelへ送ります。
+
+設定画面の「変更のない監査部分は前回結果を再利用」でON/OFFできます。OFF時は新規Runを全件再監査します。Resumeは別機能であり、従来どおり同一RunのRepository Fingerprint / Execution Identity完全一致を要求します。
+
+再利用元のRun / Batch / Finding IDは保存結果へ残し、再利用したBatch数・Chunk数もCoverage Evidenceへ記録します。RendererへCache Pathや任意File Pathの権限は追加しません。
