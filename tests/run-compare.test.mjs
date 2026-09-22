@@ -14,7 +14,7 @@ function finding(title, severity, file, lineStart) {
 test("run comparison separates added, resolved and persisting findings", () => {
   const baseline = {
     runId: "run-old",
-    run: { repoPath: "D:/repo", createdAt: "2026-09-20T00:00:00Z", completedAt: "2026-09-20T00:10:00Z" },
+    run: { repoPath: "D:/repo", goal: "audit", createdAt: "2026-09-20T00:00:00Z", completedAt: "2026-09-20T00:10:00Z" },
     coverage: { coveragePercent: 90, complete: true },
     findings: [
       finding("old problem", "high", "src/a.js", 10),
@@ -24,7 +24,7 @@ test("run comparison separates added, resolved and persisting findings", () => {
   };
   const current = {
     runId: "run-new",
-    run: { repoPath: "D:/repo", createdAt: "2026-09-21T00:00:00Z", completedAt: "2026-09-21T00:08:00Z" },
+    run: { repoPath: "D:/repo", goal: "audit", createdAt: "2026-09-21T00:00:00Z", completedAt: "2026-09-21T00:08:00Z" },
     coverage: { coveragePercent: 100, complete: true },
     findings: [
       finding("same problem", "medium", "src/b.js", 20),
