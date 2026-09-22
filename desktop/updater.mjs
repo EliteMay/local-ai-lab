@@ -31,7 +31,9 @@ export function createUpdaterController({
   readSettings,
   appendDiagnostic,
   getMainWindow,
-  isBusy
+  isBusy,
+  beginOperation,
+  endOperation
 }) {
   let checkPromise = null;
   let installInProgress = false;
@@ -39,6 +41,14 @@ export function createUpdaterController({
   let quitObserved = false;
   let promptedVersion = "";
   let configured = false;
+  let updateOperation = null;
+
+  function releaseUpdateOperation(token = updateOperation) {
+    if (!token) return;
+    endOperation(token);
+    if (updateOperation === token) updateOperation = null;
+  }
+
   let updateState = {
     state: "idle",
     currentVersion: app.getVersion(),
@@ -191,6 +201,8 @@ export function createUpdaterController({
       latestVersion = checked.latestVersion;
     }
 
+    const operation = beginOperation("app-update", { phase: "download", latestVersion });
+    updateOperation = operation;
     installInProgress = true;
     downloadedInstallerPath = "";
     try {
@@ -207,6 +219,7 @@ export function createUpdaterController({
         "";
 
       installInProgress = false;
+      releaseUpdateOperation(operation);
       setWindowProgress(-1);
       await appendDiagnostic({
         type: "update.download.completed",
@@ -222,6 +235,7 @@ export function createUpdaterController({
       return { ok: true, downloaded: true, message: "ダウンロード完了。再起動して更新できます。" };
     } catch (error) {
       installInProgress = false;
+      releaseUpdateOperation(operation);
       downloadedInstallerPath = "";
       setWindowProgress(-1);
       await showFailure(error);
@@ -243,6 +257,8 @@ export function createUpdaterController({
       return { ok: true, message: "再起動処理中です。" };
     }
 
+    const operation = beginOperation("app-update", { phase: "install", latestVersion: updateState.latestVersion });
+    updateOperation = operation;
     installInProgress = true;
     quitObserved = false;
     const latestVersion = updateState.latestVersion;
@@ -260,6 +276,7 @@ export function createUpdaterController({
         autoUpdater.quitAndInstall(false, true);
       } catch (error) {
         installInProgress = false;
+        releaseUpdateOperation(operation);
         void showFailure(error);
       }
     }, 300);
@@ -274,6 +291,7 @@ export function createUpdaterController({
       const openError = await shell.openPath(downloadedInstallerPath);
       if (openError) {
         installInProgress = false;
+        releaseUpdateOperation(operation);
         await showFailure(new Error(`更新インストーラーを起動できませんでした: ${openError}`));
         return;
       }
@@ -334,6 +352,7 @@ export function createUpdaterController({
     });
     autoUpdater.on("error", (error) => {
       installInProgress = false;
+      releaseUpdateOperation();
       setWindowProgress(-1);
       void appendDiagnostic({ type: "update.error", error: String(error?.message || error).slice(0, 500) });
       void setState({
