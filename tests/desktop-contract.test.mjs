@@ -449,3 +449,31 @@ test("desktop compares and exports saved runs through narrow IPC", async () => {
   assert.match(html, /id="historyComparePanel"/);
   assert.match(html, /id="compareBaselineStatus"/);
 });
+
+test("desktop fresh coverage cannot forward a selected historical run id", async () => {
+  const [main, renderer, store] = await Promise.all([
+    read("desktop/main.mjs"),
+    read("desktop/renderer/renderer.mjs"),
+    read("src/core/run-store.mjs")
+  ]);
+
+  assert.match(renderer, /state\.resume \? selectedRunId : undefined/);
+  assert.match(main, /FRESH_RUN_ID_FORBIDDEN/);
+  assert.match(store, /RUN_ID_ALREADY_EXISTS/);
+  assert.match(store, /INVALID_RUN_ID/);
+});
+
+test("main process serializes audit, repository sync, and model load operations", async () => {
+  const [main, models, bonsai] = await Promise.all([
+    read("desktop/main.mjs"),
+    read("desktop/model-manager.mjs"),
+    read("desktop/bonsai-runtime.mjs")
+  ]);
+
+  assert.match(main, /runExclusiveOperation\("run"/);
+  assert.match(main, /runExclusiveOperation\("repository-sync"/);
+  assert.match(models, /withOperation\("model-load"/);
+  assert.match(models, /withOperation\("model-unload"/);
+  assert.match(bonsai, /withOperation\("model-load"/);
+  assert.match(bonsai, /withOperation\("model-unload"/);
+});
