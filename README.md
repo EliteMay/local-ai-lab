@@ -66,14 +66,17 @@ Web / Electron制作に関係する共通Ruleは `EliteMay/web-project-guide` �
 - Windows
 - Node.js 20+
 - Default Runtime: LM Studio
-- Default Model: Qwen3-8B
+- Baseline Model: Qwen3-8B
+- Default audit routing: Auto Routing（作業種類ごとにCatalogから決定）
 - Optional Runtime: PrismML llama.cpp
 - Optional Model Profile: Bonsai 2 27B
 - 初期対象: PC上のローカルGit Repository
 
-## Model Profile切替
+## モデル運用
 
-Defaultは従来どおりLM Studio + Qwen3-8Bです。Bonsai 2 27Bは明示的にProfileを指定したときだけ使用します。
+現在の監査標準は **Auto Routing** です。作業種類ごとに `config/model-routing.json` とModel Catalogから使用モデルを決定します。従来互換の1モデル固定も残しており、`--model-routing fixed` と `--model-profile` で明示できます。
+
+`doctor` のBaseline接続確認はLM Studio + Qwen3-8Bを使います。Bonsai 2 27Bを固定確認したい場合はProfileを明示します。
 
 Default確認:
 
