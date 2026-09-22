@@ -9,6 +9,49 @@ function responseTooLargeError(providerName, maxResponseBytes) {
   return error;
 }
 
+async function readFetchResponseBounded(response, maxResponseBytes, providerName) {
+  const declaredLength = Number(response.headers.get("content-length") || 0);
+  if (declaredLength > maxResponseBytes) {
+    try { await response.body?.cancel?.(); } catch {}
+    throw responseTooLargeError(providerName, maxResponseBytes);
+  }
+
+  if (!response.body?.getReader) {
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.byteLength > maxResponseBytes) {
+      throw responseTooLargeError(providerName, maxResponseBytes);
+    }
+    return new TextDecoder().decode(bytes);
+  }
+
+  const reader = response.body.getReader();
+  const chunks = [];
+  let receivedBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = value instanceof Uint8Array ? value : new Uint8Array(value);
+      receivedBytes += chunk.byteLength;
+      if (receivedBytes > maxResponseBytes) {
+        try { await reader.cancel(); } catch {}
+        throw responseTooLargeError(providerName, maxResponseBytes);
+      }
+      chunks.push(chunk);
+    }
+  } finally {
+    reader.releaseLock?.();
+  }
+
+  const combined = new Uint8Array(receivedBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    combined.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(combined);
+}
+
 function requestJsonWithNodeHttp(urlString, options, timeoutMs, providerName, maxResponseBytes) {
   const url = new URL(urlString);
   const protocolClient = url.protocol === "https:"
@@ -152,7 +195,8 @@ export class LMStudioClient {
     structuredOutputStyle = "openai-json-schema",
     nativeModelDetailsPath = "/api/v1/models",
     transport = "fetch",
-    maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES
+    maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES,
+    apiToken = undefined
   }) {
     this.baseUrl = String(baseUrl).replace(/\/$/, "");
     this.serverRoot = serverRootFromBaseUrl(this.baseUrl);
@@ -165,11 +209,21 @@ export class LMStudioClient {
     this.nativeModelDetailsPath = nativeModelDetailsPath;
     this.transport = transport;
     this.maxResponseBytes = maxResponseBytes;
+    this.apiToken = apiToken === undefined && providerName === "LM Studio"
+      ? String(process.env.LM_API_TOKEN || "")
+      : String(apiToken || "");
   }
 
   async #requestUrl(url, options = {}) {
+    const requestOptions = {
+      ...options,
+      headers: {
+        ...(this.apiToken ? { authorization: "Bearer " + this.apiToken } : {}),
+        ...(options.headers ?? {})
+      }
+    };
     if (this.transport === "node-http") {
-      return requestJsonWithNodeHttp(url, options, this.timeoutMs, this.providerName, this.maxResponseBytes);
+      return requestJsonWithNodeHttp(url, requestOptions, this.timeoutMs, this.providerName, this.maxResponseBytes);
     }
     if (this.transport !== "fetch") {
       throw new Error(`Unknown model HTTP transport: ${this.transport}`);
@@ -180,23 +234,15 @@ export class LMStudioClient {
 
     try {
       const response = await fetch(url, {
-        ...options,
+        ...requestOptions,
         signal: controller.signal,
         headers: {
           "content-type": "application/json",
-          ...(options.headers ?? {})
+          ...(requestOptions.headers ?? {})
         }
       });
 
-      const declaredLength = Number(response.headers.get("content-length") || 0);
-      if (declaredLength > this.maxResponseBytes) {
-        throw responseTooLargeError(this.providerName, this.maxResponseBytes);
-      }
-      const bytes = new Uint8Array(await response.arrayBuffer());
-      if (bytes.byteLength > this.maxResponseBytes) {
-        throw responseTooLargeError(this.providerName, this.maxResponseBytes);
-      }
-      const body = new TextDecoder().decode(bytes);
+      const body = await readFetchResponseBounded(response, this.maxResponseBytes, this.providerName);
       if (!response.ok) {
         throw new Error(`${this.providerName} request failed (${response.status}): ${body.slice(0, 500)}`);
       }
