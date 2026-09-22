@@ -1174,7 +1174,7 @@ if (hasSingleInstanceLock) {
     readSettings,
     appendDiagnostic,
     getMainWindow: () => mainWindow,
-    isBusy: () => Boolean(activeOperation),
+    isBusy: () => Boolean(activeOperation && activeOperation !== "app-update"),
     withOperation
   });
   createWindow();
