@@ -1,4 +1,4 @@
-# Local AI Lab Desktop v0.3
+# Local AI Lab Desktop v0.3.1
 
 Local AI Labの監査・再統合・検証Runを、Windows向けElectron GUIから開始・監視・再開するDesktop Controllerです。
 
@@ -151,6 +151,8 @@ Before / After SHAを確認
 - PARTIAL Coverageの再開準備
 - Coverage 100% + Synthesis失敗RunのSynthesis再開準備
 - 結果のClipboard Copy
+- 履歴で比較元Runを固定し、同じRepositoryの別RunとFinding / Coverage / Model Call差分を比較
+- 保存済みRun一式のJSON Export（保存先はMain ProcessのSave Dialogで選択）
 - Model Profile / 最後に使ったRepositoryの設定保存
 - Electron userDataへのRun履歴 / Settings / 最大100件の診断履歴
 - GitHub Releases Update（DownloadとRestartを分離）
