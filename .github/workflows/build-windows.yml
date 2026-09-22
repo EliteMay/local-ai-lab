@@ -79,6 +79,7 @@ jobs:
           node --check desktop/main.mjs
           node --check desktop/updater.mjs
           node --check desktop/model-manager.mjs
+          node --check desktop/run-compare.mjs
           node --check desktop/preload.cjs
           node --check desktop/renderer/renderer.mjs
           node --check scripts/generate-app-icon.mjs
@@ -211,14 +212,16 @@ jobs:
           - Local AI Runtime / Model接続確認
           - Repository Coverage Audit / Synthesis
           - 長時間Runの進捗・履歴・再開
-          - 対象Repositoryの安全なGitHub最新化
-          - GitHub Releases経由のアプリ内One-click Update
+          - 用途別Local Modelの自動振り分け
+          - 保存済みRunの比較とJSON書き出し
+          - 対象Repositoryの安全なリモート最新化
+          - GitHub Releases経由のアプリ内Update
 
           ### Update
 
           v0.2.0はAuto Updaterを搭載する最初のVersionです。
           このVersionだけはSetup.exeを手動で1回インストールしてください。
-          v0.2.0以降はアプリ内の「更新を確認」「今すぐ更新」から新版へ更新できます。
+          v0.2.0以降はアプリ内の「更新を確認」→「ダウンロード」→「再起動して更新」から新版へ更新できます。
 
           ### 注意
 
