@@ -1244,14 +1244,19 @@ function appendLog(payload) {
 
 function applyDoctor(text) {
   const provider = text.match(/^(.+?) API: OK/m)?.[1] || "接続済み";
-  const model = text.match(/^Configured model:\s*(.+)$/m)?.[1] || "不明";
+  const routing = text.match(/^Model routing:\s*(.+)$/m)?.[1] || "fixed";
+  const model = routing === "auto"
+    ? "自動振り分け"
+    : text.match(/^Configured model:\s*(.+)$/m)?.[1] || "不明";
   const loaded = text.match(/^Configured model loaded:\s*(.+)$/m)?.[1] || "不明";
+  const autoReady = text.match(/^Auto Routing ready:\s*(yes|no)$/m)?.[1];
+  const ready = autoReady ? autoReady === "yes" : loaded === "yes";
   setText("#runtime", provider);
   setText("#model", model);
-  setText("#connection", loaded === "yes" ? "接続中" : "モデル未読み込み");
-  $("#dot").classList.toggle("online", loaded === "yes");
-  $("#dot").classList.toggle("offline", loaded !== "yes");
-  setText("#runtimeMini", loaded === "yes" ? "AI接続中" : "接続要確認");
+  setText("#connection", ready ? "接続中" : routing === "auto" ? "自動振り分け要確認" : "モデル未読み込み");
+  $("#dot").classList.toggle("online", ready);
+  $("#dot").classList.toggle("offline", !ready);
+  setText("#runtimeMini", ready ? "AI接続中" : "接続要確認");
 }
 
 function friendlyError(message) {
