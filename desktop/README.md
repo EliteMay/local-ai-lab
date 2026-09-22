@@ -151,7 +151,7 @@ Before / After SHAを確認
 - PARTIAL Coverageの再開準備
 - Coverage 100% + Synthesis失敗RunのSynthesis再開準備
 - 結果のClipboard Copy
-- 履歴で比較元Runを固定し、同じRepositoryの別RunとFinding / Coverage / Model Call差分を比較
+- 履歴で比較元Runを固定し、同じRepository・同じ監査目的・Coverage完了の別RunとFinding / Coverage / Model Call差分を比較
 - 保存済みRun一式のJSON Export（保存先はMain ProcessのSave Dialogで選択）
 - Model Profile / 最後に使ったRepositoryの設定保存
 - Electron userDataへのRun履歴 / Settings / 最大100件の診断履歴
