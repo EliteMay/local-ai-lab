@@ -406,3 +406,92 @@ test("coverage reuse can be disabled for a full live re-audit", async (t) => {
   assert.equal(run.reuseCoverage, false);
   assert.equal(run.reuseSourceRunId, null);
 });
+
+
+test("coverage reuse is rejected when automatic repository route changes", async (t) => {
+  const { repo, runs } = await createFixture(t, "local-ai-lab-coverage-route-change-");
+  const store = new RunStore(runs);
+  const autoConfig = {
+    ...config,
+    modelRoutingMode: "auto",
+    modelRoutingIdentity: {
+      catalogHash: "catalog-test",
+      routingHash: "routing-test",
+      autoManageModels: true
+    }
+  };
+
+  class FakeRouter {
+    constructor(model) {
+      this.model = model;
+      this.routing = {
+        codeExtensions: [".js"],
+        codeRatioThreshold: 0.45
+      };
+      this.pins = {};
+    }
+    clientFor(taskType) {
+      if (!this.pins[taskType]) this.pins[taskType] = "fake-model";
+      return this.model;
+    }
+    importPins(pins) {
+      this.pins = { ...this.pins, ...(pins ?? {}) };
+    }
+    snapshot() {
+      return {
+        mode: "auto",
+        catalogHash: "catalog-test",
+        routingHash: "routing-test",
+        autoManageModels: true,
+        pins: { ...this.pins },
+        totalCalls: this.model.calls.length,
+        models: []
+      };
+    }
+  }
+
+  const firstModel = new CoverageFakeModel();
+  const first = new CoverageAuditOrchestrator({
+    config: autoConfig,
+    modelRouter: new FakeRouter(firstModel),
+    runStore: store
+  });
+  await first.run({
+    repoPath: repo,
+    goal: "Audit all source files",
+    runId: "run-route-baseline"
+  });
+
+  const baselineRun = JSON.parse(await readFile(join(runs, "run-route-baseline", "run.json"), "utf8"));
+  assert.equal(baselineRun.coverageTaskType, "coverage-code");
+
+  await mkdir(join(repo, "docs"), { recursive: true });
+  for (let index = 0; index < 5; index += 1) {
+    await writeFile(
+      join(repo, "docs", `note-${index}.md`),
+      "# Note\n" + String(index).repeat(70) + "\n",
+      "utf8"
+    );
+  }
+
+  const secondModel = new CoverageFakeModel();
+  const events = [];
+  const second = new CoverageAuditOrchestrator({
+    config: autoConfig,
+    modelRouter: new FakeRouter(secondModel),
+    runStore: store,
+    onProgress: (event) => events.push(event)
+  });
+  const result = await second.run({
+    repoPath: repo,
+    goal: "Audit all source files",
+    runId: "run-route-current"
+  });
+
+  const currentRun = JSON.parse(await readFile(join(runs, "run-route-current", "run.json"), "utf8"));
+  assert.equal(currentRun.coverageTaskType, "coverage-general");
+  assert.equal(result.coverage.reusedBatches, 0);
+  assert.equal(currentRun.reuseSourceRunId, null);
+  assert.ok(secondModel.calls.some((call) => call.system.includes("Coverage Auditor")));
+  assert.ok(!events.some((event) => event.type === "coverage_batch_reused"));
+});
