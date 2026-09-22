@@ -391,3 +391,78 @@ test("node-http transport aborts oversized local model responses", async (t) => 
     /response exceeded/
   );
 });
+
+test("LM Studio inference sends the configured API token but Prism does not inherit it", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const originalToken = process.env.LM_API_TOKEN;
+  const calls = [];
+  process.env.LM_API_TOKEN = "test-token";
+
+  globalThis.fetch = async (url, options = {}) => {
+    calls.push({ url: String(url), authorization: options.headers?.authorization });
+    return new Response(JSON.stringify({ data: [] }), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    });
+  };
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    if (originalToken === undefined) delete process.env.LM_API_TOKEN;
+    else process.env.LM_API_TOKEN = originalToken;
+  });
+
+  const lm = new LMStudioClient({
+    baseUrl: "http://127.0.0.1:1234/v1",
+    model: "qwen/qwen3-8b",
+    providerName: "LM Studio"
+  });
+  await lm.listModels();
+
+  const prism = new LMStudioClient({
+    baseUrl: "http://127.0.0.1:8080/v1",
+    model: "bonsai-2-27b",
+    providerName: "PrismML llama.cpp"
+  });
+  await prism.listModels();
+
+  assert.equal(calls[0].authorization, "Bearer test-token");
+  assert.equal(calls[1].authorization, undefined);
+});
+
+test("fetch transport stops reading an oversized chunked response before buffering it all", async (t) => {
+  const originalFetch = globalThis.fetch;
+  let cancelled = false;
+  globalThis.fetch = async () => {
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new Uint8Array(80));
+        controller.enqueue(new Uint8Array(80));
+      },
+      cancel() {
+        cancelled = true;
+      }
+    });
+    return new Response(stream, { status: 200, headers: { "content-type": "application/json" } });
+  };
+  t.after(() => { globalThis.fetch = originalFetch; });
+
+  const client = new LMStudioClient({
+    baseUrl: "http://127.0.0.1:1234/v1",
+    model: "qwen/qwen3-8b",
+    maxResponseBytes: 128
+  });
+
+  await assert.rejects(
+    async () => {
+      try {
+        await client.listModels();
+      } catch (error) {
+        assert.equal(error.code, "RESPONSE_TOO_LARGE");
+        throw error;
+      }
+    },
+    /response exceeded/
+  );
+  assert.equal(cancelled, true);
+});
