@@ -136,11 +136,13 @@ export class LMStudioModelManager {
     const current = installed.loaded_instances?.[0];
     if (current?.id) return { instanceId: current.id, model: installed, alreadyLoaded: true };
 
-    if (autoManage) {
-      await this.#unloadManagedExcept(entry, models);
-      models = await this.listModels();
-      installed = this.resolveInstalled(entry, models) ?? installed;
+    if (!autoManage) {
+      throw makeError(entry.label + " は読み込まれていません。自動モデル管理がOFFのため自動Loadしません", "MODEL_NOT_LOADED");
     }
+
+    await this.#unloadManagedExcept(entry, models);
+    models = await this.listModels();
+    installed = this.resolveInstalled(entry, models) ?? installed;
 
     const result = await this.#request("/api/v1/models/load", {
       method: "POST",
