@@ -66,19 +66,26 @@ Web / Electron制作に関係する共通Ruleは `EliteMay/web-project-guide` �
 - Windows
 - Node.js 20+
 - Default Runtime: LM Studio
-- Default Model: Qwen3-8B
+- Default Model Operation: Auto Routing（TaskごとにCatalog内Modelを決定）
+- Baseline / Fixed Default: Qwen3-8B
 - Optional Runtime: PrismML llama.cpp
 - Optional Model Profile: Bonsai 2 27B
 - 初期対象: PC上のローカルGit Repository
 
 ## Model Profile切替
 
-Defaultは従来どおりLM Studio + Qwen3-8Bです。Bonsai 2 27Bは明示的にProfileを指定したときだけ使用します。
+Desktop / CLIの既定はAuto Routingです。Qwen3-8Bは一般監査のBaseline / Fixed Defaultで、Code-heavy監査・改善案・Reviewerでは用途別候補を決定的に切り替えます。Bonsai 2 27BはReviewer候補ですが、起動・停止はUserが明示的に行います。
 
-Default確認:
+Auto Routing全体の接続・導入・Fallback確認:
 
 ```powershell
 npm run doctor
+```
+
+Qwen3-8B固定確認:
+
+```powershell
+npm run doctor -- --model-routing fixed
 ```
 
 Bonsai 2 27B確認:
@@ -272,6 +279,18 @@ Run中は現在のTask / Model / Fallback / Model別Call数を表示し、保存
 
 Qwen3 4Bは軽量FallbackとしてAuto Routeへ入れます。Gemma 3 4B / Qwen3-VL 4B / gpt-oss-20b / Qwen3 Coder 30B-A3BもCatalogへ登録しますが、重さや未実装Capabilityのため初期Auto Routeには入れません。
 
+## v0.3.3 audit hardening
+
+v0.3.3では、v0.3系で増えた強い機能の競合・履歴保護・認証境界を固めます。
+
+- 新規Coverageは過去Run IDを渡さず、RunStoreも既存Run IDの再作成を `RUN_ID_ALREADY_EXISTS` で拒否
+- Main ProcessのOperation Lockで監査 / Repository更新 / Model Load・Unloadを相互排他
+- 「モデル自動管理OFF」はLoad済みModelだけを使い、未Load候補は限定Fallback。手動Loadは引き続き可能
+- LM Studio推論APIへ `LM_API_TOKEN` を送信し、Prism/BonsaiへはLM Studio Tokenを送らない
+- Fetch Responseは受信中にSize上限を監視し、上限超過時点で中断
+- Prompt / Schema / Coverage処理SourceからAudit Engine Hashを自動生成し、Resume / 差分再利用の互換性へ使用
+- `doctor` はAuto Routingの主要RouteとFallback readinessを表示
+
 ## v0.3.2 compatible coverage reuse
 
 v0.3.2では、新しい全体監査を開始するときに、保存済みRunから**変更のない監査Batchだけ**を再利用できます。再利用は高速化のための決定的な最適化で、AI自身には判断させません。
@@ -280,7 +299,7 @@ v0.3.2では、新しい全体監査を開始するときに、保存済みRun�
 
 - 同じ対象Repository
 - 同じ監査目的
-- 同じAI / Routing / Coverage設定とPrompt Schema
+- 同じAI / Routing / Coverage設定と自動算出したAudit Engine Hash
 - Repository全体から判定した監査Route（一般監査 / コード監査）が一致
 - Batchを構成するChunk ID・File Path・File SHA-256から作る内容Fingerprintが一致
 
