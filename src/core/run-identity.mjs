@@ -17,7 +17,7 @@ function sha256(value) {
   return createHash("sha256").update(JSON.stringify(stableValue(value))).digest("hex");
 }
 
-export function buildExecutionIdentity(config = {}) {
+export function buildExecutionIdentity(config = {}, { auditEngineHash = null } = {}) {
   const modelRoutingMode = String(config.modelRoutingMode || "fixed");
   const routingIdentity = config.modelRoutingIdentity && typeof config.modelRoutingIdentity === "object"
     ? config.modelRoutingIdentity
@@ -45,7 +45,8 @@ export function buildExecutionIdentity(config = {}) {
     routingHash: routingIdentity?.routingHash ?? null,
     autoManageModels: routingIdentity?.autoManageModels ?? null,
     configHash: sha256(relevantConfig),
-    promptSchemaVersion: PROMPT_SCHEMA_VERSION
+    promptSchemaVersion: PROMPT_SCHEMA_VERSION,
+    auditEngineHash: auditEngineHash ? String(auditEngineHash) : null
   };
 }
 
@@ -61,7 +62,8 @@ export function compareResumeIdentity(saved, current) {
   const commonKeys = [
     ["modelRoutingMode", "モデル運用"],
     ["configHash", "監査設定"],
-    ["promptSchemaVersion", "Prompt/Schema版"]
+    ["promptSchemaVersion", "Prompt/Schema版"],
+    ["auditEngineHash", "監査Engine"]
   ];
 
   for (const [key, label] of commonKeys) {

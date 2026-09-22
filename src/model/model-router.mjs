@@ -106,18 +106,25 @@ export class ModelRouter {
     }
 
     try {
-      const loaded = await this.manager.ensureLoaded(entry, { autoManage: this.autoManageModels });
+      const loaded = await this.manager.ensureLoaded(entry, {
+        autoManage: this.autoManageModels,
+        allowLoad: this.autoManageModels
+      });
       return new LMStudioClient({
         ...this.config.model,
         providerName: "LM Studio",
         baseUrl: "http://127.0.0.1:1234/v1",
         nativeModelDetailsPath: "/api/v1/models",
         transport: "fetch",
-        model: loaded.instanceId
+        model: loaded.instanceId,
+        apiToken: process.env.LM_API_TOKEN || ""
       });
     } catch (error) {
-      if (entry.id === "qwen3-8b") {
-        return new LMStudioClient(this.config.model);
+      if (entry.id === "qwen3-8b" && error?.code !== "MODEL_NOT_LOADED") {
+        return new LMStudioClient({
+          ...this.config.model,
+          apiToken: process.env.LM_API_TOKEN || ""
+        });
       }
       throw error;
     }
@@ -185,6 +192,7 @@ export class ModelRouter {
           failures.push(entry.label + ": " + error.message);
           if (
             error?.code === "MODEL_NOT_INSTALLED" ||
+            error?.code === "MODEL_NOT_LOADED" ||
             error?.code === "LM_STUDIO_MODEL_API" ||
             /ECONNREFUSED|fetch failed/i.test(String(error?.message || ""))
           ) {

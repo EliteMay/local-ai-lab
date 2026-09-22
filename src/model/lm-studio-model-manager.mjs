@@ -127,7 +127,7 @@ export class LMStudioModelManager {
     return { unloaded };
   }
 
-  async ensureLoaded(entry, { autoManage = true } = {}) {
+  async ensureLoaded(entry, { autoManage = true, allowLoad = true } = {}) {
     if (entry.runtime !== "lm-studio") throw new Error("ensureLoaded only supports LM Studio models");
     let models = await this.listModels();
     let installed = this.resolveInstalled(entry, models);
@@ -135,6 +135,10 @@ export class LMStudioModelManager {
 
     const current = installed.loaded_instances?.[0];
     if (current?.id) return { instanceId: current.id, model: installed, alreadyLoaded: true };
+
+    if (!allowLoad) {
+      throw makeError(entry.label + " は読み込まれていません。自動モデル管理をONにするか、先に手動で読み込んでください", "MODEL_NOT_LOADED");
+    }
 
     if (autoManage) {
       await this.#unloadManagedExcept(entry, models);

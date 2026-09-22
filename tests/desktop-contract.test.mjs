@@ -449,3 +449,30 @@ test("desktop compares and exports saved runs through narrow IPC", async () => {
   assert.match(html, /id="historyComparePanel"/);
   assert.match(html, /id="compareBaselineStatus"/);
 });
+
+
+test("desktop never sends a history run id for a new coverage run", async () => {
+  const main = await readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8");
+  const renderer = await readFile(new URL("../desktop/renderer/renderer.mjs", import.meta.url), "utf8");
+  const runStore = await readFile(new URL("../src/core/run-store.mjs", import.meta.url), "utf8");
+
+  assert.match(renderer, /const runIdForCommand = command === "coverage-synthesize" \|\| \(command === "coverage" && state\.resume\)/);
+  assert.match(renderer, /runId: runIdForCommand/);
+  assert.match(main, /input\.runId && !input\.resume/);
+  assert.match(main, /新しい全体監査に既存の実行IDは指定できません/);
+  assert.match(runStore, /RUN_ID_ALREADY_EXISTS/);
+});
+
+test("desktop serializes repository and model mutations with audit execution", async () => {
+  const main = await readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8");
+  const manager = await readFile(new URL("../desktop/model-manager.mjs", import.meta.url), "utf8");
+
+  assert.match(main, /let activeOperation = null/);
+  assert.match(main, /async function withOperation\(kind, work\)/);
+  assert.match(main, /activeOperation \|\| activeProcess/);
+  assert.match(main, /withOperation\("repository-sync"/);
+  assert.match(main, /if \(activeProcess \|\| activeOperation\) throw new Error\("Another command is already running"\)/);
+  assert.match(manager, /withOperation\("model-download"/);
+  assert.match(manager, /withOperation\("model-load"/);
+  assert.match(manager, /withOperation\("model-unload"/);
+});

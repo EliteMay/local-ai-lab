@@ -7,7 +7,11 @@ import { getRoleDefinition } from "../roles/role-definitions.mjs";
 import { assertResumeIdentity, buildExecutionIdentity } from "./run-identity.mjs";
 import { classifyCoveragePlan } from "../model/model-catalog.mjs";
 import { mergeModelUsageSnapshots } from "../model/model-router.mjs";
+import { createHash } from "node:crypto";
 import { coverageBatchFingerprint, findReusableCoverageBaseline } from "./coverage-reuse.mjs";
+
+const COVERAGE_AUDITOR_SYSTEM = "You are the whole-repository Coverage Auditor. Inspect every supplied source chunk and return only a compact index of evidence-backed issues. You cannot modify files.";
+const COVERAGE_CORRECTION_SUFFIX = "Previous attempt failed validation. Return a smaller valid response and ensure inspectedChunks exactly matches the required IDs.";
 
 function sameStringSet(left, right) {
   if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false;
@@ -88,6 +92,18 @@ function renderSynthesisPrompt({ goal, coverage, findings }) {
 
 function renderReviewPrompt({ goal, coverage, findings, planner }) {
   return `Goal:\n${goal}\n\nReview the completed whole-repository audit findings and the improvement planner output. Check evidence quality, duplication, unsupported claims, overreach, and contradictions. The raw repository has already been covered in batches; do not ask to re-read everything.\n\nCoverage:\n${JSON.stringify(coverage, null, 2)}\n\nAudit findings:\n${JSON.stringify(findings, null, 2)}\n\nPlanner output:\n${JSON.stringify(planner, null, 2)}\n\nReturn the required structured Reviewer response.\n\n/think`;
+}
+
+export function coverageAuditEngineHash() {
+  const payload = {
+    batchPrompt: renderBatchPrompt.toString(),
+    batchSchema: COVERAGE_BATCH_SCHEMA,
+    normalizeFindings: normalizeBatchFindings.toString(),
+    splitBatch: splitBatch.toString(),
+    auditorSystem: COVERAGE_AUDITOR_SYSTEM,
+    correctionSuffix: COVERAGE_CORRECTION_SUFFIX
+  };
+  return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
 }
 
 function makeCoverage(plan, batchResults) {
@@ -186,9 +202,9 @@ export class CoverageAuditOrchestrator {
   async #requestBatch(batch, goal, { maxTokens, correction = false } = {}) {
     const prompt = renderBatchPrompt({ goal, batch });
     const detailed = await this.#clientFor(this.coverageTaskType).chatJsonDetailed({
-      system: "You are the whole-repository Coverage Auditor. Inspect every supplied source chunk and return only a compact index of evidence-backed issues. You cannot modify files.",
+      system: COVERAGE_AUDITOR_SYSTEM,
       user: correction
-        ? `${prompt}\n\nPrevious attempt failed validation. Return a smaller valid response and ensure inspectedChunks exactly matches the required IDs.`
+        ? `${prompt}\n\n${COVERAGE_CORRECTION_SUFFIX}`
         : prompt,
       jsonSchema: COVERAGE_BATCH_SCHEMA,
       maxTokens,
@@ -338,7 +354,9 @@ export class CoverageAuditOrchestrator {
       throw new Error("resume requires an existing --run-id");
     }
 
-    const executionIdentity = buildExecutionIdentity(this.config);
+    const executionIdentity = buildExecutionIdentity(this.config, {
+      auditEngineHash: coverageAuditEngineHash()
+    });
     const reader = new RepoReader(repoPath, this.config.repoReader);
     await reader.assertRepositoryExists();
     const plan = await buildCoveragePlan(reader, this.config.coverage);
