@@ -334,6 +334,11 @@ export class CoverageAuditOrchestrator {
   async run({ repoPath, goal, runId = undefined, resume = false, reuseCoverage = true }) {
     if (typeof repoPath !== "string" || repoPath.trim() === "") throw new Error("repoPath is required");
     if (typeof goal !== "string" || goal.trim() === "") throw new Error("goal is required");
+    if (runId && !resume) {
+      const error = new Error("New coverage runs must not specify --run-id; use --resume for an existing run");
+      error.code = "NEW_RUN_ID_NOT_ALLOWED";
+      throw error;
+    }
     if (resume && (!runId || !(await this.runStore.hasRun(runId)))) {
       throw new Error("resume requires an existing --run-id");
     }
@@ -428,7 +433,6 @@ export class CoverageAuditOrchestrator {
       this.#emit({ type: "coverage_run_resumed", runId, completedBatches: completed.size, totalBatches: plan.totalBatches });
     } else {
       actualRunId = await this.runStore.createRun({
-        ...(runId ? { runId } : {}),
         status: "RUNNING",
         mode: "full-coverage-audit",
         goal,
