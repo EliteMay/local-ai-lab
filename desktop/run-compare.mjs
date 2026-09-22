@@ -16,11 +16,10 @@ function primaryEvidence(finding) {
 
 export function findingComparisonKey(finding) {
   const evidence = primaryEvidence(finding);
-  const file = normalizedText(evidence?.file);
-  const lineStart = Number.isFinite(Number(evidence?.lineStart)) ? Number(evidence.lineStart) : "";
+  const file = normalizedText(evidence?.file).replace(/\\/g, "/");
   const title = normalizedText(finding?.title);
-  if (file || lineStart !== "") return [file, lineStart, title].join("|");
-  return [normalizedText(finding?.id), title].join("|");
+  if (file || title) return [file, title].join("|");
+  return normalizedText(finding?.id);
 }
 
 function severityCounts(list) {
@@ -48,6 +47,7 @@ function compactFinding(finding) {
 }
 
 function numeric(value) {
+  if (value == null || value === "") return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 }
@@ -65,14 +65,19 @@ function elapsedMs(details) {
 }
 
 function repoPath(details) {
-  return String(details?.run?.repoPath || "");
+  return String(details?.run?.repoPath || "").trim();
+}
+
+function repoKey(value) {
+  const normalized = String(value || "").trim().replace(/\\/g, "/").replace(/\/+$/, "");
+  return /^[a-z]:\//i.test(normalized) ? normalized.toLowerCase() : normalized;
 }
 
 export function compareRunDetails(baseline, current) {
   if (!baseline?.runId || !current?.runId) throw new Error("比較する実行履歴が不足しています");
   const baselineRepo = repoPath(baseline);
   const currentRepo = repoPath(current);
-  if (baselineRepo && currentRepo && baselineRepo !== currentRepo) {
+  if (baselineRepo && currentRepo && repoKey(baselineRepo) !== repoKey(currentRepo)) {
     throw new Error("別の対象フォルダの実行履歴は比較できません");
   }
 
