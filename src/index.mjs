@@ -101,7 +101,7 @@ async function createModelRouter(config, args) {
 }
 
 function printHelp() {
-  console.log(`local-ai-lab\n\nGlobal options:\n  --model-profile <name>\n      1モデル固定で config/model-profiles/<name>.json を使用します。\n  --model-routing <auto|fixed>\n      auto は作業種類ごとにモデルを自動選択し、fixed は1つのProfileを使います。\n  --auto-manage-models <true|false>\n      auto時にLM StudioのCatalog管理モデルを必要に応じて読み込み・解放します。\n\nCommands:\n  doctor\n      Check the configured baseline model connection.\n\n  inspect --repo <path> [--search <text>]\n      Read-only inspection of a local repository.\n\n  broker-demo\n      Exercise deterministic delegation without calling the model.\n\n  company --repo <path> --goal <text> [--run-id <id>]\n      Run the brokered AI Company orchestration.\n\n  coverage --repo <path> --goal <text> [--run-id <id>] [--resume]\n      Audit every auditable text chunk with checkpoints and an explicit coverage ledger.\n\n  coverage-synthesize --run-id <id>\n      Synthesize an existing 100% coverage evidence snapshot without re-reading the repository.\n`);
+  console.log(`local-ai-lab\n\nGlobal options:\n  --model-profile <name>\n      1モデル固定で config/model-profiles/<name>.json を使用します。\n  --model-routing <auto|fixed>\n      auto は作業種類ごとにモデルを自動選択し、fixed は1つのProfileを使います。\n  --auto-manage-models <true|false>\n      auto時にLM StudioのCatalog管理モデルを必要に応じて読み込み・解放します。\n\nCommands:\n  doctor\n      Check the configured baseline model connection.\n\n  inspect --repo <path> [--search <text>]\n      Read-only inspection of a local repository.\n\n  broker-demo\n      Exercise deterministic delegation without calling the model.\n\n  company --repo <path> --goal <text> [--run-id <id>]\n      Run the brokered AI Company orchestration.\n\n  coverage --repo <path> --goal <text> [--run-id <id>] [--resume] [--reuse-coverage <true|false>]\n      Audit every auditable text chunk with checkpoints. New runs can reuse compatible unchanged batches by default.\n\n  coverage-synthesize --run-id <id>\n      Synthesize an existing 100% coverage evidence snapshot without re-reading the repository.\n`);
 }
 
 function roleLabel(role) {
@@ -165,6 +165,12 @@ function printCoverageProgress(event) {
     console.log(`[Coverage] Files=${event.auditableFiles} excluded=${event.excludedFiles} chunks=${event.totalChunks} batches=${event.totalBatches}`);
   } else if (event.type === "coverage_run_resumed") {
     console.log(`[Coverage] Resume ${event.runId}: ${event.completedBatches}/${event.totalBatches} batches already completed`);
+  } else if (event.type === "coverage_reuse_ready") {
+    console.log(`[Coverage] CACHE source=${event.sourceRunId} reusable=${event.reusableBatches}/${event.totalBatches}`);
+  } else if (event.type === "coverage_reuse_unavailable") {
+    console.log(`[Coverage] CACHE unavailable: ${event.error}`);
+  } else if (event.type === "coverage_batch_reused") {
+    console.log(`[Coverage] REUSE ${event.batchId} / source=${event.sourceRunId} / findings=${event.findings}`);
   } else if (event.type === "coverage_batch_started") {
     console.log(`[Coverage] START ${event.batchId} / chunks=${event.chunks} / chars=${event.chars}`);
   } else if (event.type === "coverage_batch_split") {
@@ -334,6 +340,7 @@ async function runCoverage(config, args) {
   const goal = getOption(args, "--goal");
   const runId = getOption(args, "--run-id");
   const resume = hasFlag(args, "--resume");
+  const reuseCoverage = optionBoolean(args, "--reuse-coverage", true);
   if (!repo || !goal) {
     throw new Error("coverage requires --repo <path> and --goal <text>");
   }
@@ -347,6 +354,7 @@ async function runCoverage(config, args) {
   console.log(modelRouter ? "Coverage audit model routing: auto" : `Coverage audit model: ${config.model.model}`);
   console.log(`Batch budget: ${config.coverage?.maxBatchChars ?? 16000} chars / ${config.coverage?.batchMaxTokens ?? 1000} output tokens`);
   console.log(`Adaptive single-chunk ceiling: ${config.coverage?.singleChunkMaxTokens ?? 1800} output tokens`);
+  console.log(`Compatible previous batch reuse: ${reuseCoverage && !resume ? "on" : "off"}`);
 
   const orchestrator = new CoverageAuditOrchestrator({
     config,
@@ -354,7 +362,7 @@ async function runCoverage(config, args) {
     modelRouter,
     onProgress: printCoverageProgress
   });
-  const result = await orchestrator.run({ repoPath: repo, goal, runId, resume });
+  const result = await orchestrator.run({ repoPath: repo, goal, runId, resume, reuseCoverage });
 
   console.log(`Coverage run: ${result.runId}`);
   console.log(`Status: ${result.status}`);
