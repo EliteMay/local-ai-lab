@@ -244,3 +244,17 @@
 - Safety: LM Studioの自動Load / UnloadはCatalog管理Modelだけに限定する。Rendererへ任意Model URL / Shell Commandを公開しない。Bonsai RuntimeのStart / StopはUser明示操作のままにする。
 - Observability: Model別Call数 / Failure / Token / Duration、Catalog Hash、Routing Hash、Task PinをRun Evidenceへ保存する。
 - Prevention: 「複数Modelを使える」と「AIへRouting権限を渡す」を同一視しない。RoutingはDeterministic Controllerの責務として維持する。
+
+
+## PL-021 — 差分監査Cacheは互換性とProvenanceを失わない
+
+- Date: 2026-09-22
+- Type: Performance / Reliability
+- Status: Adopted
+- Problem: 同じRepositoryを繰り返し監査すると、変更していないFile / Batchまで毎回Local LLMへ送り直し、時間とTokenを消費する。一方で単純な「前回結果の流用」は、監査目的・Prompt・Model設定・Batch境界が変わった場合に古いEvidenceを現在結果として混ぜる危険がある。
+- Decision: 新規Coverage Runだけを対象に、同じRepository・Goal・Execution Identityを持つ最新の互換Runを候補にし、Chunk ID / File Path / File SHA-256から作るBatch Fingerprintが一致したBatchだけ再利用する。
+- Stability: Auto Routingでは再利用元のTask Pinを引き継ぐ。互換性を確認できない場合や履歴破損時はCache missとしてLive AuditへFallbackし、Primary Runを失敗させない。
+- Evidence: Reused Batchは元Run / 元Batch / 元Finding IDを保持し、CoverageへreusedBatches / reusedChunksを記録する。再利用分を新規Model Call / Tokenとして水増ししない。
+- Boundary: Resumeは従来の完全Fingerprint一致Checkpointsを維持し、新規Runの差分再利用と混同しない。Target RepositoryはRead-onlyのまま。
+- Regression Guard: coverage-reuse helper tests、Orchestratorのall-reuse / reuse-off tests、Desktop setting/progress contract tests。
+- Prevention: Performance Cacheを導入するときはHit率だけでなく、Compatibility Key・Provenance・Fallback・Disable PathをContractとして持つ。
