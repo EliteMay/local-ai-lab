@@ -1,6 +1,43 @@
 import { modelMatchesCatalogEntry } from "./model-catalog.mjs";
 
 const JOB_PATTERN = /^job_[a-z0-9_-]+$/i;
+const DEFAULT_MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
+
+async function readResponseTextBounded(response, maxResponseBytes) {
+  const declaredLength = Number(response.headers.get("content-length") || 0);
+  if (declaredLength > maxResponseBytes) {
+    const error = makeError("LM Studio model API response exceeded safety limit", "RESPONSE_TOO_LARGE");
+    throw error;
+  }
+
+  if (!response.body?.getReader) {
+    const text = await response.text();
+    if (Buffer.byteLength(text, "utf8") > maxResponseBytes) {
+      throw makeError("LM Studio model API response exceeded safety limit", "RESPONSE_TOO_LARGE");
+    }
+    return text;
+  }
+
+  const reader = response.body.getReader();
+  const chunks = [];
+  let receivedBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = Buffer.from(value);
+      receivedBytes += chunk.length;
+      if (receivedBytes > maxResponseBytes) {
+        try { await reader.cancel(); } catch {}
+        throw makeError("LM Studio model API response exceeded safety limit", "RESPONSE_TOO_LARGE");
+      }
+      chunks.push(chunk);
+    }
+  } finally {
+    reader.releaseLock?.();
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
 
 function makeError(message, code) {
   const error = new Error(message);
@@ -9,12 +46,19 @@ function makeError(message, code) {
 }
 
 export class LMStudioModelManager {
-  constructor({ rootUrl = "http://127.0.0.1:1234", catalog, token = process.env.LM_API_TOKEN || "", timeoutMs = 30000 } = {}) {
+  constructor({
+    rootUrl = "http://127.0.0.1:1234",
+    catalog,
+    token = process.env.LM_API_TOKEN || "",
+    timeoutMs = 30000,
+    maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES
+  } = {}) {
     if (!catalog) throw new Error("catalog is required");
     this.rootUrl = String(rootUrl).replace(/\/$/, "");
     this.catalog = catalog;
     this.token = token;
     this.timeoutMs = timeoutMs;
+    this.maxResponseBytes = maxResponseBytes;
   }
 
   async #request(path, { method = "GET", body = undefined } = {}) {
@@ -29,7 +73,7 @@ export class LMStudioModelManager {
         signal: controller.signal,
         ...(body === undefined ? {} : { body: JSON.stringify(body) })
       });
-      const text = await response.text();
+      const text = await readResponseTextBounded(response, this.maxResponseBytes);
       if (!response.ok) throw makeError("LM Studio model API failed (" + response.status + "): " + text.slice(0, 400), "LM_STUDIO_MODEL_API");
       return text ? JSON.parse(text) : {};
     } catch (error) {
@@ -127,7 +171,7 @@ export class LMStudioModelManager {
     return { unloaded };
   }
 
-  async ensureLoaded(entry, { autoManage = true } = {}) {
+  async ensureLoaded(entry, { autoManage = true, allowLoad = autoManage } = {}) {
     if (entry.runtime !== "lm-studio") throw new Error("ensureLoaded only supports LM Studio models");
     let models = await this.listModels();
     let installed = this.resolveInstalled(entry, models);
@@ -135,6 +179,13 @@ export class LMStudioModelManager {
 
     const current = installed.loaded_instances?.[0];
     if (current?.id) return { instanceId: current.id, model: installed, alreadyLoaded: true };
+
+    if (!allowLoad) {
+      throw makeError(
+        entry.label + " は読み込まれていません。モデル自動管理がOFFのため、自動読み込みは行いません。",
+        "MODEL_NOT_LOADED"
+      );
+    }
 
     if (autoManage) {
       await this.#unloadManagedExcept(entry, models);
