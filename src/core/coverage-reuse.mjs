@@ -11,7 +11,7 @@ function normalizeRepositoryPath(value) {
 }
 
 function normalizeGoal(value) {
-  return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+  return String(value || "").trim().replace(/\s+/g, " ");
 }
 
 function batchChunkIds(batch) {
