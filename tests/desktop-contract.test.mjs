@@ -476,4 +476,7 @@ test("main process serializes audit, repository sync, and model load operations"
   assert.match(models, /withOperation\("model-unload"/);
   assert.match(bonsai, /withOperation\("model-load"/);
   assert.match(bonsai, /withOperation\("model-unload"/);
+
+  const updater = await read("desktop/updater.mjs");
+  assert.match(updater, /withOperation\("app-update"/);
 });
