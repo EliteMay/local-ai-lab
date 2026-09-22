@@ -70,7 +70,7 @@ test("latest compatible historical run is selected for reuse", async () => {
         status: "PARTIAL",
         mode: "full-coverage-audit",
         repoPath: "d:/repo/",
-        goal: "  audit  ",
+        goal: "  Audit  ",
         createdAt: "2026-09-21T00:00:00Z",
         executionIdentity: {
           modelRoutingMode: "fixed",
