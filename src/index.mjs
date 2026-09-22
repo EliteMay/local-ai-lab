@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { LMStudioClient } from "./model/lm-studio-client.mjs";
 import { loadModelCatalog, loadModelRouting } from "./model/model-catalog.mjs";
 import { ModelRouter } from "./model/model-router.mjs";
+import { LMStudioModelManager } from "./model/lm-studio-model-manager.mjs";
 import { RepoReader } from "./security/repo-reader.mjs";
 import { TaskBroker } from "./core/task-broker.mjs";
 import { AICompanyOrchestrator } from "./core/orchestrator.mjs";
@@ -215,12 +216,18 @@ function printSynthesisProgress(event) {
   }
 }
 
-async function doctor(config) {
+async function doctor(config, args = []) {
   const client = new LMStudioClient(config.model);
   const models = await client.listModels();
   const ids = models.map((item) => item.id).filter(Boolean);
+  const explicitProfile = getOption(args, "--model-profile") ?? process.env.LOCAL_AI_MODEL_PROFILE;
+  const routingMode = getOption(args, "--model-routing")
+    ?? process.env.LOCAL_AI_MODEL_ROUTING
+    ?? (explicitProfile ? "fixed" : "auto");
+  const autoManageModels = optionBoolean(args, "--auto-manage-models", true);
 
   console.log(`${client.providerName} API: OK`);
+  console.log(`Model routing: ${routingMode}`);
   console.log(`Model profile: ${config.activeModelProfile ?? "default"}`);
   console.log(`Configured model: ${config.model.model}`);
   console.log(`Available models: ${ids.length ? ids.join(", ") : "none"}`);
@@ -228,6 +235,57 @@ async function doctor(config) {
   console.log(`Request timeout: ${Math.round((config.model.timeoutMs ?? 600000) / 1000)} seconds`);
   console.log(`HTTP transport: ${config.model.transport ?? "fetch"}`);
   console.log(`Max output tokens: ${config.model.maxTokens ?? 2048}`);
+
+  if (routingMode === "auto") {
+    const catalog = await loadModelCatalog();
+    const routing = await loadModelRouting(catalog);
+    const manager = new LMStudioModelManager({ catalog });
+    let catalogSnapshot = [];
+    let managementAvailable = true;
+    try {
+      catalogSnapshot = await manager.snapshot();
+      console.log("LM Studio model management API: OK");
+    } catch (error) {
+      managementAvailable = false;
+      console.log(`LM Studio model management API: unavailable (${error.message})`);
+      catalogSnapshot = catalog.models.map((entry) => ({ ...entry, installed: false, loaded: false }));
+    }
+
+    const statusById = new Map(catalogSnapshot.map((item) => [item.id, item]));
+    const externalReady = new Map();
+    for (const entry of catalog.models.filter((item) => item.runtime !== "lm-studio" && item.autoRoute !== false)) {
+      try {
+        const externalClient = new LMStudioClient(entry.connection);
+        const available = await externalClient.listModels();
+        externalReady.set(entry.id, available.some((item) => String(item?.id || "") === String(entry.connection?.model || entry.id)));
+      } catch {
+        externalReady.set(entry.id, false);
+      }
+    }
+
+    const candidateReady = (entry) => {
+      if (!entry) return false;
+      if (entry.runtime === "lm-studio") {
+        if (!managementAvailable) return ids.includes(entry.id) || ids.some((id) => entry.matchTerms?.includes(id));
+        const status = statusById.get(entry.id);
+        return autoManageModels ? Boolean(status?.installed) : Boolean(status?.loaded);
+      }
+      return externalReady.get(entry.id) === true;
+    };
+
+    const standardRoutes = ["coverage-general", "coverage-code", "synthesis-reduction", "planner", "reviewer"];
+    let autoReady = true;
+    console.log(`Auto model management: ${autoManageModels ? "on" : "off"}`);
+    for (const taskType of standardRoutes) {
+      const candidates = (routing.routes[taskType] ?? [])
+        .map((id) => catalog.models.find((entry) => entry.id === id))
+        .filter(Boolean);
+      const ready = candidates.find(candidateReady);
+      if (!ready) autoReady = false;
+      console.log(`Route ${taskType}: ${ready ? "ready via " + ready.label : "unavailable"}`);
+    }
+    console.log(`Auto Routing ready: ${autoReady ? "yes" : "no"}`);
+  }
 
   try {
     const details = await client.listModelDetails();
@@ -347,6 +405,9 @@ async function runCoverage(config, args) {
   if (resume && !runId) {
     throw new Error("coverage --resume requires --run-id <id>");
   }
+  if (runId && !resume) {
+    throw new Error("coverage --run-id is only valid together with --resume");
+  }
 
   const modelRouter = await createModelRouter(config, args);
   const client = modelRouter ? null : new LMStudioClient(config.model);
@@ -424,7 +485,7 @@ try {
   if (!command || command === "help" || command === "--help" || command === "-h") {
     printHelp();
   } else if (command === "doctor") {
-    await doctor(config);
+    await doctor(config, args);
   } else if (command === "inspect") {
     await inspect(config, args);
   } else if (command === "broker-demo") {
