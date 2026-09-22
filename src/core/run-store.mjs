@@ -2,6 +2,8 @@ import { access, mkdir, readdir } from "node:fs/promises";
 import { atomicWriteJson, atomicWriteText, readJsonWithBackup, readTextWithBackup } from "./atomic-file.mjs";
 import { resolve, sep } from "node:path";
 
+const RUN_ID_PATTERN = /^run-[a-zA-Z0-9._-]+$/;
+
 const ALLOWED_FILES = new Set([
   "run.json",
   "tasks.json",
@@ -27,10 +29,14 @@ export class RunStore {
   }
 
   async createRun(metadata = {}) {
-    const runId = metadata.runId ?? `run-${new Date().toISOString().replace(/[:.]/g, "-")}`;
-    const directory = resolve(this.root, runId);
-    if (!isInside(this.root, directory)) {
-      throw new Error("Invalid run id");
+    const explicitRunId = metadata.runId ?? null;
+    const runId = explicitRunId ?? `run-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+    const directory = this.#runDirectory(runId);
+
+    if (explicitRunId && await this.hasRun(runId)) {
+      const error = new Error("Run id already exists: " + runId);
+      error.code = "RUN_ID_ALREADY_EXISTS";
+      throw error;
     }
 
     await mkdir(directory, { recursive: true });
@@ -44,7 +50,7 @@ export class RunStore {
 
   async hasRun(runId) {
     try {
-      await access(resolve(this.root, runId, "run.json"));
+      await access(resolve(this.#runDirectory(runId), "run.json"));
       return true;
     } catch {
       return false;
@@ -91,17 +97,21 @@ export class RunStore {
     return readTextWithBackup(this.#path(runId, "summary.md"));
   }
 
-  #path(runId, fileName) {
-    if (typeof runId !== "string" || runId.trim() === "") {
-      throw new Error("runId is required");
+  #runDirectory(runId) {
+    if (typeof runId !== "string" || !RUN_ID_PATTERN.test(runId)) {
+      throw new Error("Invalid run id");
     }
+    const directory = resolve(this.root, runId);
+    if (!isInside(this.root, directory)) {
+      throw new Error("Run path escapes runtime-data root");
+    }
+    return directory;
+  }
+
+  #path(runId, fileName) {
     if (!ALLOWED_FILES.has(fileName)) {
       throw new Error(`RunStore file is not allowed: ${fileName}`);
     }
-    const target = resolve(this.root, runId, fileName);
-    if (!isInside(this.root, target)) {
-      throw new Error("Run path escapes runtime-data root");
-    }
-    return target;
+    return resolve(this.#runDirectory(runId), fileName);
   }
 }
