@@ -278,8 +278,9 @@ function buildCommand(input) {
       "--goal", safeGoal(input.goal),
       "--reuse-coverage", String(reuseCoverage)
     );
-    if (input.runId) args.push("--run-id", safeRunId(input.runId));
-    if (input.resume) args.push("--resume");
+    if (input.resume) {
+      args.push("--run-id", safeRunId(input.runId), "--resume");
+    }
   }
   if (command === "coverage-synthesize") {
     args.push("--run-id", safeRunId(input.runId));
