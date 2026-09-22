@@ -1593,6 +1593,15 @@ async function cancelCurrentRun() {
   }
 }
 
+function comparisonRepoKey(value) {
+  const normalized = String(value || "").trim().replaceAll("\\", "/").replace(/\/+$/, "");
+  return /^[a-z]:\//i.test(normalized) ? normalized.toLowerCase() : normalized;
+}
+
+function comparisonGoalKey(value) {
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
 function signedNumber(value, suffix = "") {
   if (value == null || value === "") return "—";
   const number = Number(value);
@@ -1823,11 +1832,11 @@ async function loadHistory() {
         const differentRepository = Boolean(
           baselineItem?.repoPath &&
           item.repoPath &&
-          baselineItem.repoPath.toLowerCase().replaceAll("\\", "/") !== item.repoPath.toLowerCase().replaceAll("\\", "/")
+          comparisonRepoKey(baselineItem.repoPath) !== comparisonRepoKey(item.repoPath)
         );
         const incomplete = !baselineItem?.coverageComplete || !item.coverageComplete;
         const missingGoal = !baselineItem?.goal || !item.goal;
-        const differentGoal = !missingGoal && baselineItem.goal.trim().toLowerCase() !== item.goal.trim().toLowerCase();
+        const differentGoal = !missingGoal && comparisonGoalKey(baselineItem.goal) !== comparisonGoalKey(item.goal);
         compare.disabled = differentRepository || incomplete || missingGoal || differentGoal;
         compare.title = differentRepository
           ? "別の対象フォルダの実行履歴とは比較できません"
