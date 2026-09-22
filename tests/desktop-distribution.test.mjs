@@ -114,7 +114,7 @@ test("desktop builds a dedicated multi-size Local AI Lab icon", async () => {
   const source = await read("../desktop/assets/icon.svg");
   const generator = await read("../scripts/generate-app-icon.mjs");
 
-  assert.equal(pkg.version, "0.3.0");
+  assert.equal(pkg.version, "0.3.1");
   assert.equal(pkg.build?.win?.icon, "desktop/assets/generated/icon.ico");
   assert.equal(pkg.build?.win?.signAndEditExecutable, true);
   assert.equal(pkg.build?.win?.signExecutable, false);
