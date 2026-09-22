@@ -49,7 +49,8 @@ const state = {
   currentModelTask: "",
   modelUsageCounts: {},
   modelFallbacks: 0,
-  modelPollTimerId: null
+  modelPollTimerId: null,
+  compareBaselineRunId: null
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -1592,6 +1593,100 @@ async function cancelCurrentRun() {
   }
 }
 
+function signedNumber(value, suffix = "") {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "—";
+  return `${number > 0 ? "+" : ""}${number}${suffix}`;
+}
+
+function comparisonFindingText(item) {
+  const evidence = item?.evidence;
+  const location = evidence?.file
+    ? ` · ${evidence.file}${evidence.lineStart ? `:${evidence.lineStart}` : ""}`
+    : "";
+  return `[${severityLabel(item?.severity)}] ${item?.title || "名称のない指摘"}${location}`;
+}
+
+function renderRunComparison(comparison) {
+  const panel = $("#historyComparePanel");
+  const output = $("#historyCompareOutput");
+  if (!panel || !output || !comparison) return;
+  panel.classList.remove("hidden");
+  setText("#historyCompareTitle", `${comparison.baseline.runId} → ${comparison.current.runId}`);
+
+  const severity = comparison.delta?.severity || {};
+  const lines = [
+    `指摘数: ${comparison.baseline.findingCount} → ${comparison.current.findingCount}（${signedNumber(comparison.delta?.findingCount)}）`,
+    `監査進捗: ${comparison.baseline.coveragePercent ?? "—"}% → ${comparison.current.coveragePercent ?? "—"}%（${signedNumber(comparison.delta?.coveragePercent, "%")}）`,
+    `Model呼出し: ${comparison.baseline.modelCalls ?? "—"} → ${comparison.current.modelCalls ?? "—"}（${signedNumber(comparison.delta?.modelCalls)}）`,
+    "",
+    `重要度の増減: 重大 ${signedNumber(severity.critical)} / 高 ${signedNumber(severity.high)} / 中 ${signedNumber(severity.medium)} / 低 ${signedNumber(severity.low)}`,
+    `新しく見つかった指摘: ${comparison.added?.length ?? 0}`,
+    `解消または消えた指摘: ${comparison.resolved?.length ?? 0}`,
+    `継続している指摘: ${comparison.persisting?.length ?? 0}`
+  ];
+
+  if (comparison.added?.length) {
+    lines.push("", "新しく見つかった指摘");
+    for (const item of comparison.added.slice(0, 12)) lines.push("＋ " + comparisonFindingText(item));
+    if (comparison.added.length > 12) lines.push(`…ほか ${comparison.added.length - 12}件`);
+  }
+  if (comparison.resolved?.length) {
+    lines.push("", "解消または消えた指摘");
+    for (const item of comparison.resolved.slice(0, 12)) lines.push("－ " + comparisonFindingText(item));
+    if (comparison.resolved.length > 12) lines.push(`…ほか ${comparison.resolved.length - 12}件`);
+  }
+
+  output.textContent = lines.join("\n");
+}
+
+function clearRunComparison() {
+  state.compareBaselineRunId = null;
+  setText("#compareBaselineStatus", "比較元: 未選択");
+  $("#historyComparePanel")?.classList.add("hidden");
+  if ($("#historyCompareOutput")) $("#historyCompareOutput").textContent = "";
+  void loadHistory();
+}
+
+function setComparisonBaseline(item) {
+  state.compareBaselineRunId = item.runId;
+  setText("#compareBaselineStatus", `比較元: ${item.runId}`);
+  $("#historyComparePanel")?.classList.add("hidden");
+  if ($("#historyCompareOutput")) $("#historyCompareOutput").textContent = "";
+  void loadHistory();
+}
+
+async function compareWithBaseline(item) {
+  const baselineId = state.compareBaselineRunId;
+  if (!baselineId || baselineId === item.runId) return;
+  try {
+    const comparison = await window.localAI.compareRuns(baselineId, item.runId);
+    renderRunComparison(comparison);
+  } catch (error) {
+    const panel = $("#historyComparePanel");
+    panel?.classList.remove("hidden");
+    setText("#historyCompareTitle", "比較できませんでした");
+    setText("#historyCompareOutput", friendlyError(error.message));
+  }
+}
+
+async function exportHistoryRun(item, button) {
+  const original = button.textContent;
+  button.disabled = true;
+  try {
+    const result = await window.localAI.exportRun(item.runId);
+    button.textContent = result?.canceled ? original : "書き出しました";
+  } catch (error) {
+    button.textContent = "失敗";
+    button.title = friendlyError(error.message);
+  } finally {
+    setTimeout(() => {
+      button.textContent = original;
+      button.disabled = false;
+    }, 1400);
+  }
+}
+
 async function loadHistory() {
   const list = $("#historyList");
   list.textContent = "";
@@ -1600,6 +1695,11 @@ async function loadHistory() {
   try {
     const items = await window.localAI.listHistory();
     state.history = items;
+    if (state.compareBaselineRunId && !items.some((item) => item.runId === state.compareBaselineRunId)) {
+      state.compareBaselineRunId = null;
+    }
+    const baselineItem = items.find((item) => item.runId === state.compareBaselineRunId);
+    setText("#compareBaselineStatus", baselineItem ? `比較元: ${baselineItem.runId}` : "比較元: 未選択");
     populateRunSelect(items);
 
     state.latestRecoverable = items.find((item) => (
@@ -1701,6 +1801,35 @@ async function loadHistory() {
         showView("home");
       });
       actions.appendChild(open);
+
+      const baseline = document.createElement("button");
+      baseline.className = state.compareBaselineRunId === item.runId ? "primary" : "ghost";
+      baseline.textContent = state.compareBaselineRunId === item.runId ? "比較元" : "比較元にする";
+      baseline.disabled = state.compareBaselineRunId === item.runId;
+      baseline.addEventListener("click", () => setComparisonBaseline(item));
+      actions.appendChild(baseline);
+
+      if (state.compareBaselineRunId && state.compareBaselineRunId !== item.runId) {
+        const compare = document.createElement("button");
+        compare.className = "ghost";
+        compare.textContent = "比較";
+        const baselineItem = state.history.find((entry) => entry.runId === state.compareBaselineRunId);
+        const differentRepository = Boolean(
+          baselineItem?.repoPath &&
+          item.repoPath &&
+          baselineItem.repoPath !== item.repoPath
+        );
+        compare.disabled = differentRepository;
+        compare.title = differentRepository ? "別の対象フォルダの実行履歴とは比較できません" : "";
+        compare.addEventListener("click", () => compareWithBaseline(item));
+        actions.appendChild(compare);
+      }
+
+      const exportButton = document.createElement("button");
+      exportButton.className = "ghost";
+      exportButton.textContent = "書き出す";
+      exportButton.addEventListener("click", () => exportHistoryRun(item, exportButton));
+      actions.appendChild(exportButton);
 
       if (["PARTIAL", "INTERRUPTED"].includes(item.status) && item.coverageComplete) {
         const resume = document.createElement("button");
@@ -1831,6 +1960,7 @@ $("#refreshModels").addEventListener("click", refreshModels);
 $("#refresh").addEventListener("click", () => run("doctor"));
 $("#reloadHistory").addEventListener("click", loadHistory);
 $("#historyFilter").addEventListener("input", applyHistoryFilter);
+$("#clearComparison").addEventListener("click", clearRunComparison);
 $$("#resultTabs .result-tab").forEach((button) => {
   button.addEventListener("click", () => renderResultTab(button.dataset.resultTab));
 });
