@@ -51,7 +51,9 @@ Repositoryの更新はRemote ProviderをGitHubへ固定せず「リモートか�
 
 一度成功したModelはTaskごとのRun Pinとして保存されます。途中ResumeでPinned Modelが使えない場合は別ModelへSilent切替せず、復旧してから再開するよう停止します。
 
-設定画面の「用途別モデル」ではLM Studio Native REST APIを使い、Repository管理のModel CatalogからのみDownload / Load / Unloadできます。長時間Run中はModel管理とSettings変更をLockします。
+設定画面の「用途別モデル」ではLM Studio Native REST APIを使い、Repository管理のModel CatalogからのみDownload / Load / Unloadできます。Main Processの共通Operation Lockにより、Run / Repository更新 / Model Load・Unloadは双方向に競合しません。
+
+「モデル自動管理」がONなら必要なCatalog Modelを自動Loadし、管理対象の不要Modelを必要に応じてUnloadします。OFFなら既にLoad済みのModelだけをAuto Routeで使い、未Load候補は次候補へFallbackします。OFFでもUserが「読み込む」を押した明示操作は実行できます。
 
 Run中は現在のTask / Model / Call回数 / Fallback回数を表示し、完了後は `model-usage.json` にModel別のCall数・成功・失敗・Token・所要時間を保存します。
 
