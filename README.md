@@ -274,7 +274,7 @@ Qwen3 4Bは軽量FallbackとしてAuto Routeへ入れます。Gemma 3 4B / Qwen3
 
 ## v0.3.1 run comparison / export
 
-v0.3.1では、保存済みRunを履歴画面で比較できます。比較元を1件固定して同じ対象Repositoryの別Runと比較し、指摘数・Coverage・Model Call数・重要度の増減と、**新規 / 解消または消失 / 継続**したFindingを確認します。
+v0.3.1では、保存済みRunを履歴画面で比較できます。比較元を1件固定して、同じ対象Repository・同じ監査目的・Coverage完了の別Runと比較し、指摘数・Coverage・Model Call数・重要度の増減と、**新規 / 解消または消失 / 継続**したFindingを確認します。
 
 比較は保存済みEvidenceだけから決定的に計算し、Modelへ再問い合わせしません。別Repository同士は誤比較を避けるためMain Process側でも拒否します。
 
