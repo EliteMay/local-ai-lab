@@ -1,7 +1,7 @@
 import { loadModelCatalog, findCatalogModel } from "../src/model/model-catalog.mjs";
 import { LMStudioModelManager } from "../src/model/lm-studio-model-manager.mjs";
 
-export function createDesktopModelManager({ registerIpc, readSettings, appendDiagnostic, isBusy }) {
+export function createDesktopModelManager({ registerIpc, readSettings, appendDiagnostic, isBusy, runExclusiveOperation = null }) {
   let catalog = null;
   let manager = null;
   const jobs = new Map();
@@ -55,6 +55,7 @@ export function createDesktopModelManager({ registerIpc, readSettings, appendDia
   }
 
   async function download(modelId) {
+    const action = async () => {
     if (isBusy()) throw new Error("処理実行中はモデルをダウンロードできません。");
     const { catalog: activeCatalog, manager: activeManager } = await ensure();
     const entry = findCatalogModel(activeCatalog, modelId);
@@ -68,9 +69,12 @@ export function createDesktopModelManager({ registerIpc, readSettings, appendDia
       hasJob: Boolean(result.job_id)
     });
     return result;
+    };
+    return runExclusiveOperation ? runExclusiveOperation("model-download", action) : action();
   }
 
   async function load(modelId) {
+    const action = async () => {
     if (isBusy()) throw new Error("処理実行中はモデルを読み込めません。");
     const { catalog: activeCatalog, manager: activeManager } = await ensure();
     const entry = findCatalogModel(activeCatalog, modelId);
@@ -86,9 +90,12 @@ export function createDesktopModelManager({ registerIpc, readSettings, appendDia
       alreadyLoaded: result.alreadyLoaded
     });
     return { ok: true, modelId: entry.id, instanceId: result.instanceId };
+    };
+    return runExclusiveOperation ? runExclusiveOperation("model-load", action) : action();
   }
 
   async function unload(modelId) {
+    const action = async () => {
     if (isBusy()) throw new Error("処理実行中はモデルを解放できません。");
     const { catalog: activeCatalog, manager: activeManager } = await ensure();
     const entry = findCatalogModel(activeCatalog, modelId);
@@ -96,6 +103,8 @@ export function createDesktopModelManager({ registerIpc, readSettings, appendDia
     const result = await activeManager.unloadEntry(entry);
     await appendDiagnostic({ type: "model.unloaded", modelId: entry.id, unloaded: result.unloaded });
     return { ok: true, modelId: entry.id, ...result };
+    };
+    return runExclusiveOperation ? runExclusiveOperation("model-unload", action) : action();
   }
 
   registerIpc("models:list", () => snapshot());
