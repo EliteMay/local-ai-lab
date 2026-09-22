@@ -206,7 +206,13 @@ export class LMStudioClient {
 
   async #requestUrl(url, options = {}) {
     if (this.transport === "node-http") {
-      return requestJsonWithNodeHttp(url, options, this.timeoutMs, this.providerName, this.maxResponseBytes);
+      return requestJsonWithNodeHttp(url, {
+        ...options,
+        headers: {
+          ...(this.apiToken ? { authorization: "Bearer " + this.apiToken } : {}),
+          ...(options.headers ?? {})
+        }
+      }, this.timeoutMs, this.providerName, this.maxResponseBytes);
     }
     if (this.transport !== "fetch") {
       throw new Error(`Unknown model HTTP transport: ${this.transport}`);
