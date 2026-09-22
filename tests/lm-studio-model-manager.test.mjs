@@ -100,3 +100,33 @@ test("LM Studio manager starts downloads from fixed catalog metadata", async (t)
     quantization: "Q4_K_M"
   });
 });
+
+test("LM Studio manager does not auto-load when automatic management is disabled", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+
+  globalThis.fetch = async (url, options = {}) => {
+    const path = new URL(String(url)).pathname;
+    calls.push(path);
+    if (path === "/api/v1/models") {
+      return new Response(JSON.stringify({
+        models: [{
+          type: "llm",
+          key: "local/coder-7b",
+          display_name: "Coder 7B",
+          loaded_instances: [],
+          size_bytes: 4000
+        }]
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    throw new Error("Unexpected request " + path);
+  };
+  t.after(() => { globalThis.fetch = originalFetch; });
+
+  const manager = new LMStudioModelManager({ catalog: catalog() });
+  await assert.rejects(
+    () => manager.ensureLoaded(catalog().models[1], { autoManage: false }),
+    (error) => error?.code === "MODEL_NOT_LOADED"
+  );
+  assert.equal(calls.filter((path) => path === "/api/v1/models/load").length, 0);
+});
