@@ -33,6 +33,7 @@ if (!hasSingleInstanceLock) app.quit();
 let mainWindow = null;
 let activeProcess = null;
 let activeProcessCommand = null;
+let activeOperation = null;
 let activeProcessCancelled = false;
 let activePowerBlockerId = null;
 let pendingQuitAfterCancel = false;
@@ -534,15 +535,22 @@ function parseProgress(line) {
 }
 
 async function runCommand(input) {
-  if (activeProcess) throw new Error("Another command is already running");
-  const spec = buildCommand(input);
+  if (activeProcess || activeOperation) throw new Error("Another operation is already running");
+  activeOperation = "run";
+  let spec;
   const startedAt = Date.now();
-  await appendDiagnostic({
+  try {
+    spec = buildCommand(input);
+    await appendDiagnostic({
     type: "command.started",
     command: spec.command,
     profile: spec.profile,
-    modelRoutingMode: spec.routingMode
-  });
+      modelRoutingMode: spec.routingMode
+    });
+  } catch (error) {
+    activeOperation = null;
+    throw error;
+  }
 
   return new Promise((resolvePromise, rejectPromise) => {
     let output = "";
@@ -603,6 +611,7 @@ async function runCommand(input) {
     const cleanup = () => {
       if (activeProcess === child) {
         activeProcess = null;
+        activeOperation = null;
         activeProcessCommand = null;
         activeProcessStartedAt = null;
         activeProcessLastOutputAt = null;
@@ -947,8 +956,18 @@ async function runGit(repoPath, args, { timeoutMs = 30000 } = {}) {
   });
 }
 
+async function withExclusiveOperation(type, action) {
+  if (activeProcess || activeOperation) throw new Error("別の処理が実行中です。完了または停止してから操作してください。");
+  activeOperation = type;
+  try {
+    return await action();
+  } finally {
+    if (!activeProcess && activeOperation === type) activeOperation = null;
+  }
+}
+
 async function updateRepository(repoPath) {
-  if (activeProcess) throw new Error("処理実行中は対象フォルダを更新できません。");
+  return withExclusiveOperation("repository-sync", async () => {
   const repository = validateRepository(repoPath);
 
   const inside = await runGit(repository, ["rev-parse", "--is-inside-work-tree"]);
@@ -987,6 +1006,7 @@ async function updateRepository(repoPath) {
       : "すでにリモートの最新版です。",
     detail: pull.stdout
   };
+  });
 }
 
 async function isLocalAiLabRepository(repoPath) {
@@ -1150,14 +1170,15 @@ if (hasSingleInstanceLock) {
     registerIpc,
     readSettings,
     appendDiagnostic,
-    isBusy: () => Boolean(activeProcess)
+    isBusy: () => Boolean(activeProcess || activeOperation),
+    runExclusiveOperation: withExclusiveOperation
   });
   updaterController = createUpdaterController({
     registerIpc,
     readSettings,
     appendDiagnostic,
     getMainWindow: () => mainWindow,
-    isBusy: () => Boolean(activeProcess)
+    isBusy: () => Boolean(activeProcess || activeOperation)
   });
   createWindow();
   await updaterController.scheduleAutoCheck();
