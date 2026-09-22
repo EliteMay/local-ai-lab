@@ -1,4 +1,4 @@
-import { access, mkdir } from "node:fs/promises";
+import { access, mkdir, readdir } from "node:fs/promises";
 import { atomicWriteJson, atomicWriteText, readJsonWithBackup, readTextWithBackup } from "./atomic-file.mjs";
 import { resolve, sep } from "node:path";
 
@@ -48,6 +48,20 @@ export class RunStore {
       return true;
     } catch {
       return false;
+    }
+  }
+
+  async listRunIds() {
+    try {
+      const entries = await readdir(this.root, { withFileTypes: true });
+      return entries
+        .filter((entry) => entry.isDirectory() && /^run-[a-zA-Z0-9._-]+$/.test(entry.name))
+        .map((entry) => entry.name)
+        .sort()
+        .reverse();
+    } catch (error) {
+      if (error?.code === "ENOENT") return [];
+      throw error;
     }
   }
 
