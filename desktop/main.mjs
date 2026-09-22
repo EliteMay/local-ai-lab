@@ -42,7 +42,46 @@ let bonsaiRuntimeController = null;
 let desktopModelManager = null;
 let activeProcessStartedAt = null;
 let activeProcessLastOutputAt = null;
+let activeOperation = null;
+let operationSequence = 0;
 const sampleSystemMetrics = createSystemMetricsSampler();
+
+const OPERATION_LABELS = {
+  run: "処理",
+  "repository-sync": "対象フォルダの更新",
+  "model-load": "モデルの読み込み",
+  "model-unload": "モデルの解放",
+  "model-download": "モデルのダウンロード",
+  "app-update": "アプリの更新"
+};
+
+function operationBusyError(requestedType) {
+  const currentLabel = OPERATION_LABELS[activeOperation?.type] || activeOperation?.type || "別の処理";
+  const requestedLabel = OPERATION_LABELS[requestedType] || requestedType;
+  const error = new Error(`${currentLabel}の実行中は${requestedLabel}を開始できません。`);
+  error.code = "OPERATION_BUSY";
+  error.activeOperation = activeOperation?.type ?? null;
+  return error;
+}
+
+async function runExclusiveOperation(type, task) {
+  if (activeOperation) throw operationBusyError(type);
+  const token = ++operationSequence;
+  activeOperation = {
+    type,
+    token,
+    startedAt: new Date().toISOString()
+  };
+  await appendDiagnostic({ type: "operation.started", operation: type });
+  try {
+    return await task();
+  } finally {
+    if (activeOperation?.token === token) {
+      await appendDiagnostic({ type: "operation.finished", operation: type });
+      activeOperation = null;
+    }
+  }
+}
 
 function safeRoutingMode(value) {
   const mode = String(value || "auto");
@@ -186,7 +225,7 @@ async function readSettings() {
 }
 
 async function saveSettings(input) {
-  if (activeProcess) throw new Error("処理実行中は設定を変更できません。完了または停止してから保存してください。");
+  if (activeOperation) throw operationBusyError("settings-save");
   const requestedRepository = String(input?.defaultRepository || "").trim();
   const next = {
     defaultRepository: requestedRepository ? validateRepository(requestedRepository) : "",
@@ -278,8 +317,14 @@ function buildCommand(input) {
       "--goal", safeGoal(input.goal),
       "--reuse-coverage", String(reuseCoverage)
     );
-    if (input.runId) args.push("--run-id", safeRunId(input.runId));
-    if (input.resume) args.push("--resume");
+    if (input.resume) {
+      if (!input.runId) throw new Error("再開する実行履歴を選択してください。");
+      args.push("--run-id", safeRunId(input.runId), "--resume");
+    } else if (input.runId) {
+      const error = new Error("新しい全体監査に既存の実行IDは指定できません。");
+      error.code = "FRESH_RUN_ID_FORBIDDEN";
+      throw error;
+    }
   }
   if (command === "coverage-synthesize") {
     args.push("--run-id", safeRunId(input.runId));
@@ -381,7 +426,8 @@ function commandStatus() {
     command: activeProcessCommand,
     startedAt: activeProcessStartedAt,
     lastOutputAt: activeProcessLastOutputAt,
-    processAlive: Boolean(activeProcess && activeProcess.exitCode == null)
+    processAlive: Boolean(activeProcess && activeProcess.exitCode == null),
+    operation: activeOperation ? { type: activeOperation.type, startedAt: activeOperation.startedAt } : null
   };
 }
 
@@ -532,8 +578,7 @@ function parseProgress(line) {
   return null;
 }
 
-async function runCommand(input) {
-  if (activeProcess) throw new Error("Another command is already running");
+async function runCommandUnlocked(input) {
   const spec = buildCommand(input);
   const startedAt = Date.now();
   await appendDiagnostic({
@@ -946,8 +991,7 @@ async function runGit(repoPath, args, { timeoutMs = 30000 } = {}) {
   });
 }
 
-async function updateRepository(repoPath) {
-  if (activeProcess) throw new Error("処理実行中は対象フォルダを更新できません。");
+async function updateRepositoryUnlocked(repoPath) {
   const repository = validateRepository(repoPath);
 
   const inside = await runGit(repository, ["rev-parse", "--is-inside-work-tree"]);
@@ -1119,8 +1163,12 @@ if (hasSingleInstanceLock) {
     });
     return result.canceled ? null : result.filePaths[0];
   });
-  registerIpc("repository:update", (repoPath) => updateRepository(repoPath));
-  registerIpc("command:run", (input) => runCommand(input));
+  registerIpc("repository:update", (repoPath) =>
+    runExclusiveOperation("repository-sync", () => updateRepositoryUnlocked(repoPath))
+  );
+  registerIpc("command:run", (input) =>
+    runExclusiveOperation("run", () => runCommandUnlocked(input))
+  );
   registerIpc("command:cancel", () => cancelActiveCommand());
   registerIpc("command:status", () => commandStatus());
   registerIpc("system:metrics", () => sampleSystemMetrics());
@@ -1143,20 +1191,21 @@ if (hasSingleInstanceLock) {
     registerIpc,
     readSettings,
     appendDiagnostic,
-    getMainWindow: () => mainWindow
+    getMainWindow: () => mainWindow,
+    runExclusive: runExclusiveOperation
   });
   desktopModelManager = createDesktopModelManager({
     registerIpc,
     readSettings,
     appendDiagnostic,
-    isBusy: () => Boolean(activeProcess)
+    runExclusive: runExclusiveOperation
   });
   updaterController = createUpdaterController({
     registerIpc,
     readSettings,
     appendDiagnostic,
     getMainWindow: () => mainWindow,
-    isBusy: () => Boolean(activeProcess)
+    isBusy: () => Boolean(activeOperation)
   });
   createWindow();
   await updaterController.scheduleAutoCheck();
