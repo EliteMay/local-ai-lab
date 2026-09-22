@@ -100,7 +100,7 @@ function registerIpc(channel, handler) {
 }
 
 async function withOperation(kind, work) {
-  if (activeOperation) {
+  if (activeOperation || activeProcess) {
     throw new Error("別の処理が実行中です。完了してから再実行してください。");
   }
   activeOperation = kind;
