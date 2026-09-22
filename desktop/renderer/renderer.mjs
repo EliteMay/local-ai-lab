@@ -1806,7 +1806,12 @@ async function loadHistory() {
       const baseline = document.createElement("button");
       baseline.className = state.compareBaselineRunId === item.runId ? "primary" : "ghost";
       baseline.textContent = state.compareBaselineRunId === item.runId ? "比較元" : "比較元にする";
-      baseline.disabled = state.compareBaselineRunId === item.runId;
+      baseline.disabled = state.compareBaselineRunId === item.runId || !item.coverageComplete || !item.goal;
+      baseline.title = !item.coverageComplete
+        ? "監査が100%完了した履歴だけ比較できます"
+        : !item.goal
+          ? "監査目的を確認できない履歴は比較できません"
+          : "";
       baseline.addEventListener("click", () => setComparisonBaseline(item));
       actions.appendChild(baseline);
 
@@ -1818,10 +1823,21 @@ async function loadHistory() {
         const differentRepository = Boolean(
           baselineItem?.repoPath &&
           item.repoPath &&
-          baselineItem.repoPath !== item.repoPath
+          baselineItem.repoPath.toLowerCase().replaceAll("\\", "/") !== item.repoPath.toLowerCase().replaceAll("\\", "/")
         );
-        compare.disabled = differentRepository;
-        compare.title = differentRepository ? "別の対象フォルダの実行履歴とは比較できません" : "";
+        const incomplete = !baselineItem?.coverageComplete || !item.coverageComplete;
+        const missingGoal = !baselineItem?.goal || !item.goal;
+        const differentGoal = !missingGoal && baselineItem.goal.trim().toLowerCase() !== item.goal.trim().toLowerCase();
+        compare.disabled = differentRepository || incomplete || missingGoal || differentGoal;
+        compare.title = differentRepository
+          ? "別の対象フォルダの実行履歴とは比較できません"
+          : incomplete
+            ? "監査が100%完了した履歴だけ比較できます"
+            : missingGoal
+              ? "監査目的を確認できない履歴は比較できません"
+              : differentGoal
+                ? "監査目的が異なる履歴は比較できません"
+                : "";
         compare.addEventListener("click", () => compareWithBaseline(item));
         actions.appendChild(compare);
       }
