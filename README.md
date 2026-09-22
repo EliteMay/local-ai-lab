@@ -272,6 +272,22 @@ Run中は現在のTask / Model / Fallback / Model別Call数を表示し、保存
 
 Qwen3 4Bは軽量FallbackとしてAuto Routeへ入れます。Gemma 3 4B / Qwen3-VL 4B / gpt-oss-20b / Qwen3 Coder 30B-A3BもCatalogへ登録しますが、重さや未実装Capabilityのため初期Auto Routeには入れません。
 
+## v0.3.2 compatible coverage reuse
+
+v0.3.2では、新しい全体監査を開始するときに、保存済みRunから**変更のない監査Batchだけ**を再利用できます。再利用は高速化のための決定的な最適化で、AI自身には判断させません。
+
+再利用する条件はすべて一致した場合だけです。
+
+- 同じ対象Repository
+- 同じ監査目的
+- 同じAI / Routing / Coverage設定とPrompt Schema
+- Repository全体から判定した監査Route（一般監査 / コード監査）が一致
+- Batchを構成するChunk ID・File Path・File SHA-256から作る内容Fingerprintが一致
+
+条件が合わないBatchは通常どおりModelへ再監査させます。履歴が壊れている・古くて互換性を確認できない場合も再利用を諦め、通常監査へFallbackします。過去Findingを再利用した場合は元Run / 元Batch / 元Finding IDをEvidenceへ残します。
+
+Desktop設定の「変更のない監査部分は前回結果を再利用」をOFFにすれば、毎回すべてのBatchをModelへ再確認させられます。CLIでは `--reuse-coverage false` を指定します。Resumeは従来どおり保存済みCheckpointの完全一致を要求し、この再利用機能へ置き換えません。
+
 ## v0.3.1 run comparison / export
 
 v0.3.1では、保存済みRunを履歴画面で比較できます。比較元を1件固定して、同じ対象Repository・同じ監査目的・Coverage完了の別Runと比較し、指摘数・Coverage・Model Call数・重要度の増減と、**新規 / 解消または消失 / 継続**したFindingを確認します。
@@ -312,6 +328,7 @@ https://github.com/EliteMay/local-ai-lab/releases/latest
 - 履歴検索とRun保存Folderの直接Open
 - 同じRepositoryの保存済みRun比較（新規 / 解消 / 継続Finding、重要度、Coverage、Model Call差分）
 - 保存済みRunのJSON Export
+- 互換性と内容Fingerprintを確認した変更なし監査Batchの再利用
 - 手動停止をErrorと分離した明示State
 - Main / Renderer両方の長時間Log上限
 

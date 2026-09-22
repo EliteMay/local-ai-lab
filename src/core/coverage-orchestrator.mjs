@@ -7,6 +7,7 @@ import { getRoleDefinition } from "../roles/role-definitions.mjs";
 import { assertResumeIdentity, buildExecutionIdentity } from "./run-identity.mjs";
 import { classifyCoveragePlan } from "../model/model-catalog.mjs";
 import { mergeModelUsageSnapshots } from "../model/model-router.mjs";
+import { coverageBatchFingerprint, findReusableCoverageBaseline } from "./coverage-reuse.mjs";
 
 function sameStringSet(left, right) {
   if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false;
@@ -90,7 +91,8 @@ function renderReviewPrompt({ goal, coverage, findings, planner }) {
 }
 
 function makeCoverage(plan, batchResults) {
-  const completedIds = new Set(batchResults.filter((item) => item.status === "completed").map((item) => item.batchId));
+  const completedResults = batchResults.filter((item) => item.status === "completed");
+  const completedIds = new Set(completedResults.map((item) => item.batchId));
   const completedChunks = plan.batches
     .filter((batch) => completedIds.has(batch.id))
     .reduce((sum, batch) => sum + batch.chunks.length, 0);
@@ -100,6 +102,12 @@ function makeCoverage(plan, batchResults) {
     for (const chunk of batch.chunks) completedFiles.add(chunk.path);
   }
 
+  const reusedResults = completedResults.filter((item) => item.reused === true);
+  const reusedIds = new Set(reusedResults.map((item) => item.batchId));
+  const reusedChunks = plan.batches
+    .filter((batch) => reusedIds.has(batch.id))
+    .reduce((sum, batch) => sum + batch.chunks.length, 0);
+
   const totalChunks = plan.totalChunks;
   return {
     inventoryFiles: plan.inventoryFiles,
@@ -108,11 +116,47 @@ function makeCoverage(plan, batchResults) {
     totalBatches: plan.totalBatches,
     completedBatches: completedIds.size,
     failedBatches: batchResults.filter((item) => item.status === "failed").length,
+    reusedBatches: reusedResults.length,
+    liveBatches: completedResults.length - reusedResults.length,
     totalChunks,
     completedChunks,
+    reusedChunks,
     filesWithAtLeastOneCompletedChunk: completedFiles.size,
     coveragePercent: totalChunks === 0 ? 100 : Number(((completedChunks / totalChunks) * 100).toFixed(2)),
     complete: completedChunks === totalChunks && batchResults.every((item) => item.status !== "failed")
+  };
+}
+
+function baselineCoverageTaskType(run) {
+  const explicit = String(run?.coverageTaskType || "").trim();
+  if (explicit) return explicit;
+  const pins = run?.modelRouting?.pins ?? {};
+  return ["coverage-general", "coverage-code"].find((taskType) => pins[taskType]) ?? null;
+}
+
+function reusedBatchResult(batch, reusable) {
+  const source = reusable.result;
+  const sourceFindings = (source.findings ?? []).map((finding) => {
+    const { id: sourceFindingId, batchId: _sourceBatchId, ...rest } = finding;
+    return {
+      ...rest,
+      reusedFromFindingId: sourceFindingId ?? null
+    };
+  });
+
+  return {
+    batchId: batch.id,
+    status: "completed",
+    durationMs: 0,
+    chunkIds: batch.chunks.map((chunk) => chunk.id),
+    summary: source.summary ?? "",
+    findings: normalizeBatchFindings(batch.id, sourceFindings),
+    uncertainties: source.uncertainties ?? [],
+    model: source.model ?? null,
+    reused: true,
+    reusedFromRunId: reusable.sourceRunId,
+    reusedFromBatchId: reusable.sourceBatchId,
+    sourceDurationMs: source.durationMs ?? null
   };
 }
 
@@ -287,7 +331,7 @@ export class CoverageAuditOrchestrator {
     };
   }
 
-  async run({ repoPath, goal, runId = undefined, resume = false }) {
+  async run({ repoPath, goal, runId = undefined, resume = false, reuseCoverage = true }) {
     if (typeof repoPath !== "string" || repoPath.trim() === "") throw new Error("repoPath is required");
     if (typeof goal !== "string" || goal.trim() === "") throw new Error("goal is required");
     if (resume && (!runId || !(await this.runStore.hasRun(runId)))) {
@@ -308,6 +352,47 @@ export class CoverageAuditOrchestrator {
     let batchResults = [];
     let baseRun = null;
     let previousModelUsage = null;
+    let reuseBaseline = null;
+    let reusableBatchCount = 0;
+
+    if (!resume && reuseCoverage) {
+      try {
+        reuseBaseline = await findReusableCoverageBaseline({
+          runStore: this.runStore,
+          repoPath,
+          goal,
+          executionIdentity
+        });
+        if (reuseBaseline && this.modelRouter) {
+          const sourceTaskType = baselineCoverageTaskType(reuseBaseline.run);
+          if (!sourceTaskType || sourceTaskType !== this.coverageTaskType) {
+            reuseBaseline = null;
+          }
+        }
+        if (reuseBaseline) {
+          reusableBatchCount = plan.batches.reduce((count, batch) => {
+            const fingerprint = coverageBatchFingerprint(plan, batch);
+            return count + (fingerprint && reuseBaseline.reusable.has(fingerprint) ? 1 : 0);
+          }, 0);
+          if (reusableBatchCount > 0) {
+            if (this.modelRouter) {
+              this.modelRouter.importPins(reuseBaseline.run?.modelRouting?.pins ?? {});
+            }
+            this.#emit({
+              type: "coverage_reuse_ready",
+              sourceRunId: reuseBaseline.runId,
+              reusableBatches: reusableBatchCount,
+              totalBatches: plan.totalBatches
+            });
+          } else {
+            reuseBaseline = null;
+          }
+        }
+      } catch (error) {
+        reuseBaseline = null;
+        this.#emit({ type: "coverage_reuse_unavailable", error: error.message });
+      }
+    }
 
     if (resume) {
       baseRun = await this.runStore.readJson(runId, "run.json");
@@ -349,6 +434,9 @@ export class CoverageAuditOrchestrator {
         goal,
         repoPath,
         executionIdentity,
+        coverageTaskType: this.coverageTaskType,
+        reuseCoverage: reuseCoverage !== false,
+        reuseSourceRunId: reuseBaseline?.runId ?? null,
         capabilities: { repository: "read-only", mutation: false }
       });
       baseRun = await this.runStore.readJson(actualRunId, "run.json");
@@ -360,7 +448,9 @@ export class CoverageAuditOrchestrator {
         auditableFiles: plan.auditableFiles,
         excludedFiles: plan.excludedFiles,
         totalChunks: plan.totalChunks,
-        totalBatches: plan.totalBatches
+        totalBatches: plan.totalBatches,
+        reusableBatches: reusableBatchCount,
+        reuseSourceRunId: reuseBaseline?.runId ?? null
       });
     }
 
@@ -370,7 +460,21 @@ export class CoverageAuditOrchestrator {
         this.#emit({ type: "coverage_batch_skipped", batchId: batch.id });
         continue;
       }
-      const result = await this.#runBatch(batch, goal);
+      const fingerprint = reuseBaseline ? coverageBatchFingerprint(plan, batch) : null;
+      const reusable = fingerprint ? reuseBaseline.reusable.get(fingerprint) : null;
+      const result = reusable
+        ? reusedBatchResult(batch, reusable)
+        : await this.#runBatch(batch, goal);
+      if (reusable) {
+        this.#emit({
+          type: "coverage_batch_reused",
+          batchId: batch.id,
+          chunks: batch.chunks.length,
+          findings: result.findings.length,
+          sourceRunId: reusable.sourceRunId,
+          sourceBatchId: reusable.sourceBatchId
+        });
+      }
       batchResults.push(result);
       if (result.status === "completed") completedIds.add(batch.id);
       await this.runStore.writeJson(actualRunId, "batch-results.json", batchResults);
@@ -419,13 +523,16 @@ export class CoverageAuditOrchestrator {
       repoPath,
       executionIdentity,
       modelRouting: modelUsage,
+      coverageTaskType: this.coverageTaskType,
+      reuseCoverage: reuseCoverage !== false,
+      reuseSourceRunId: reuseBaseline?.runId ?? baseRun?.reuseSourceRunId ?? null,
       coverage,
       synthesisError: synthesis.error,
       reviewerDecision: synthesis.reviewer?.result?.decision ?? null,
       capabilities: { repository: "read-only", mutation: false }
     });
 
-    const summary = `# Full Coverage Audit ${actualRunId}\n\n- Status: ${status}\n- Auditable files: ${coverage.auditableFiles}\n- Excluded files: ${coverage.excludedFiles}\n- Completed chunks: ${coverage.completedChunks}/${coverage.totalChunks}\n- Coverage: ${coverage.coveragePercent}%\n- Findings: ${findings.length}\n- Reviewer: ${synthesis.reviewer?.result?.decision ?? "not available"}\n- Resume supported: yes (same repository fingerprint, model/profile, config hash, and prompt/schema version required)\n- App version: ${executionIdentity.appVersion}\n- Model: ${executionIdentity.modelRoutingMode === "auto" ? "auto routing" : `${executionIdentity.model} (${executionIdentity.modelProfile})`}
+    const summary = `# Full Coverage Audit ${actualRunId}\n\n- Status: ${status}\n- Auditable files: ${coverage.auditableFiles}\n- Excluded files: ${coverage.excludedFiles}\n- Completed chunks: ${coverage.completedChunks}/${coverage.totalChunks}\n- Coverage: ${coverage.coveragePercent}%\n- Findings: ${findings.length}\n- Reused batches: ${coverage.reusedBatches ?? 0}/${coverage.completedBatches} (${coverage.reusedChunks ?? 0} chunks)\n- Reuse source: ${reuseBaseline?.runId ?? baseRun?.reuseSourceRunId ?? "none"}\n- Reviewer: ${synthesis.reviewer?.result?.decision ?? "not available"}\n- Resume supported: yes (same repository fingerprint, model/profile, config hash, and prompt/schema version required)\n- App version: ${executionIdentity.appVersion}\n- Model: ${executionIdentity.modelRoutingMode === "auto" ? "auto routing" : `${executionIdentity.model} (${executionIdentity.modelProfile})`}
 - Model pins: ${modelUsage?.pins ? JSON.stringify(modelUsage.pins) : "fixed"}\n\nTarget repository access remained read-only.\n`;
     await this.runStore.writeSummary(actualRunId, summary);
 

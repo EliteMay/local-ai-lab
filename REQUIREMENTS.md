@@ -1,7 +1,7 @@
 # Local AI Lab Requirements
 
 更新日: 2026-09-22
-Status: Desktop v0.3.1 run comparison / export
+Status: Desktop v0.3.2 compatible coverage reuse
 
 ## 1. 目的
 
@@ -429,6 +429,21 @@ PowerShellで行っている日常操作を置き換え、長時間Local AI Run�
 - 保存済みRunのEvidence / Planner / Reviewer / Coverage / Model Usage等を、UserがSave Dialogで選んだJSONへ書き出せる。Rendererから任意保存Pathを指定させない
 - Repositoryは選択時に自動保存し、次回起動時に毎回Folder Pickerを要求しない。旧SettingsでPathが空の場合は、存在する最新Run履歴のRepository Pathから復元を試みる
 - 長時間LogはMain / Renderer両方で上限を持ち、進捗行がStream Chunk境界で分割されても解析を失わない
+
+### Incremental Coverage Reuse Contract
+
+- 新しいWhole Repository Auditでは、互換性を確認できる保存済みRunから変更のないBatchを再利用できる
+- 再利用の判定はAI出力ではなくNode.js側の決定的なControllerが行う
+- 対象Repository、監査目的、Execution Identity（Model / Routing / Coverage設定 / Prompt Schema）が一致しないRunは再利用候補にしない
+- Auto RoutingではRepositoryのCode比率から決まるCoverage Task Route（coverage-general / coverage-code）も一致を必須とする
+- Batch再利用にはChunk ID・File Path・File SHA-256を含む内容Fingerprintの一致を必須とする
+- Historical Runが壊れている、必要Evidenceが欠ける、互換性を確認できない場合は新規監査を失敗させずLive AuditへFallbackする
+- 再利用したFindingは現在BatchのFinding IDへ再採番し、元Run / Batch / Finding IDをProvenanceとして残す
+- 再利用BatchはCoverage上Completedとして数えるが、新しいModel Call / Tokenとして計上しない
+- Auto Routing利用時は再利用元RunのTask Pinを引き継ぎ、再利用部分とLive Audit部分でSilentに別Modelへ変えない
+- UserはDesktop設定またはCLI `--reuse-coverage false` で再利用を無効化し、全件Live Auditを選べる
+- Resumeは同一RunのCheckpoint復旧Contractを維持し、新規Runの再利用最適化で置き換えない
+- 再利用機能によってTarget RepositoryへのWrite CapabilityやRendererの任意Path権限を追加しない
 
 ### Long-running Run Observability Contract
 

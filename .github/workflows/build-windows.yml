@@ -80,6 +80,8 @@ jobs:
           node --check desktop/updater.mjs
           node --check desktop/model-manager.mjs
           node --check desktop/run-compare.mjs
+          node --check src/core/coverage-reuse.mjs
+          node --check src/core/coverage-orchestrator.mjs
           node --check desktop/preload.cjs
           node --check desktop/renderer/renderer.mjs
           node --check scripts/generate-app-icon.mjs
@@ -214,6 +216,7 @@ jobs:
           - 長時間Runの進捗・履歴・再開
           - 用途別Local Modelの自動振り分け
           - 保存済みRunの比較とJSON書き出し
+          - 変更のない監査Batchの互換性確認付き再利用
           - 対象Repositoryの安全なリモート最新化
           - GitHub Releases経由のアプリ内Update
 

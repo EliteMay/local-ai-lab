@@ -49,6 +49,8 @@ const state = {
   currentModelTask: "",
   modelUsageCounts: {},
   modelFallbacks: 0,
+  reusedBatches: 0,
+  reuseSourceRunId: "",
   modelPollTimerId: null,
   compareBaselineRunId: null
 };
@@ -962,6 +964,8 @@ function resetRunMetrics() {
   state.currentModelTask = "";
   state.modelUsageCounts = {};
   state.modelFallbacks = 0;
+  state.reusedBatches = 0;
+  state.reuseSourceRunId = "";
   setText("#batchMetric", "処理単位 —");
   setText("#tokenMetric", "使用トークン —");
   setText("#stage", "開始準備中");
@@ -988,7 +992,13 @@ function updateCoverageMode() {
     setText("#coverageMode", `保存済みの実行 ${$("#runId").value || ""} の未完了部分から再開します。`);
     setText("#execute", "全体監査を再開");
   } else {
-    setText("#coverageMode", "新しい全体監査として実行します。");
+    const reuse = state.settings?.reuseCoverage !== false;
+    setText(
+      "#coverageMode",
+      reuse
+        ? "新しい全体監査として実行します。内容が同じ監査部分は互換性を確認して前回結果を再利用します。"
+        : "新しい全体監査として実行します。前回結果は再利用せず、すべてAIへ再確認します。"
+    );
     setText("#execute", COMMAND_META.coverage.execute);
   }
 }
@@ -1024,6 +1034,7 @@ function setRunning(value, title) {
   document.querySelectorAll("#modelCatalog button").forEach((button) => { button.disabled = value; });
   $("#modelRoutingMode").disabled = value;
   $("#autoManageModels").disabled = value;
+  $("#reuseCoverage").disabled = value;
   $("#settingsProfile").disabled = value;
   $("#settingsRepoButton").disabled = value;
   $("#bonsaiFolderButton").disabled = value;
@@ -1132,6 +1143,42 @@ function appendLog(payload) {
     state.planChunks = progress.chunks || 0;
     setStage("監査計画を作成しました");
     setText("#progress", `0 / ${progress.batches} 処理 · ${progress.files} ファイル · ${progress.chunks} 分割`);
+    updateTiming();
+    return;
+  }
+
+  if (progress.type === "reuse-plan") {
+    state.reuseSourceRunId = progress.sourceRunId || "";
+    setStage(
+      progress.reusableBatches > 0
+        ? `前回の監査から ${progress.reusableBatches} 処理を再利用できます`
+        : "再利用できる前回結果はありません",
+      { updateResult: false }
+    );
+    return;
+  }
+
+  if (progress.type === "batch-reused") {
+    if (!state.completedBatchIds.has(progress.batchId)) {
+      state.completedBatchIds.add(progress.batchId);
+      state.completedBatches += 1;
+      state.reusedBatches += 1;
+    }
+    const percent = state.totalBatches
+      ? Math.round((state.completedBatches / state.totalBatches) * 100)
+      : 0;
+    $("#bar").style.width = percent + "%";
+    setText(
+      "#progress",
+      state.totalBatches
+        ? `${state.completedBatches} / ${state.totalBatches} 処理 · 再利用 ${state.reusedBatches}`
+        : "前回の監査結果を再利用中"
+    );
+    setText(
+      "#batchMetric",
+      `${progress.batchId} 再利用 · 指摘 ${progress.findings ?? 0} · 元 ${progress.sourceRunId || "前回Run"}`
+    );
+    setStage(`${progress.batchId} は変更なし · 前回結果を再利用`, { updateResult: false });
     updateTiming();
     return;
   }
@@ -1279,6 +1326,7 @@ async function run(command = state.selectedCommand, stateOverride = {}) {
     modelProfile: state.settings.modelProfile,
     modelRoutingMode: state.settings.modelRoutingMode || "auto",
     autoManageModels: state.settings.autoManageModels !== false,
+    reuseCoverage: state.settings.reuseCoverage !== false,
     resume: command === "coverage" ? state.resume : false,
     ...stateOverride
   };
@@ -1954,6 +2002,7 @@ async function init() {
   $("#settingsProfile").value = state.settings.modelProfile;
   $("#modelRoutingMode").value = state.settings.modelRoutingMode || "auto";
   $("#autoManageModels").checked = state.settings.autoManageModels !== false;
+  $("#reuseCoverage").checked = state.settings.reuseCoverage !== false;
   setText("#profile", profileLabel(state.settings.modelProfile, state.settings.modelRoutingMode));
   $("#autoCheckUpdates").checked = state.settings.autoCheckUpdates !== false;
   $("#bonsaiDemoPath").value = state.settings.bonsaiDemoPath || "";
@@ -1982,6 +2031,10 @@ $("#stopBonsai").addEventListener("click", stopBonsaiRuntime);
 $("#refreshBonsai").addEventListener("click", refreshBonsaiStatus);
 $("#settingsProfile").addEventListener("change", updateRoutingSettingsUi);
 $("#modelRoutingMode").addEventListener("change", updateRoutingSettingsUi);
+$("#reuseCoverage").addEventListener("change", () => {
+  if (state.settings) state.settings.reuseCoverage = $("#reuseCoverage").checked;
+  updateCoverageMode();
+});
 $("#refreshModels").addEventListener("click", refreshModels);
 $("#refresh").addEventListener("click", () => run("doctor"));
 $("#reloadHistory").addEventListener("click", loadHistory);
@@ -2015,6 +2068,7 @@ $("#save").addEventListener("click", async () => {
       modelProfile: $("#settingsProfile").value,
       modelRoutingMode: $("#modelRoutingMode").value,
       autoManageModels: $("#autoManageModels").checked,
+      reuseCoverage: $("#reuseCoverage").checked,
       autoCheckUpdates: $("#autoCheckUpdates").checked,
       bonsaiDemoPath: $("#bonsaiDemoPath").value
     });
