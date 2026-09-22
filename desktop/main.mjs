@@ -152,6 +152,7 @@ async function readSettings() {
     modelProfile: "default",
     modelRoutingMode: "auto",
     autoManageModels: true,
+    reuseCoverage: true,
     autoCheckUpdates: true,
     bonsaiDemoPath: existsSync("D:\\AI\\Bonsai-demo") ? "D:\\AI\\Bonsai-demo" : ""
   };
@@ -192,6 +193,7 @@ async function saveSettings(input) {
     modelProfile: safeProfile(input?.modelProfile),
     modelRoutingMode: safeRoutingMode(input?.modelRoutingMode),
     autoManageModels: input?.autoManageModels !== false,
+    reuseCoverage: input?.reuseCoverage !== false,
     autoCheckUpdates: input?.autoCheckUpdates !== false,
     bonsaiDemoPath: String(input?.bonsaiDemoPath || "").trim()
   };
@@ -200,7 +202,8 @@ async function saveSettings(input) {
     type: "settings.saved",
     profile: next.modelProfile,
     modelRoutingMode: next.modelRoutingMode,
-    autoManageModels: next.autoManageModels
+    autoManageModels: next.autoManageModels,
+    reuseCoverage: next.reuseCoverage
   });
   return next;
 }
@@ -248,6 +251,7 @@ function buildCommand(input) {
   const profile = safeProfile(input.modelProfile);
   const routingMode = safeRoutingMode(input.modelRoutingMode);
   const autoManageModels = input.autoManageModels !== false;
+  const reuseCoverage = input.reuseCoverage !== false;
   const profileArgs = routingMode === "fixed" && profile !== "default"
     ? ["--model-profile", profile]
     : [];
@@ -269,7 +273,11 @@ function buildCommand(input) {
     args.push("--repo", validateRepository(input.repoPath));
   }
   if (command === "coverage") {
-    args.push("--repo", validateRepository(input.repoPath), "--goal", safeGoal(input.goal));
+    args.push(
+      "--repo", validateRepository(input.repoPath),
+      "--goal", safeGoal(input.goal),
+      "--reuse-coverage", String(reuseCoverage)
+    );
     if (input.runId) args.push("--run-id", safeRunId(input.runId));
     if (input.resume) args.push("--resume");
   }
@@ -463,6 +471,26 @@ function parseProgress(line) {
       files: Number(plan[1]),
       chunks: Number(plan[2]),
       batches: Number(plan[3])
+    };
+  }
+
+  const reusePlan = line.match(/\[Coverage\]\s+CACHE\s+source=(run-[\w.-]+)\s+reusable=(\d+)\/(\d+)/);
+  if (reusePlan) {
+    return {
+      type: "reuse-plan",
+      sourceRunId: reusePlan[1],
+      reusableBatches: Number(reusePlan[2]),
+      totalBatches: Number(reusePlan[3])
+    };
+  }
+
+  const reused = line.match(/\[Coverage\]\s+REUSE\s+(batch-[\w.-]+)\s+\/\s+source=(run-[\w.-]+)\s+\/\s+findings=(\d+)/);
+  if (reused) {
+    return {
+      type: "batch-reused",
+      batchId: reused[1],
+      sourceRunId: reused[2],
+      findings: Number(reused[3])
     };
   }
 
