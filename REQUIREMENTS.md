@@ -435,6 +435,7 @@ PowerShellで行っている日常操作を置き換え、長時間Local AI Run�
 - 新しいWhole Repository Auditでは、互換性を確認できる保存済みRunから変更のないBatchを再利用できる
 - 再利用の判定はAI出力ではなくNode.js側の決定的なControllerが行う
 - 対象Repository、監査目的、Execution Identity（Model / Routing / Coverage設定 / Prompt Schema）が一致しないRunは再利用候補にしない
+- Auto RoutingではRepositoryのCode比率から決まるCoverage Task Route（coverage-general / coverage-code）も一致を必須とする
 - Batch再利用にはChunk ID・File Path・File SHA-256を含む内容Fingerprintの一致を必須とする
 - Historical Runが壊れている、必要Evidenceが欠ける、互換性を確認できない場合は新規監査を失敗させずLive AuditへFallbackする
 - 再利用したFindingは現在BatchのFinding IDへ再採番し、元Run / Batch / Finding IDをProvenanceとして残す
