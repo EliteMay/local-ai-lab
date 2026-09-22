@@ -1,7 +1,7 @@
 import { loadModelCatalog, findCatalogModel } from "../src/model/model-catalog.mjs";
 import { LMStudioModelManager } from "../src/model/lm-studio-model-manager.mjs";
 
-export function createDesktopModelManager({ registerIpc, readSettings, appendDiagnostic, isBusy }) {
+export function createDesktopModelManager({ registerIpc, readSettings, appendDiagnostic, isBusy, withOperation }) {
   let catalog = null;
   let manager = null;
   const jobs = new Map();
@@ -99,9 +99,9 @@ export function createDesktopModelManager({ registerIpc, readSettings, appendDia
   }
 
   registerIpc("models:list", () => snapshot());
-  registerIpc("models:download", (modelId) => download(String(modelId || "")));
-  registerIpc("models:load", (modelId) => load(String(modelId || "")));
-  registerIpc("models:unload", (modelId) => unload(String(modelId || "")));
+  registerIpc("models:download", (modelId) => withOperation("model-download", () => download(String(modelId || ""))));
+  registerIpc("models:load", (modelId) => withOperation("model-load", () => load(String(modelId || ""))));
+  registerIpc("models:unload", (modelId) => withOperation("model-unload", () => unload(String(modelId || ""))));
 
   return { snapshot };
 }
