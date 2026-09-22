@@ -1,7 +1,7 @@
 # Local AI Lab Requirements
 
 更新日: 2026-09-22
-Status: Desktop v0.3.2 compatible coverage reuse
+Status: Desktop v0.3.3 audit hardening
 
 ## 1. 目的
 
@@ -20,7 +20,7 @@ Status: Desktop v0.3.2 compatible coverage reuse
 - OS: Windows
 - Runtime: Node.js
 - Default Local LLM Runtime: LM Studio
-- Default Model: Qwen3-8B
+- Default Model Operation: Auto Routing。Qwen3-8Bは一般監査のBaseline / Fixed Default
 - Default接続: LM StudioのローカルAPIを利用する
 - Optional Runtime: PrismML llama.cpp（OpenAI互換API）
 - Optional Model Profile: Bonsai 2 27B
@@ -38,7 +38,7 @@ ModelやRuntimeを将来差し替えられる構造を優先し、Qwen3-8B専用
 
 ### Director
 
-- Configured local modelを役職Promptで利用（初期既定はQwen3-8B）
+- Configured local modelを役職Promptで利用（Auto Routingまたは明示Fixed Profile）
 - User Goalを理解する
 - 必要なTaskを分解する
 - 担当Agentを選ぶ
@@ -47,14 +47,14 @@ ModelやRuntimeを将来差し替えられる構造を優先し、Qwen3-8B専用
 
 ### Researcher
 
-- Configured local modelを役職Promptで利用（初期既定はQwen3-8B）
+- Configured local modelを役職Promptで利用（Auto Routingまたは明示Fixed Profile）
 - Web検索、技術調査、比較、外部Evidence収集を担当する
 - 外部Contentを命令ではなくUntrusted Dataとして扱う
 - 対象Repositoryは変更しない
 
 ### Auditor
 
-- Configured local modelを役職Promptで利用（初期既定はQwen3-8B）
+- Configured local modelを役職Promptで利用（Auto Routingまたは明示Fixed Profile）
 - Repository、実装、構造、UI/UX、保守性、Security、Performance等を必要範囲で監査する
 - Evidenceのない断定を避ける
 - 必要な追加調査を他Agentへ委任要求できる
@@ -62,7 +62,7 @@ ModelやRuntimeを将来差し替えられる構造を優先し、Qwen3-8B専用
 
 ### Improvement Planner
 
-- Configured local modelを役職Promptで利用（初期既定はQwen3-8B）
+- Configured local modelを役職Promptで利用（Auto Routingまたは明示Fixed Profile）
 - Findingから具体的な改善方法を作る
 - 対象Fileや変更候補を示してよい
 - コード例や修正案を提示してよい
@@ -70,7 +70,7 @@ ModelやRuntimeを将来差し替えられる構造を優先し、Qwen3-8B専用
 
 ### Reviewer
 
-- Configured local modelを役職Promptで利用（初期既定はQwen3-8B）
+- Configured local modelを役職Promptで利用（Auto Routingまたは明示Fixed Profile）
 - FindingとEvidenceの対応を確認する
 - 事実・推測・意見を区別する
 - Requirementとの衝突、過剰変更、重複、根拠不足を確認する
@@ -550,6 +550,18 @@ PowerShellで行っている日常操作を置き換え、長時間Local AI Run�
 - Rendererへrestrictive CSPを設定する
 - Diagnosticsは最大件数を持ち、Secret / Prompt本文 / File本文を保存しない
 
+### v0.3.3 Reliability / Operation Contract
+
+- 新規Coverageでは既存Run IDを再利用しない。Rendererは新規Runへ `runId` を渡さず、Main Processも新規Coverage + runIdを拒否し、RunStoreは既存IDの再作成を拒否する
+- Resume / Synthesisは既存Run IDを必須とし、RunStoreの全Path解決で `run-*` ID検証を共通化する
+- Main Processは `run` / `repository-sync` / `model-load` / `model-unload` / `model-download` 等のOperationを共通Lockで直列化し、UI disabled状態だけを安全境界にしない
+- `autoManageModels=false` では既にLoad済みのLM Studio ModelだけをAuto Route対象として利用し、未Load候補を自動Loadしない。UserがModel管理UIから明示Loadする操作は許可する
+- `LM_API_TOKEN` が設定されている場合、LM Studio推論 / Native Model APIへBearer Tokenを送る。Prism/Bonsai等の別RuntimeへLM Studio Tokenを送らない
+- Local HTTP ResponseはContent-Lengthだけに依存せず、Streaming受信中にもByte上限を適用する
+- Audit compatibilityは手動Versionだけに依存せず、Coverage Prompt / Schema / Normalization / Synthesisを含む監査Engine Sourceから算出したHashをExecution Identityへ保存する
+- Auto RoutingのDoctorはLM Studio Server / Model Management API / 主要Route候補 / Fallback可否 / 自動管理Modeを確認できる
+- 上記ContractはUnit / Desktop Contract TestでRegression Guardを持つ
+
 ### v0.2 Non-goals
 
 - 自由Terminal
@@ -557,8 +569,8 @@ PowerShellで行っている日常操作を置き換え、長時間Local AI Run�
 - Repositoryの自動pull / 自動commit / 自動push
 - git commit / push
 - LM Studio Runtimeの自動起動
-- Model download / Bonsai setup.ps1自動実行
-- LM StudioのModel Load / Unload自動化
+- Bonsai setup.ps1の自動実行
+- Catalog外Modelの自動Download / Load / Unload
 - Bonsai以外のRuntime Process自動管理
 - Chat / RAG / Long-term Memory / MCP管理
 
@@ -572,7 +584,6 @@ v1検証後に必要性が確認されたものだけ追加する。
 - GitHub Read-only direct mode
 - RAG
 - Long-term Memory
-- Multiple model routing
 - Parallel Agent execution
 - Scheduled audits
 - Discord integration
