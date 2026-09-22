@@ -55,8 +55,8 @@ export function createDesktopModelManager({ registerIpc, readSettings, appendDia
   }
 
   async function download(modelId) {
-    const action = async () => {
     if (isBusy()) throw new Error("処理実行中はモデルをダウンロードできません。");
+    const action = async () => {
     const { catalog: activeCatalog, manager: activeManager } = await ensure();
     const entry = findCatalogModel(activeCatalog, modelId);
     if (!entry) throw new Error("モデルが見つかりません");
@@ -74,8 +74,8 @@ export function createDesktopModelManager({ registerIpc, readSettings, appendDia
   }
 
   async function load(modelId) {
-    const action = async () => {
     if (isBusy()) throw new Error("処理実行中はモデルを読み込めません。");
+    const action = async () => {
     const { catalog: activeCatalog, manager: activeManager } = await ensure();
     const entry = findCatalogModel(activeCatalog, modelId);
     if (!entry) throw new Error("モデルが見つかりません");
@@ -95,8 +95,8 @@ export function createDesktopModelManager({ registerIpc, readSettings, appendDia
   }
 
   async function unload(modelId) {
-    const action = async () => {
     if (isBusy()) throw new Error("処理実行中はモデルを解放できません。");
+    const action = async () => {
     const { catalog: activeCatalog, manager: activeManager } = await ensure();
     const entry = findCatalogModel(activeCatalog, modelId);
     if (!entry) throw new Error("モデルが見つかりません");
