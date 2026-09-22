@@ -1,7 +1,7 @@
 # Local AI Lab Requirements
 
 更新日: 2026-09-22
-Status: Desktop v0.3.2 compatible coverage reuse
+Status: Desktop v0.3.3 run safety hardening
 
 ## 1. 目的
 
@@ -20,7 +20,8 @@ Status: Desktop v0.3.2 compatible coverage reuse
 - OS: Windows
 - Runtime: Node.js
 - Default Local LLM Runtime: LM Studio
-- Default Model: Qwen3-8B
+- Default Model Operation: Auto Routing
+- Baseline / Fixed Default Model: Qwen3-8B
 - Default接続: LM StudioのローカルAPIを利用する
 - Optional Runtime: PrismML llama.cpp（OpenAI互換API）
 - Optional Model Profile: Bonsai 2 27B
@@ -443,6 +444,8 @@ PowerShellで行っている日常操作を置き換え、長時間Local AI Run�
 - Auto Routing利用時は再利用元RunのTask Pinを引き継ぎ、再利用部分とLive Audit部分でSilentに別Modelへ変えない
 - UserはDesktop設定またはCLI `--reuse-coverage false` で再利用を無効化し、全件Live Auditを選べる
 - Resumeは同一RunのCheckpoint復旧Contractを維持し、新規Runの再利用最適化で置き換えない
+- 新規Runでは既存Run IDを再利用しない。Rendererは新規CoverageでrunIdを送らず、RunStoreも既存IDのcreateを `RUN_ID_ALREADY_EXISTS` として拒否する
+- Resume / Synthesisは既存runIdを必須とし、新規作成と既存Run操作を同じ経路へ曖昧に混ぜない
 - 再利用機能によってTarget RepositoryへのWrite CapabilityやRendererの任意Path権限を追加しない
 
 ### Long-running Run Observability Contract
@@ -466,9 +469,11 @@ PowerShellで行っている日常操作を置き換え、長時間Local AI Run�
 - Auto RoutingはAI自由文ではなく `config/model-routing.json` とTask種別で決定する
 - Model Catalogの正本は `config/model-catalog.json` とし、Rendererから任意Model URL / File Path / Shell Commandを渡さない
 - LM StudioのList / Download / Load / UnloadはlocalhostのNative REST APIをMain/Node側からだけ使う
-- API Tokenが必要な場合は `LM_API_TOKEN` をProcess Environmentからだけ受け取り、Settings / Renderer / Diagnosticsへ保存しない
-- 長時間Run中はModel Download / Manual Load / Unload / Model設定変更を開始できない
+- API Tokenが必要な場合は `LM_API_TOKEN` をProcess Environmentからだけ受け取り、Settings / Renderer / Diagnosticsへ保存しない。LM Studioの管理APIと推論APIには同Tokenを適用し、Prism / Bonsai等の別Runtimeへは送らない
+- 長時間Run中はModel Download / Manual Load / Unload / Model設定変更を開始できない。逆にModel操作・Repository更新・Runtime起動停止・App Update中も新しいRunを開始できない
+- Desktopの状態変更操作はMain Processの共通Operation Lockで直列化し、UI Disabledだけを排他保証にしない
 - Auto Load / Unloadの対象はCatalog管理LM Studio Modelだけに限定し、Userの非Catalog Modelを勝手にUnloadしない
+- `autoManageModels=false` の場合はLoad済みModelだけを使用し、未Load Modelを自動Load / Unloadしない。未Load候補は定義済みFallbackへ進む
 - Bonsai 2 27Bは専用PrismML Runtimeとして扱い、Auto Route候補にはできるがRuntimeのStart / StopはUser明示操作だけとする
 - Model未導入・Runtime停止・Request FailureではRouteに定義した次候補へ限定Fallbackできる
 - TaskでModelが一度成功したらRun内Pinを保存し、同じTaskの続行 / Resumeでは同じModelを要求する。Pinned Modelが利用不可ならSilent切替せず停止して復旧を求める
@@ -558,7 +563,6 @@ PowerShellで行っている日常操作を置き換え、長時間Local AI Run�
 - git commit / push
 - LM Studio Runtimeの自動起動
 - Model download / Bonsai setup.ps1自動実行
-- LM StudioのModel Load / Unload自動化
 - Bonsai以外のRuntime Process自動管理
 - Chat / RAG / Long-term Memory / MCP管理
 
@@ -572,7 +576,6 @@ v1検証後に必要性が確認されたものだけ追加する。
 - GitHub Read-only direct mode
 - RAG
 - Long-term Memory
-- Multiple model routing
 - Parallel Agent execution
 - Scheduled audits
 - Discord integration
