@@ -1,7 +1,7 @@
 import { loadModelCatalog, findCatalogModel } from "../src/model/model-catalog.mjs";
 import { LMStudioModelManager } from "../src/model/lm-studio-model-manager.mjs";
 
-export function createDesktopModelManager({ registerIpc, readSettings, appendDiagnostic, isBusy }) {
+export function createDesktopModelManager({ registerIpc, readSettings, appendDiagnostic, isBusy, withOperation }) {
   let catalog = null;
   let manager = null;
   const jobs = new Map();
@@ -56,6 +56,7 @@ export function createDesktopModelManager({ registerIpc, readSettings, appendDia
 
   async function download(modelId) {
     if (isBusy()) throw new Error("処理実行中はモデルをダウンロードできません。");
+    return withOperation("model-download", async () => {
     const { catalog: activeCatalog, manager: activeManager } = await ensure();
     const entry = findCatalogModel(activeCatalog, modelId);
     if (!entry) throw new Error("モデルが見つかりません");
@@ -68,10 +69,12 @@ export function createDesktopModelManager({ registerIpc, readSettings, appendDia
       hasJob: Boolean(result.job_id)
     });
     return result;
+    });
   }
 
   async function load(modelId) {
     if (isBusy()) throw new Error("処理実行中はモデルを読み込めません。");
+    return withOperation("model-load", async () => {
     const { catalog: activeCatalog, manager: activeManager } = await ensure();
     const entry = findCatalogModel(activeCatalog, modelId);
     if (!entry) throw new Error("モデルが見つかりません");
@@ -87,16 +90,19 @@ export function createDesktopModelManager({ registerIpc, readSettings, appendDia
       alreadyLoaded: result.alreadyLoaded
     });
     return { ok: true, modelId: entry.id, instanceId: result.instanceId };
+    });
   }
 
   async function unload(modelId) {
     if (isBusy()) throw new Error("処理実行中はモデルを解放できません。");
+    return withOperation("model-unload", async () => {
     const { catalog: activeCatalog, manager: activeManager } = await ensure();
     const entry = findCatalogModel(activeCatalog, modelId);
     if (!entry) throw new Error("モデルが見つかりません");
     const result = await activeManager.unloadEntry(entry);
     await appendDiagnostic({ type: "model.unloaded", modelId: entry.id, unloaded: result.unloaded });
     return { ok: true, modelId: entry.id, ...result };
+    });
   }
 
   registerIpc("models:list", () => snapshot());
