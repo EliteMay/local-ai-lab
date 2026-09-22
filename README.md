@@ -272,6 +272,14 @@ Run中は現在のTask / Model / Fallback / Model別Call数を表示し、保存
 
 Qwen3 4Bは軽量FallbackとしてAuto Routeへ入れます。Gemma 3 4B / Qwen3-VL 4B / gpt-oss-20b / Qwen3 Coder 30B-A3BもCatalogへ登録しますが、重さや未実装Capabilityのため初期Auto Routeには入れません。
 
+## v0.3.1 run comparison / export
+
+v0.3.1では、保存済みRunを履歴画面で比較できます。比較元を1件固定して同じ対象Repositoryの別Runと比較し、指摘数・Coverage・Model Call数・重要度の増減と、**新規 / 解消または消失 / 継続**したFindingを確認します。
+
+比較は保存済みEvidenceだけから決定的に計算し、Modelへ再問い合わせしません。別Repository同士は誤比較を避けるためMain Process側でも拒否します。
+
+各Runは履歴からJSONへ書き出せます。保存PathはRendererから渡さず、ElectronのSave DialogでUserが選んだPathだけへ出力します。
+
 ## Desktop Controller v0.3
 
 WindowsではGitHub ReleasesのSetup.exe版をPrimary Distributionにします。
@@ -302,6 +310,8 @@ https://github.com/EliteMay/local-ai-lab/releases/latest
 - Background完了 / FailureのWindows通知
 - Single Instance化による同一Run Storeの競合防止
 - 履歴検索とRun保存Folderの直接Open
+- 同じRepositoryの保存済みRun比較（新規 / 解消 / 継続Finding、重要度、Coverage、Model Call差分）
+- 保存済みRunのJSON Export
 - 手動停止をErrorと分離した明示State
 - Main / Renderer両方の長時間Log上限
 
