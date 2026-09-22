@@ -1314,7 +1314,11 @@ async function run(command = state.selectedCommand, stateOverride = {}) {
   $("#copy").disabled = true;
   $("#bar").style.width = "0%";
   setText("#progress", "開始しています...");
-  setText("#runLabel", $("#runId").value.trim() || "—");
+  const selectedRunId = $("#runId").value.trim();
+  const requestedRunId = command === "coverage-synthesize" || (command === "coverage" && state.resume)
+    ? selectedRunId
+    : "";
+  setText("#runLabel", requestedRunId || "—");
   resetRunMetrics();
   startTimer();
 
@@ -1322,7 +1326,7 @@ async function run(command = state.selectedCommand, stateOverride = {}) {
     command,
     repoPath: state.repository,
     goal: $("#goal").value,
-    runId: $("#runId").value.trim(),
+    runId: requestedRunId,
     modelProfile: state.settings.modelProfile,
     modelRoutingMode: state.settings.modelRoutingMode || "auto",
     autoManageModels: state.settings.autoManageModels !== false,
