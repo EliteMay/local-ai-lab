@@ -33,6 +33,7 @@ if (!hasSingleInstanceLock) app.quit();
 let mainWindow = null;
 let activeProcess = null;
 let activeProcessCommand = null;
+let activeOperation = null;
 let activeProcessCancelled = false;
 let activePowerBlockerId = null;
 let pendingQuitAfterCancel = false;
@@ -43,6 +44,51 @@ let desktopModelManager = null;
 let activeProcessStartedAt = null;
 let activeProcessLastOutputAt = null;
 const sampleSystemMetrics = createSystemMetricsSampler();
+
+const OPERATION_LABELS = new Map([
+  ["run", "AI処理"],
+  ["repository-sync", "対象フォルダの更新"],
+  ["model-load", "モデル読み込み"],
+  ["model-unload", "モデル解放"],
+  ["model-download", "モデルダウンロード"],
+  ["bonsai-start", "Bonsai起動"],
+  ["bonsai-stop", "Bonsai停止"],
+  ["app-update", "アプリ更新"]
+]);
+
+function beginOperation(type, detail = {}) {
+  if (activeOperation) {
+    const current = OPERATION_LABELS.get(activeOperation.type) || activeOperation.type;
+    const error = new Error(`${current}を実行中です。完了してから再実行してください。`);
+    error.code = "OPERATION_BUSY";
+    error.activeOperation = activeOperation.type;
+    throw error;
+  }
+  const token = {
+    type,
+    detail,
+    startedAt: new Date().toISOString()
+  };
+  activeOperation = token;
+  return token;
+}
+
+function endOperation(token) {
+  if (activeOperation === token) activeOperation = null;
+}
+
+async function withOperation(type, task, detail = {}) {
+  const token = beginOperation(type, detail);
+  try {
+    return await task();
+  } finally {
+    endOperation(token);
+  }
+}
+
+function isOperationBusy() {
+  return Boolean(activeOperation);
+}
 
 function safeRoutingMode(value) {
   const mode = String(value || "auto");
@@ -186,7 +232,7 @@ async function readSettings() {
 }
 
 async function saveSettings(input) {
-  if (activeProcess) throw new Error("処理実行中は設定を変更できません。完了または停止してから保存してください。");
+  if (activeOperation) throw new Error("処理実行中は設定を変更できません。完了してから保存してください。");
   const requestedRepository = String(input?.defaultRepository || "").trim();
   const next = {
     defaultRepository: requestedRepository ? validateRepository(requestedRepository) : "",
@@ -385,6 +431,8 @@ function commandStatus() {
   return {
     running: Boolean(activeProcess),
     command: activeProcessCommand,
+    operation: activeOperation?.type ?? null,
+    operationStartedAt: activeOperation?.startedAt ?? null,
     startedAt: activeProcessStartedAt,
     lastOutputAt: activeProcessLastOutputAt,
     processAlive: Boolean(activeProcess && activeProcess.exitCode == null)
@@ -539,8 +587,8 @@ function parseProgress(line) {
 }
 
 async function runCommand(input) {
-  if (activeProcess) throw new Error("Another command is already running");
   const spec = buildCommand(input);
+  const operation = beginOperation("run", { command: spec.command });
   const startedAt = Date.now();
   await appendDiagnostic({
     type: "command.started",
@@ -555,17 +603,24 @@ async function runCommand(input) {
     let settled = false;
     const pendingLines = { stdout: "", stderr: "" };
 
-    const child = spawn(spec.file, spec.args, {
-      cwd: projectRoot,
-      windowsHide: true,
-      shell: false,
-      env: {
-        ...process.env,
-        FORCE_COLOR: "0",
-        ...(spec.nodeMode ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
-        LOCAL_AI_RUNTIME_DATA_ROOT: runsRoot()
-      }
-    });
+    let child;
+    try {
+      child = spawn(spec.file, spec.args, {
+        cwd: projectRoot,
+        windowsHide: true,
+        shell: false,
+        env: {
+          ...process.env,
+          FORCE_COLOR: "0",
+          ...(spec.nodeMode ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
+          LOCAL_AI_RUNTIME_DATA_ROOT: runsRoot()
+        }
+      });
+    } catch (error) {
+      endOperation(operation);
+      rejectPromise(error);
+      return;
+    }
 
     activeProcess = child;
     activeProcessCommand = spec.command;
@@ -613,6 +668,7 @@ async function runCommand(input) {
         activeProcessLastOutputAt = null;
       }
       stopRunProtection();
+      endOperation(operation);
     };
 
     const finishQuitIfRequested = () => {
@@ -953,45 +1009,46 @@ async function runGit(repoPath, args, { timeoutMs = 30000 } = {}) {
 }
 
 async function updateRepository(repoPath) {
-  if (activeProcess) throw new Error("処理実行中は対象フォルダを更新できません。");
-  const repository = validateRepository(repoPath);
+  return withOperation("repository-sync", async () => {
+    const repository = validateRepository(repoPath);
 
-  const inside = await runGit(repository, ["rev-parse", "--is-inside-work-tree"]);
-  if (inside.stdout !== "true") throw new Error("選択したフォルダはGitリポジトリではありません。");
+    const inside = await runGit(repository, ["rev-parse", "--is-inside-work-tree"]);
+    if (inside.stdout !== "true") throw new Error("選択したフォルダはGitリポジトリではありません。");
 
-  const dirty = await runGit(repository, ["status", "--porcelain"]);
-  if (dirty.stdout) {
-    throw new Error("未コミットの変更があるため更新を中止しました。変更を保存・退避・破棄してから再実行してください。");
-  }
+    const dirty = await runGit(repository, ["status", "--porcelain"]);
+    if (dirty.stdout) {
+      throw new Error("未コミットの変更があるため更新を中止しました。変更を保存・退避・破棄してから再実行してください。");
+    }
 
-  const branch = await runGit(repository, ["symbolic-ref", "--short", "HEAD"]);
-  if (!branch.stdout) throw new Error("現在のGit状態では安全に更新できません。通常のブランチへ戻してから再実行してください。");
+    const branch = await runGit(repository, ["symbolic-ref", "--short", "HEAD"]);
+    if (!branch.stdout) throw new Error("現在のGit状態では安全に更新できません。通常のブランチへ戻してから再実行してください。");
 
-  const before = (await runGit(repository, ["rev-parse", "HEAD"])).stdout;
-  await runGit(repository, ["fetch", "--prune", "origin"]);
-  const pull = await runGit(repository, ["pull", "--ff-only", "origin", branch.stdout]);
-  const after = (await runGit(repository, ["rev-parse", "HEAD"])).stdout;
-  const updated = before !== after;
+    const before = (await runGit(repository, ["rev-parse", "HEAD"])).stdout;
+    await runGit(repository, ["fetch", "--prune", "origin"]);
+    const pull = await runGit(repository, ["pull", "--ff-only", "origin", branch.stdout]);
+    const after = (await runGit(repository, ["rev-parse", "HEAD"])).stdout;
+    const updated = before !== after;
 
-  await appendDiagnostic({
-    type: "repository.updated",
-    updated,
-    branch: branch.stdout,
-    before: before.slice(0, 12),
-    after: after.slice(0, 12)
+    await appendDiagnostic({
+      type: "repository.updated",
+      updated,
+      branch: branch.stdout,
+      before: before.slice(0, 12),
+      after: after.slice(0, 12)
+    });
+
+    return {
+      ok: true,
+      updated,
+      branch: branch.stdout,
+      before,
+      after,
+      message: updated
+        ? `リモートの最新版へ更新しました（${before.slice(0, 7)} → ${after.slice(0, 7)}）。`
+        : "すでにリモートの最新版です。",
+      detail: pull.stdout
+    };
   });
-
-  return {
-    ok: true,
-    updated,
-    branch: branch.stdout,
-    before,
-    after,
-    message: updated
-      ? `リモートの最新版へ更新しました（${before.slice(0, 7)} → ${after.slice(0, 7)}）。`
-      : "すでにリモートの最新版です。",
-    detail: pull.stdout
-  };
 }
 
 async function isLocalAiLabRepository(repoPath) {
@@ -1149,20 +1206,26 @@ if (hasSingleInstanceLock) {
     registerIpc,
     readSettings,
     appendDiagnostic,
-    getMainWindow: () => mainWindow
+    getMainWindow: () => mainWindow,
+    withOperation
   });
   desktopModelManager = createDesktopModelManager({
     registerIpc,
     readSettings,
     appendDiagnostic,
-    isBusy: () => Boolean(activeProcess)
+    isBusy: isOperationBusy,
+    withOperation,
+    beginOperation,
+    endOperation
   });
   updaterController = createUpdaterController({
     registerIpc,
     readSettings,
     appendDiagnostic,
     getMainWindow: () => mainWindow,
-    isBusy: () => Boolean(activeProcess)
+    isBusy: isOperationBusy,
+    beginOperation,
+    endOperation
   });
   createWindow();
   await updaterController.scheduleAutoCheck();
