@@ -323,6 +323,12 @@
         </div>
 
         <label class="check">
+          <input id="reuseCoverage" type="checkbox" checked>
+          <span>変更のない監査部分は前回結果を再利用して、再監査時間を短縮する</span>
+        </label>
+        <p class="option-note">同じ対象フォルダ・監査目的・AI設定で、内容Fingerprintまで一致した部分だけを再利用します。毎回すべてAIへ再確認させたい場合はOFFにできます。</p>
+
+        <label class="check">
           <input id="autoCheckUpdates" type="checkbox" checked>
           <span>起動時に新しいバージョンを確認する</span>
         </label>
