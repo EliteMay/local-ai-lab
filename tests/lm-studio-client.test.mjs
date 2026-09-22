@@ -391,3 +391,39 @@ test("node-http transport aborts oversized local model responses", async (t) => 
     /response exceeded/
   );
 });
+
+test("LM Studio inference sends LM_API_TOKEN while non-LM providers do not inherit it", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const originalToken = process.env.LM_API_TOKEN;
+  const captured = [];
+  process.env.LM_API_TOKEN = "secret-token";
+
+  globalThis.fetch = async (url, options = {}) => {
+    captured.push({ url: String(url), authorization: options.headers?.authorization });
+    return new Response(JSON.stringify({ data: [] }), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    });
+  };
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    if (originalToken === undefined) delete process.env.LM_API_TOKEN;
+    else process.env.LM_API_TOKEN = originalToken;
+  });
+
+  await new LMStudioClient({
+    baseUrl: "http://127.0.0.1:1234/v1",
+    model: "qwen",
+    providerName: "LM Studio"
+  }).listModels();
+
+  await new LMStudioClient({
+    baseUrl: "http://127.0.0.1:8080/v1",
+    model: "bonsai",
+    providerName: "Prism"
+  }).listModels();
+
+  assert.equal(captured[0].authorization, "Bearer secret-token");
+  assert.equal(captured[1].authorization, undefined);
+});
