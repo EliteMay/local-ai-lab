@@ -17,7 +17,8 @@ test("run identity is deterministic for the same effective configuration", () =>
   });
 
   assert.equal(first.configHash, second.configHash);
-  assert.equal(first.runSchemaVersion, 3);
+  assert.equal(first.runSchemaVersion, 4);
+  assert.match(first.auditEngineHash, /^[a-f0-9]{64}$/);
   assert.equal(compareResumeIdentity(first, second).ok, true);
 });
 
@@ -83,4 +84,13 @@ test("auto-routing identity pins catalog and routing hashes for safe resume", ()
   const mismatch = compareResumeIdentity(first, changed);
   assert.equal(mismatch.ok, false);
   assert.ok(mismatch.reasons.some((item) => item.includes("監査設定") || item.includes("モデル振り分け")));
+});
+
+test("resume identity rejects evidence created by a different audit engine hash", () => {
+  const current = buildExecutionIdentity({ model: { model: "qwen/qwen3-8b" } });
+  const saved = { ...current, auditEngineHash: "0".repeat(64) };
+
+  const result = compareResumeIdentity(saved, current);
+  assert.equal(result.ok, false);
+  assert.ok(result.reasons.some((item) => item.includes("監査エンジン")));
 });
