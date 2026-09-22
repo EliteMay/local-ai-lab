@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { LMStudioClient } from "./model/lm-studio-client.mjs";
 import { loadModelCatalog, loadModelRouting } from "./model/model-catalog.mjs";
 import { ModelRouter } from "./model/model-router.mjs";
+import { LMStudioModelManager } from "./model/lm-studio-model-manager.mjs";
 import { RepoReader } from "./security/repo-reader.mjs";
 import { TaskBroker } from "./core/task-broker.mjs";
 import { AICompanyOrchestrator } from "./core/orchestrator.mjs";
@@ -215,7 +216,83 @@ function printSynthesisProgress(event) {
   }
 }
 
-async function doctor(config) {
+function configuredRoutingMode(args) {
+  const explicitProfile = getOption(args, "--model-profile") ?? process.env.LOCAL_AI_MODEL_PROFILE;
+  return getOption(args, "--model-routing")
+    ?? process.env.LOCAL_AI_MODEL_ROUTING
+    ?? (explicitProfile ? "fixed" : "auto");
+}
+
+async function doctorAuto(config, args) {
+  const catalog = await loadModelCatalog();
+  const routing = await loadModelRouting(catalog);
+  const autoManageModels = optionBoolean(args, "--auto-manage-models", true);
+  const lmClient = new LMStudioClient(config.model);
+  const lmModels = await lmClient.listModels();
+  console.log(`LM Studio Server: 接続中（${lmModels.length} loaded model entries）`);
+
+  const manager = new LMStudioModelManager({ catalog, timeoutMs: 5000 });
+  const snapshot = await manager.snapshot();
+  console.log("Model Management API: 利用可能");
+
+  const states = new Map(snapshot.map((item) => [item.id, {
+    installed: item.installed === true,
+    loaded: item.loaded === true,
+    running: item.loaded === true
+  }]));
+
+  for (const entry of catalog.models.filter((item) => item.runtime === "prism-llama.cpp" && item.autoRoute !== false)) {
+    let running = false;
+    try {
+      const client = new LMStudioClient({ ...entry.connection, timeoutMs: 2000 });
+      const models = await client.listModels();
+      running = models.some((item) => String(item?.id || item?.model || "") === entry.connection.model);
+    } catch {}
+    states.set(entry.id, { installed: true, loaded: running, running });
+  }
+
+  const usable = (entry) => {
+    const state = states.get(entry.id) ?? {};
+    if (entry.runtime === "prism-llama.cpp") return state.running === true;
+    return state.loaded === true || (autoManageModels && state.installed === true);
+  };
+
+  const routeLines = [
+    ["一般監査", "coverage-general"],
+    ["コード監査", "coverage-code"],
+    ["改善案", "planner"],
+    ["レビュー", "reviewer"]
+  ];
+
+  let allRoutesReady = true;
+  for (const [label, taskType] of routeLines) {
+    const candidates = (routing.routes?.[taskType] ?? [])
+      .map((id) => catalog.models.find((item) => item.id === id))
+      .filter(Boolean);
+    const selectedIndex = candidates.findIndex(usable);
+    if (selectedIndex < 0) {
+      allRoutesReady = false;
+      console.log(`${label}: 利用可能な候補なし`);
+      continue;
+    }
+    const selected = candidates[selectedIndex];
+    if (selectedIndex === 0) {
+      const state = states.get(selected.id) ?? {};
+      const mode = selected.runtime === "lm-studio" && !state.loaded && autoManageModels
+        ? "導入済み・実行時に自動読込"
+        : "使用可能";
+      console.log(`${label}: ${selected.label} ${mode}`);
+    } else {
+      const skipped = candidates.slice(0, selectedIndex).map((item) => item.label).join(" / ");
+      console.log(`${label}: ${skipped} は現在利用不可 → ${selected.label} へFallback可能`);
+    }
+  }
+
+  console.log(`モデル自動管理: ${autoManageModels ? "ON（必要モデルを自動Load/Unload）" : "OFF（Load済みモデルだけ使用）"}`);
+  console.log(`Auto Routing: ${allRoutesReady ? "実行可能" : "一部Routeで利用可能モデルなし"}`);
+}
+
+async function doctorFixed(config) {
   const client = new LMStudioClient(config.model);
   const models = await client.listModels();
   const ids = models.map((item) => item.id).filter(Boolean);
@@ -242,12 +319,22 @@ async function doctor(config) {
       console.log(`Max concurrent predictions: ${instance.config.parallel ?? "unknown"}`);
       console.log(`Flash attention: ${instance.config.flash_attention === undefined ? "unknown" : instance.config.flash_attention ? "on" : "off"}`);
       if ((instance.config.parallel ?? 1) > 1) {
-        console.log(`Audit note: this workflow is sequential; benchmark parallel=1 to reduce unnecessary slot/cache pressure.`);
+        console.log("Audit note: this workflow is sequential; benchmark parallel=1 to reduce unnecessary slot/cache pressure.");
       }
     }
   } catch (error) {
     console.log(`Loaded model details: unavailable (${error.message})`);
   }
+}
+
+async function doctor(config, args) {
+  const mode = configuredRoutingMode(args);
+  if (mode === "auto") {
+    config.modelRoutingMode = "auto";
+    return doctorAuto(config, args);
+  }
+  config.modelRoutingMode = "fixed";
+  return doctorFixed(config);
 }
 
 async function inspect(config, args) {
@@ -424,7 +511,7 @@ try {
   if (!command || command === "help" || command === "--help" || command === "-h") {
     printHelp();
   } else if (command === "doctor") {
-    await doctor(config);
+    await doctor(config, args);
   } else if (command === "inspect") {
     await inspect(config, args);
   } else if (command === "broker-demo") {
