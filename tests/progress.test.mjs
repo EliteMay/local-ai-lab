@@ -54,7 +54,7 @@ test("orchestrator emits live progress for each required role", async (t) => {
   const result = await orchestrator.run({
     repoPath: repo,
     goal: "Audit safely",
-    runId: "progress-run"
+    runId: "run-progress-run"
   });
 
   assert.equal(result.reviewerDecision, "APPROVE");
