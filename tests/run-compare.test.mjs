@@ -59,3 +59,19 @@ test("finding comparison key is stable for equivalent evidence", () => {
     findingComparisonKey(finding("same problem", "low", "src/a.js", 10))
   );
 });
+
+
+test("finding comparison survives line shifts in the same file", () => {
+  assert.equal(
+    findingComparisonKey(finding("same problem", "high", "src/a.js", 10)),
+    findingComparisonKey(finding("same problem", "high", "src/a.js", 44))
+  );
+});
+
+test("comparison treats equivalent Windows repository paths as the same target", () => {
+  const result = compareRunDetails(
+    { runId: "run-a", run: { repoPath: "D:\\Repo\\" }, coverage: {}, findings: [] },
+    { runId: "run-b", run: { repoPath: "d:/repo" }, coverage: {}, findings: [] }
+  );
+  assert.equal(result.delta.coveragePercent, null);
+});
