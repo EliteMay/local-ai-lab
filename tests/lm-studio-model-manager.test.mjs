@@ -100,3 +100,72 @@ test("LM Studio manager starts downloads from fixed catalog metadata", async (t)
     quantization: "Q4_K_M"
   });
 });
+
+test("manual model mode refuses to auto-load an unloaded model", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, options = {}) => {
+    const path = new URL(String(url)).pathname;
+    calls.push(path);
+    if (path === "/api/v1/models") {
+      return new Response(JSON.stringify({
+        models: [{
+          type: "llm",
+          key: "local/coder-7b",
+          display_name: "Coder 7B",
+          loaded_instances: []
+        }]
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    throw new Error("Unexpected request " + path);
+  };
+  t.after(() => { globalThis.fetch = originalFetch; });
+
+  const data = catalog();
+  const manager = new LMStudioModelManager({ catalog: data });
+  await assert.rejects(
+    async () => {
+      try {
+        await manager.ensureLoaded(data.models[1], { autoManage: false });
+      } catch (error) {
+        assert.equal(error.code, "MODEL_NOT_LOADED");
+        throw error;
+      }
+    },
+    /自動読み込みは行いません/
+  );
+  assert.equal(calls.includes("/api/v1/models/load"), false);
+});
+
+test("explicit manual load is allowed while automatic unloading stays disabled", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, options = {}) => {
+    const path = new URL(String(url)).pathname;
+    const body = options.body ? JSON.parse(options.body) : null;
+    calls.push({ path, body });
+    if (path === "/api/v1/models") {
+      return new Response(JSON.stringify({
+        models: [{
+          type: "llm",
+          key: "local/coder-7b",
+          display_name: "Coder 7B",
+          loaded_instances: []
+        }]
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (path === "/api/v1/models/load") {
+      return new Response(JSON.stringify({ instance_id: "local/coder-7b" }), { status: 200 });
+    }
+    throw new Error("Unexpected request " + path);
+  };
+  t.after(() => { globalThis.fetch = originalFetch; });
+
+  const data = catalog();
+  const manager = new LMStudioModelManager({ catalog: data });
+  const result = await manager.ensureLoaded(data.models[1], { autoManage: false, allowLoad: true });
+
+  assert.equal(result.instanceId, "local/coder-7b");
+  assert.ok(calls.some((call) => call.path === "/api/v1/models/load"));
+  assert.equal(calls.some((call) => call.path === "/api/v1/models/unload"), false);
+});
