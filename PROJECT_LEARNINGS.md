@@ -258,3 +258,26 @@
 - Boundary: Resumeは従来の完全Fingerprint一致Checkpointsを維持し、新規Runの差分再利用と混同しない。Target RepositoryはRead-onlyのまま。
 - Regression Guard: coverage-reuse helper tests、Orchestratorのall-reuse / reuse-off tests、Desktop setting/progress contract tests。
 - Prevention: Performance Cacheを導入するときはHit率だけでなく、Compatibility Key・Provenance・Fallback・Disable PathをContractとして持つ。
+
+## PL-022 — 新規Runと既存Run操作はRun IDの所有権を分離する
+
+- Date: 2026-09-22
+- Type: Data Integrity / Reliability
+- Status: Adopted
+- Problem: 履歴Viewerで選択した既存Run IDが新規CoverageのPayloadへ残り、RunStoreが既存Directoryの再作成を許可すると、過去Runのmetadataや結果を新しい監査で上書きできる。
+- Decision: 新規CoverageはrunIdを送らずRunStoreが新規IDを生成する。Resume / Synthesisだけ既存runIdを要求する。RunStoreは明示runIdが既に存在する場合 `RUN_ID_ALREADY_EXISTS` で拒否する。
+- Defense in Depth: Rendererだけに依存せず、RunStoreでrunId形式・root containment・既存ID拒否を共通Guardする。
+- Regression Guard: RunStore unit test + Desktop renderer contract test。
+- Prevention: Create / Resume / Read / SynthesizeのようにResource所有権が異なる操作を、同じ任意ID入力へ曖昧に統合しない。
+
+## PL-023 — Desktopの状態変更操作は共通Operation Lockで直列化する
+
+- Date: 2026-09-22
+- Type: Reliability / Concurrency
+- Status: Adopted
+- Problem: `activeProcess` だけをBusy判定に使うと、Repository更新やModel Loadを先に開始した後でRunを開始でき、RepositoryやModel状態が実行途中で変化する。
+- Decision: Main Processで `activeOperation` を一元管理し、Run / Repository sync / Model Download・Load・Unload / Bonsai Runtime start・stop / App Updateを共通Lockへ通す。
+- Boundary: UIのdisabled状態はUX補助であり、排他保証のSource of Truthにはしない。
+- Regression Guard: Desktop Contract Testで各state-changing operationが共通Lockを通ることを確認する。
+- Prevention: 双方向に競合し得る操作は「Run中だけ禁止」の片方向Guardではなく、共通の排他境界で管理する。
+
