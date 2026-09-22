@@ -1594,6 +1594,7 @@ async function cancelCurrentRun() {
 }
 
 function signedNumber(value, suffix = "") {
+  if (value == null || value === "") return "—";
   const number = Number(value);
   if (!Number.isFinite(number)) return "—";
   return `${number > 0 ? "+" : ""}${number}${suffix}`;
