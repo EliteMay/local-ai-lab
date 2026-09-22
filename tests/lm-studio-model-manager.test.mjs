@@ -130,3 +130,18 @@ test("LM Studio manager does not auto-load when automatic management is disabled
   );
   assert.equal(calls.filter((path) => path === "/api/v1/models/load").length, 0);
 });
+
+test("LM Studio manager aborts oversized model API responses before buffering them all", async (t) => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response("x".repeat(1024), {
+    status: 200,
+    headers: { "content-type": "application/json" }
+  });
+  t.after(() => { globalThis.fetch = originalFetch; });
+
+  const manager = new LMStudioModelManager({ catalog: catalog(), maxResponseBytes: 64 });
+  await assert.rejects(
+    () => manager.listModels(),
+    (error) => error?.code === "LM_STUDIO_MODEL_API" && /safety limit/i.test(error.message)
+  );
+});
