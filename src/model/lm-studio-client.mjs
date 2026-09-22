@@ -106,6 +106,35 @@ function requestJsonWithNodeHttp(urlString, options, timeoutMs, providerName, ma
   });
 }
 
+async function readFetchBodyLimited(response, maxResponseBytes, providerName) {
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const chunks = [];
+  let receivedBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = value instanceof Uint8Array ? value : new Uint8Array(value);
+      receivedBytes += chunk.byteLength;
+      if (receivedBytes > maxResponseBytes) {
+        try { await reader.cancel(); } catch {}
+        throw responseTooLargeError(providerName, maxResponseBytes);
+      }
+      chunks.push(chunk);
+    }
+  } finally {
+    try { reader.releaseLock(); } catch {}
+  }
+  const merged = new Uint8Array(receivedBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(merged);
+}
+
 function stripCodeFence(text) {
   const trimmed = text.trim();
   const match = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
@@ -152,7 +181,8 @@ export class LMStudioClient {
     structuredOutputStyle = "openai-json-schema",
     nativeModelDetailsPath = "/api/v1/models",
     transport = "fetch",
-    maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES
+    maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES,
+    token = undefined
   }) {
     this.baseUrl = String(baseUrl).replace(/\/$/, "");
     this.serverRoot = serverRootFromBaseUrl(this.baseUrl);
@@ -165,11 +195,16 @@ export class LMStudioClient {
     this.nativeModelDetailsPath = nativeModelDetailsPath;
     this.transport = transport;
     this.maxResponseBytes = maxResponseBytes;
+    this.token = token ?? (providerName === "LM Studio" ? (process.env.LM_API_TOKEN || "") : "");
   }
 
   async #requestUrl(url, options = {}) {
     if (this.transport === "node-http") {
-      return requestJsonWithNodeHttp(url, options, this.timeoutMs, this.providerName, this.maxResponseBytes);
+      const headers = { ...(options.headers ?? {}) };
+      if (this.token && !Object.keys(headers).some((key) => key.toLowerCase() === "authorization")) {
+        headers.authorization = "Bearer " + this.token;
+      }
+      return requestJsonWithNodeHttp(url, { ...options, headers }, this.timeoutMs, this.providerName, this.maxResponseBytes);
     }
     if (this.transport !== "fetch") {
       throw new Error(`Unknown model HTTP transport: ${this.transport}`);
@@ -179,24 +214,24 @@ export class LMStudioClient {
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
 
     try {
+      const headers = {
+        "content-type": "application/json",
+        ...(options.headers ?? {})
+      };
+      if (this.token && !Object.keys(headers).some((key) => key.toLowerCase() === "authorization")) {
+        headers.authorization = "Bearer " + this.token;
+      }
       const response = await fetch(url, {
         ...options,
         signal: controller.signal,
-        headers: {
-          "content-type": "application/json",
-          ...(options.headers ?? {})
-        }
+        headers
       });
 
       const declaredLength = Number(response.headers.get("content-length") || 0);
       if (declaredLength > this.maxResponseBytes) {
         throw responseTooLargeError(this.providerName, this.maxResponseBytes);
       }
-      const bytes = new Uint8Array(await response.arrayBuffer());
-      if (bytes.byteLength > this.maxResponseBytes) {
-        throw responseTooLargeError(this.providerName, this.maxResponseBytes);
-      }
-      const body = new TextDecoder().decode(bytes);
+      const body = await readFetchBodyLimited(response, this.maxResponseBytes, this.providerName);
       if (!response.ok) {
         throw new Error(`${this.providerName} request failed (${response.status}): ${body.slice(0, 500)}`);
       }

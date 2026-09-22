@@ -1,6 +1,27 @@
 import { modelMatchesCatalogEntry } from "./model-catalog.mjs";
 
 const JOB_PATTERN = /^job_[a-z0-9_-]+$/i;
+const DEFAULT_MAX_RESPONSE_BYTES = 4 * 1024 * 1024;
+
+async function readBoundedText(response, maxResponseBytes) {
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  let bytes = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    bytes += value.byteLength;
+    if (bytes > maxResponseBytes) {
+      try { await reader.cancel(); } catch {}
+      throw makeError("LM Studio model API response exceeded safety limit", "LM_STUDIO_MODEL_API");
+    }
+    text += decoder.decode(value, { stream: true });
+  }
+  text += decoder.decode();
+  return text;
+}
 
 function makeError(message, code) {
   const error = new Error(message);
@@ -9,12 +30,13 @@ function makeError(message, code) {
 }
 
 export class LMStudioModelManager {
-  constructor({ rootUrl = "http://127.0.0.1:1234", catalog, token = process.env.LM_API_TOKEN || "", timeoutMs = 30000 } = {}) {
+  constructor({ rootUrl = "http://127.0.0.1:1234", catalog, token = process.env.LM_API_TOKEN || "", timeoutMs = 30000, maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES } = {}) {
     if (!catalog) throw new Error("catalog is required");
     this.rootUrl = String(rootUrl).replace(/\/$/, "");
     this.catalog = catalog;
     this.token = token;
     this.timeoutMs = timeoutMs;
+    this.maxResponseBytes = maxResponseBytes;
   }
 
   async #request(path, { method = "GET", body = undefined } = {}) {
@@ -29,7 +51,11 @@ export class LMStudioModelManager {
         signal: controller.signal,
         ...(body === undefined ? {} : { body: JSON.stringify(body) })
       });
-      const text = await response.text();
+      const declaredLength = Number(response.headers.get("content-length") || 0);
+      if (declaredLength > this.maxResponseBytes) {
+        throw makeError("LM Studio model API response exceeded safety limit", "LM_STUDIO_MODEL_API");
+      }
+      const text = await readBoundedText(response, this.maxResponseBytes);
       if (!response.ok) throw makeError("LM Studio model API failed (" + response.status + "): " + text.slice(0, 400), "LM_STUDIO_MODEL_API");
       return text ? JSON.parse(text) : {};
     } catch (error) {

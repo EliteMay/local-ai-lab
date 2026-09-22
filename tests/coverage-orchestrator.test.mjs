@@ -140,14 +140,14 @@ test("coverage audit processes every planned chunk, checkpoints results, and rea
   const result = await orchestrator.run({
     repoPath: repo,
     goal: "Audit all source files",
-    runId: "coverage-complete"
+    runId: "run-coverage-complete"
   });
 
   assert.equal(result.status, "COMPLETED");
   assert.equal(result.coverage.coveragePercent, 100);
   assert.equal(result.coverage.completedChunks, result.coverage.totalChunks);
   assert.equal(result.reviewer.result.decision, "APPROVE");
-  const runRecord = JSON.parse(await readFile(join(runs, "coverage-complete", "run.json"), "utf8"));
+  const runRecord = JSON.parse(await readFile(join(runs, "run-coverage-complete", "run.json"), "utf8"));
   assert.equal(runRecord.executionIdentity.model, "fake");
   assert.equal(runRecord.executionIdentity.runSchemaVersion, 3);
   assert.ok(runRecord.createdAt);
@@ -156,9 +156,9 @@ test("coverage audit processes every planned chunk, checkpoints results, and rea
   assert.equal(plannerCall.maxTokens, 1700);
   assert.equal(reviewerCall.maxTokens, 2300);
 
-  const plan = JSON.parse(await readFile(join(runs, "coverage-complete", "coverage-plan.json"), "utf8"));
-  const batches = JSON.parse(await readFile(join(runs, "coverage-complete", "batch-results.json"), "utf8"));
-  const coverage = JSON.parse(await readFile(join(runs, "coverage-complete", "coverage.json"), "utf8"));
+  const plan = JSON.parse(await readFile(join(runs, "run-coverage-complete", "coverage-plan.json"), "utf8"));
+  const batches = JSON.parse(await readFile(join(runs, "run-coverage-complete", "batch-results.json"), "utf8"));
+  const coverage = JSON.parse(await readFile(join(runs, "run-coverage-complete", "coverage.json"), "utf8"));
 
   assert.equal(plan.auditableFiles, 3);
   assert.equal(batches.length, plan.totalBatches);
@@ -167,7 +167,7 @@ test("coverage audit processes every planned chunk, checkpoints results, and rea
 });
 
 test("output token limit adaptively splits a multi-chunk batch instead of repeating it unchanged", async (t) => {
-  const { repo, runs } = await createFixture(t, "local-ai-lab-coverage-split-");
+  const { repo, runs } = await createFixture(t, "local-ai-lab-run-coverage-split-");
   const splitConfig = {
     ...config,
     coverage: { ...config.coverage, maxBatchChars: 1000 }
@@ -184,7 +184,7 @@ test("output token limit adaptively splits a multi-chunk batch instead of repeat
   const result = await orchestrator.run({
     repoPath: repo,
     goal: "Audit all source files",
-    runId: "coverage-split"
+    runId: "run-coverage-split"
   });
 
   assert.equal(result.status, "COMPLETED");
@@ -196,7 +196,7 @@ test("output token limit adaptively splits a multi-chunk batch instead of repeat
 });
 
 test("partial coverage keeps successful checkpoints and resume skips completed batches", async (t) => {
-  const { repo, runs } = await createFixture(t, "local-ai-lab-coverage-resume-");
+  const { repo, runs } = await createFixture(t, "local-ai-lab-run-coverage-resume-");
   const store = new RunStore(runs);
   const failingModel = new CoverageFakeModel({ failBatchId: "batch-0002" });
   const first = new CoverageAuditOrchestrator({ config, modelClient: failingModel, runStore: store });
@@ -204,12 +204,12 @@ test("partial coverage keeps successful checkpoints and resume skips completed b
   const partial = await first.run({
     repoPath: repo,
     goal: "Audit all source files",
-    runId: "coverage-resume"
+    runId: "run-coverage-resume"
   });
 
   assert.equal(partial.status, "PARTIAL");
   assert.ok(partial.coverage.coveragePercent < 100);
-  const savedBefore = JSON.parse(await readFile(join(runs, "coverage-resume", "batch-results.json"), "utf8"));
+  const savedBefore = JSON.parse(await readFile(join(runs, "run-coverage-resume", "batch-results.json"), "utf8"));
   assert.ok(savedBefore.some((batch) => batch.status === "completed"));
   assert.ok(savedBefore.some((batch) => batch.batchId === "batch-0002" && batch.status === "failed"));
 
@@ -218,7 +218,7 @@ test("partial coverage keeps successful checkpoints and resume skips completed b
   const completed = await second.run({
     repoPath: repo,
     goal: "Audit all source files",
-    runId: "coverage-resume",
+    runId: "run-coverage-resume",
     resume: true
   });
 
@@ -231,10 +231,10 @@ test("partial coverage keeps successful checkpoints and resume skips completed b
 });
 
 test("resume refuses changed audit settings even when repository files are unchanged", async (t) => {
-  const { repo, runs } = await createFixture(t, "local-ai-lab-coverage-plan-change-");
+  const { repo, runs } = await createFixture(t, "local-ai-lab-run-coverage-plan-change-");
   const store = new RunStore(runs);
   const first = new CoverageAuditOrchestrator({ config, modelClient: new CoverageFakeModel(), runStore: store });
-  await first.run({ repoPath: repo, goal: "Audit all source files", runId: "coverage-plan-change" });
+  await first.run({ repoPath: repo, goal: "Audit all source files", runId: "run-coverage-plan-change" });
 
   const changedConfig = {
     ...config,
@@ -245,7 +245,7 @@ test("resume refuses changed audit settings even when repository files are uncha
     () => changed.run({
       repoPath: repo,
       goal: "Audit all source files",
-      runId: "coverage-plan-change",
+      runId: "run-coverage-plan-change",
       resume: true
     }),
     /安全に再開できません/
@@ -291,7 +291,7 @@ test("synthesis-only mode respects profile planner and reviewer token budgets", 
 
 
 test("coverage resume refuses a different model/profile even when repository and batches match", async (t) => {
-  const { repo, runs } = await createFixture(t, "local-ai-lab-coverage-model-change-");
+  const { repo, runs } = await createFixture(t, "local-ai-lab-run-coverage-model-change-");
   const store = new RunStore(runs);
   const failingModel = new CoverageFakeModel({ failBatchId: "batch-0002" });
   const firstConfig = {
@@ -303,7 +303,7 @@ test("coverage resume refuses a different model/profile even when repository and
   const partial = await first.run({
     repoPath: repo,
     goal: "Audit all source files",
-    runId: "coverage-model-change"
+    runId: "run-coverage-model-change"
   });
   assert.equal(partial.status, "PARTIAL");
 
@@ -322,7 +322,7 @@ test("coverage resume refuses a different model/profile even when repository and
     () => second.run({
       repoPath: repo,
       goal: "Audit all source files",
-      runId: "coverage-model-change",
+      runId: "run-coverage-model-change",
       resume: true
     }),
     /安全に再開できません/

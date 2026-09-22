@@ -557,8 +557,7 @@ PowerShellで行っている日常操作を置き換え、長時間Local AI Run�
 - Repositoryの自動pull / 自動commit / 自動push
 - git commit / push
 - LM Studio Runtimeの自動起動
-- Model download / Bonsai setup.ps1自動実行
-- LM StudioのModel Load / Unload自動化
+- Bonsai setup.ps1自動実行
 - Bonsai以外のRuntime Process自動管理
 - Chat / RAG / Long-term Memory / MCP管理
 
@@ -572,7 +571,6 @@ v1検証後に必要性が確認されたものだけ追加する。
 - GitHub Read-only direct mode
 - RAG
 - Long-term Memory
-- Multiple model routing
 - Parallel Agent execution
 - Scheduled audits
 - Discord integration

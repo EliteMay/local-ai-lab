@@ -2,6 +2,8 @@ import { access, mkdir, readdir } from "node:fs/promises";
 import { atomicWriteJson, atomicWriteText, readJsonWithBackup, readTextWithBackup } from "./atomic-file.mjs";
 import { resolve, sep } from "node:path";
 
+const RUN_ID_PATTERN = /^run-[a-zA-Z0-9._-]+$/;
+
 const ALLOWED_FILES = new Set([
   "run.json",
   "tasks.json",
@@ -21,19 +23,34 @@ function isInside(root, target) {
   return target === root || target.startsWith(`${root}${sep}`);
 }
 
+function assertRunId(runId) {
+  if (typeof runId !== "string" || !RUN_ID_PATTERN.test(runId)) {
+    throw new Error("Invalid run id");
+  }
+  return runId;
+}
+
 export class RunStore {
   constructor(rootPath = "runtime-data/runs") {
     this.root = resolve(rootPath);
   }
 
   async createRun(metadata = {}) {
-    const runId = metadata.runId ?? `run-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+    const runId = assertRunId(metadata.runId ?? `run-${new Date().toISOString().replace(/[:.]/g, "-")}`);
     const directory = resolve(this.root, runId);
-    if (!isInside(this.root, directory)) {
-      throw new Error("Invalid run id");
-    }
+    if (!isInside(this.root, directory)) throw new Error("Invalid run id");
 
-    await mkdir(directory, { recursive: true });
+    await mkdir(this.root, { recursive: true });
+    try {
+      await mkdir(directory, { recursive: false });
+    } catch (error) {
+      if (error?.code === "EEXIST") {
+        const conflict = new Error(`Run already exists: ${runId}`);
+        conflict.code = "RUN_ID_ALREADY_EXISTS";
+        throw conflict;
+      }
+      throw error;
+    }
     await this.writeJson(runId, "run.json", {
       runId,
       createdAt: new Date().toISOString(),
@@ -43,8 +60,9 @@ export class RunStore {
   }
 
   async hasRun(runId) {
+    const id = assertRunId(runId);
     try {
-      await access(resolve(this.root, runId, "run.json"));
+      await access(this.#path(id, "run.json"));
       return true;
     } catch {
       return false;
@@ -92,9 +110,7 @@ export class RunStore {
   }
 
   #path(runId, fileName) {
-    if (typeof runId !== "string" || runId.trim() === "") {
-      throw new Error("runId is required");
-    }
+    assertRunId(runId);
     if (!ALLOWED_FILES.has(fileName)) {
       throw new Error(`RunStore file is not allowed: ${fileName}`);
     }

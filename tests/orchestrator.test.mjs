@@ -180,19 +180,19 @@ test("AICompanyOrchestrator runs Director -> delegated specialists -> Planner ->
   const result = await orchestrator.run({
     repoPath: repo,
     goal: "Find safe repository improvements",
-    runId: "test-run"
+    runId: "run-test-run"
   });
 
-  assert.equal(result.runId, "test-run");
+  assert.equal(result.runId, "run-test-run");
   assert.equal(result.reviewerDecision, "APPROVE");
   assert.equal(result.broker.taskCount, 5);
   assert.equal(result.broker.modelCalls, 5);
   assert.equal(result.rejectedDelegations.length, 0);
   assert.ok(result.findings.some((finding) => finding.id === "F-001"));
 
-  const run = JSON.parse(await readFile(join(runs, "test-run", "run.json"), "utf8"));
-  const tasks = JSON.parse(await readFile(join(runs, "test-run", "tasks.json"), "utf8"));
-  const summary = await readFile(join(runs, "test-run", "summary.md"), "utf8");
+  const run = JSON.parse(await readFile(join(runs, "run-test-run", "run.json"), "utf8"));
+  const tasks = JSON.parse(await readFile(join(runs, "run-test-run", "tasks.json"), "utf8"));
+  const summary = await readFile(join(runs, "run-test-run", "summary.md"), "utf8");
 
   assert.equal(run.status, "COMPLETED");
   assert.equal(tasks.broker.taskCount, 5);
@@ -211,7 +211,7 @@ test("NEED_MORE_EVIDENCE reviewer delegation is executed before a bounded re-rev
   const result = await orchestrator.run({
     repoPath: repo,
     goal: "Review one uncertain repository improvement",
-    runId: "re-review-run"
+    runId: "run-re-review-run"
   });
 
   assert.equal(result.reviewerDecision, "APPROVE");

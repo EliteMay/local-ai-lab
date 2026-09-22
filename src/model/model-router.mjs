@@ -106,7 +106,25 @@ export class ModelRouter {
     }
 
     try {
-      const loaded = await this.manager.ensureLoaded(entry, { autoManage: this.autoManageModels });
+      let loaded;
+      if (this.autoManageModels) {
+        loaded = await this.manager.ensureLoaded(entry, { autoManage: true });
+      } else {
+        const models = await this.manager.listModels();
+        const installed = this.manager.resolveInstalled(entry, models);
+        if (!installed) {
+          const error = new Error(entry.label + " はまだダウンロードされていません");
+          error.code = "MODEL_NOT_INSTALLED";
+          throw error;
+        }
+        const current = installed.loaded_instances?.[0];
+        if (!current?.id) {
+          const error = new Error(entry.label + " は読み込まれていません。自動モデル管理がOFFのため自動読込は行いません。");
+          error.code = "MODEL_NOT_LOADED";
+          throw error;
+        }
+        loaded = { instanceId: current.id, model: installed, alreadyLoaded: true };
+      }
       return new LMStudioClient({
         ...this.config.model,
         providerName: "LM Studio",
@@ -185,6 +203,7 @@ export class ModelRouter {
           failures.push(entry.label + ": " + error.message);
           if (
             error?.code === "MODEL_NOT_INSTALLED" ||
+            error?.code === "MODEL_NOT_LOADED" ||
             error?.code === "LM_STUDIO_MODEL_API" ||
             /ECONNREFUSED|fetch failed/i.test(String(error?.message || ""))
           ) {
