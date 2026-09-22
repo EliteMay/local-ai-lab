@@ -80,6 +80,14 @@ export function compareRunDetails(baseline, current) {
   if (baselineRepo && currentRepo && repoKey(baselineRepo) !== repoKey(currentRepo)) {
     throw new Error("別の対象フォルダの実行履歴は比較できません");
   }
+  if (baseline?.coverage?.complete !== true || current?.coverage?.complete !== true) {
+    throw new Error("監査が100%完了した実行履歴だけ比較できます");
+  }
+  const baselineGoal = normalizedText(baseline?.run?.goal);
+  const currentGoal = normalizedText(current?.run?.goal);
+  if (baselineGoal && currentGoal && baselineGoal !== currentGoal) {
+    throw new Error("監査目的が異なる実行履歴は比較できません");
+  }
 
   const before = findings(baseline.findings);
   const after = findings(current.findings);
