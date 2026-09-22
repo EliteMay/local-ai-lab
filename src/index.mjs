@@ -215,12 +215,54 @@ function printSynthesisProgress(event) {
   }
 }
 
-async function doctor(config) {
+async function doctor(config, args = []) {
+  const modelRouter = await createModelRouter(config, args);
+
+  if (modelRouter) {
+    const managed = await modelRouter.manager.snapshot();
+    const readiness = new Map();
+
+    console.log("Model routing: auto");
+    console.log("LM Studio model management API: OK");
+    console.log(`Automatic model management: ${modelRouter.autoManageModels ? "on" : "off"}`);
+
+    for (const entry of modelRouter.catalog.models.filter((item) => item.autoRoute !== false)) {
+      if (entry.runtime === "lm-studio") {
+        const state = managed.find((item) => item.id === entry.id);
+        const usable = Boolean(state?.loaded || (modelRouter.autoManageModels && state?.installed));
+        readiness.set(entry.id, usable);
+        console.log(`${entry.label}: ${state?.loaded ? "loaded" : state?.installed ? (modelRouter.autoManageModels ? "installed / auto-load available" : "installed / not loaded") : "not installed"}`);
+        continue;
+      }
+
+      try {
+        const client = new LMStudioClient(entry.connection);
+        const models = await client.listModels();
+        const usable = models.some((item) => {
+          const id = String(item?.id || item?.model || item?.key || "").toLowerCase();
+          return (entry.matchTerms ?? [entry.id]).some((term) => id.includes(String(term).toLowerCase()));
+        });
+        readiness.set(entry.id, usable);
+        console.log(`${entry.label}: ${usable ? "runtime available" : "runtime responded / model unavailable"}`);
+      } catch (error) {
+        readiness.set(entry.id, false);
+        console.log(`${entry.label}: runtime unavailable (${error.message})`);
+      }
+    }
+
+    for (const [taskType, candidates] of Object.entries(modelRouter.routing.routes)) {
+      const available = candidates.find((id) => readiness.get(id));
+      console.log(`Route ${taskType}: ${available ? `ready via ${available}` : "not ready"}`);
+    }
+    return;
+  }
+
   const client = new LMStudioClient(config.model);
   const models = await client.listModels();
   const ids = models.map((item) => item.id).filter(Boolean);
 
   console.log(`${client.providerName} API: OK`);
+  console.log(`Model routing: fixed`);
   console.log(`Model profile: ${config.activeModelProfile ?? "default"}`);
   console.log(`Configured model: ${config.model.model}`);
   console.log(`Available models: ${ids.length ? ids.join(", ") : "none"}`);
@@ -424,7 +466,7 @@ try {
   if (!command || command === "help" || command === "--help" || command === "-h") {
     printHelp();
   } else if (command === "doctor") {
-    await doctor(config);
+    await doctor(config, args);
   } else if (command === "inspect") {
     await inspect(config, args);
   } else if (command === "broker-demo") {
