@@ -26,6 +26,8 @@ contextBridge.exposeInMainWorld("localAI", {
   readRunResult: (id) => ipcRenderer.invoke("history:result", id),
   readRunOverview: (id) => ipcRenderer.invoke("history:overview", id),
   readRunDetails: (id) => ipcRenderer.invoke("history:details", id),
+  compareRuns: (baselineRunId, currentRunId) => ipcRenderer.invoke("history:compare", { baselineRunId, currentRunId }),
+  exportRun: (id) => ipcRenderer.invoke("history:export", id),
   openRunFolder: (id) => ipcRenderer.invoke("history:open-folder", id),
   listDiagnostics: () => ipcRenderer.invoke("diagnostics:list"),
   clearDiagnostics: () => ipcRenderer.invoke("diagnostics:clear"),
