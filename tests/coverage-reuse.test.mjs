@@ -100,10 +100,47 @@ test("latest compatible historical run is selected for reuse", async () => {
   const result = await findReusableCoverageBaseline({
     runStore,
     repoPath: "D:\\Repo",
-    goal: "AUDIT",
+    goal: "Audit",
     executionIdentity: runs["run-new"].run.executionIdentity
   });
 
   assert.equal(result.runId, "run-new");
   assert.equal(result.reusable.size, 1);
+});
+
+
+test("coverage reuse treats audit goal casing as meaningful", async () => {
+  const identity = {
+    modelRoutingMode: "fixed",
+    configHash: "same",
+    promptSchemaVersion: "same",
+    model: "m",
+    modelProfile: "p",
+    providerName: "LM Studio"
+  };
+  const runStore = {
+    async listRunIds() { return ["run-case"]; },
+    async readJson(id, file) {
+      if (file === "run.json") return {
+        runId: id,
+        status: "COMPLETED",
+        mode: "full-coverage-audit",
+        repoPath: "D:/Repo",
+        goal: "Audit MyClass",
+        createdAt: "2026-09-21T00:00:00Z",
+        executionIdentity: identity
+      };
+      if (file === "coverage-plan.json") return plan();
+      if (file === "batch-results.json") return [{ batchId: "batch-0001", status: "completed", findings: [] }];
+      throw new Error("unexpected");
+    }
+  };
+
+  const result = await findReusableCoverageBaseline({
+    runStore,
+    repoPath: "D:/Repo",
+    goal: "audit myclass",
+    executionIdentity: identity
+  });
+  assert.equal(result, null);
 });
