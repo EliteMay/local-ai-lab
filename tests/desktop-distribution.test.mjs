@@ -8,7 +8,7 @@ async function read(path) {
 
 test("desktop distribution uses NSIS GitHub Releases auto update", async () => {
   const pkg = JSON.parse(await read("../package.json"));
-  assert.equal(pkg.version, "0.3.0");
+  assert.equal(pkg.version, "0.3.1");
   assert.equal(pkg.main, "desktop/main.mjs");
   assert.equal(pkg.dependencies?.["electron-updater"], "6.8.9");
   assert.equal(pkg.devDependencies?.["electron-builder"], "26.15.3");
