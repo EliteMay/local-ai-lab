@@ -113,7 +113,7 @@ test("synthesis-only mode completes an existing 100 percent coverage run without
   t.after(() => rm(root, { recursive: true, force: true }));
 
   const store = new RunStore(root);
-  const runId = "coverage-existing";
+  const runId = "run-coverage-existing";
   const findings = makeFindings();
   await store.createRun({
     runId,
