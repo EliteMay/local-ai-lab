@@ -106,7 +106,10 @@ export class ModelRouter {
     }
 
     try {
-      const loaded = await this.manager.ensureLoaded(entry, { autoManage: this.autoManageModels });
+      const loaded = await this.manager.ensureLoaded(entry, {
+        autoManage: this.autoManageModels,
+        allowLoad: this.autoManageModels
+      });
       return new LMStudioClient({
         ...this.config.model,
         providerName: "LM Studio",
@@ -116,7 +119,7 @@ export class ModelRouter {
         model: loaded.instanceId
       });
     } catch (error) {
-      if (entry.id === "qwen3-8b") {
+      if (entry.id === "qwen3-8b" && error?.code !== "MODEL_NOT_LOADED" && error?.code !== "MODEL_NOT_INSTALLED") {
         return new LMStudioClient(this.config.model);
       }
       throw error;
@@ -185,6 +188,7 @@ export class ModelRouter {
           failures.push(entry.label + ": " + error.message);
           if (
             error?.code === "MODEL_NOT_INSTALLED" ||
+            error?.code === "MODEL_NOT_LOADED" ||
             error?.code === "LM_STUDIO_MODEL_API" ||
             /ECONNREFUSED|fetch failed/i.test(String(error?.message || ""))
           ) {
