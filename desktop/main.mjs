@@ -715,6 +715,13 @@ async function runCommand(input) {
         return;
       }
 
+      try {
+        await persistRunConsoleLog(output.trim());
+        await markRunInterruptedFromOutput(output.trim(), "process-error");
+      } catch (persistError) {
+        await appendDiagnostic({ type: "run.failure.persist.error", error: compactError(persistError) });
+      }
+
       await appendDiagnostic({
         type: "command.error",
         command: spec.command,
@@ -774,6 +781,14 @@ async function runCommand(input) {
         resolvePromise(result);
         finishQuitIfRequested();
         return;
+      }
+
+      if (code !== 0) {
+        try {
+          await markRunInterruptedFromOutput(resultOutput, `process-exit-${code}`);
+        } catch (error) {
+          await appendDiagnostic({ type: "run.failure.persist.error", error: compactError(error) });
+        }
       }
 
       await appendDiagnostic({
