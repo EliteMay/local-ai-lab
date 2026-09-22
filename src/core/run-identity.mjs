@@ -1,7 +1,31 @@
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 
-export const RUN_SCHEMA_VERSION = 3;
+export const RUN_SCHEMA_VERSION = 4;
 export const PROMPT_SCHEMA_VERSION = "2026-09-21.2";
+
+const AUDIT_ENGINE_SOURCE_FILES = [
+  "./coverage-orchestrator.mjs",
+  "./coverage-plan.mjs",
+  "./coverage-synthesis.mjs",
+  "./hierarchical-synthesis.mjs",
+  "./response-schemas.mjs",
+  "../roles/role-definitions.mjs"
+];
+
+export function computeAuditEngineHash() {
+  const hash = createHash("sha256");
+  for (const relativePath of AUDIT_ENGINE_SOURCE_FILES) {
+    const url = new URL(relativePath, import.meta.url);
+    hash.update(relativePath);
+    hash.update("\0");
+    hash.update(readFileSync(url));
+    hash.update("\0");
+  }
+  return hash.digest("hex");
+}
+
+export const AUDIT_ENGINE_HASH = computeAuditEngineHash();
 
 function stableValue(value) {
   if (Array.isArray(value)) return value.map(stableValue);
@@ -45,7 +69,8 @@ export function buildExecutionIdentity(config = {}) {
     routingHash: routingIdentity?.routingHash ?? null,
     autoManageModels: routingIdentity?.autoManageModels ?? null,
     configHash: sha256(relevantConfig),
-    promptSchemaVersion: PROMPT_SCHEMA_VERSION
+    promptSchemaVersion: PROMPT_SCHEMA_VERSION,
+    auditEngineHash: AUDIT_ENGINE_HASH
   };
 }
 
@@ -61,6 +86,7 @@ export function compareResumeIdentity(saved, current) {
   const commonKeys = [
     ["modelRoutingMode", "モデル運用"],
     ["configHash", "監査設定"],
+    ["auditEngineHash", "監査エンジン"],
     ["promptSchemaVersion", "Prompt/Schema版"]
   ];
 
