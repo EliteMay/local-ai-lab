@@ -1205,7 +1205,8 @@ if (hasSingleInstanceLock) {
     readSettings,
     appendDiagnostic,
     getMainWindow: () => mainWindow,
-    isBusy: () => Boolean(activeOperation)
+    isBusy: () => Boolean(activeProcess),
+    runExclusive: runExclusiveOperation
   });
   createWindow();
   await updaterController.scheduleAutoCheck();
