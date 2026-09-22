@@ -127,6 +127,13 @@ function makeCoverage(plan, batchResults) {
   };
 }
 
+function baselineCoverageTaskType(run) {
+  const explicit = String(run?.coverageTaskType || "").trim();
+  if (explicit) return explicit;
+  const pins = run?.modelRouting?.pins ?? {};
+  return ["coverage-general", "coverage-code"].find((taskType) => pins[taskType]) ?? null;
+}
+
 function reusedBatchResult(batch, reusable) {
   const source = reusable.result;
   const sourceFindings = (source.findings ?? []).map((finding) => {
@@ -356,6 +363,12 @@ export class CoverageAuditOrchestrator {
           goal,
           executionIdentity
         });
+        if (reuseBaseline && this.modelRouter) {
+          const sourceTaskType = baselineCoverageTaskType(reuseBaseline.run);
+          if (!sourceTaskType || sourceTaskType !== this.coverageTaskType) {
+            reuseBaseline = null;
+          }
+        }
         if (reuseBaseline) {
           reusableBatchCount = plan.batches.reduce((count, batch) => {
             const fingerprint = coverageBatchFingerprint(plan, batch);
@@ -421,6 +434,7 @@ export class CoverageAuditOrchestrator {
         goal,
         repoPath,
         executionIdentity,
+        coverageTaskType: this.coverageTaskType,
         reuseCoverage: reuseCoverage !== false,
         reuseSourceRunId: reuseBaseline?.runId ?? null,
         capabilities: { repository: "read-only", mutation: false }
@@ -509,6 +523,7 @@ export class CoverageAuditOrchestrator {
       repoPath,
       executionIdentity,
       modelRouting: modelUsage,
+      coverageTaskType: this.coverageTaskType,
       reuseCoverage: reuseCoverage !== false,
       reuseSourceRunId: reuseBaseline?.runId ?? baseRun?.reuseSourceRunId ?? null,
       coverage,
