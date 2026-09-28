@@ -1,0 +1,20 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "41 18 * * 2"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  security:
+    uses: EliteMay/.github/.github/workflows/reusable-javascript-security.yml@3d0968f3c9fb9b16a4fd1e12cd8f53f72c4c82e2
+    with:
+      fail-on-severity: high
