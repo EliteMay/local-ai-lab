@@ -16,6 +16,6 @@ permissions:
 
 jobs:
   security:
-    uses: EliteMay/.github/.github/workflows/reusable-javascript-security.yml@3d0968f3c9fb9b16a4fd1e12cd8f53f72c4c82e2
+    uses: EliteMay/.github/.github/workflows/reusable-javascript-security.yml@66ef0738c4557c4cf1f6b5831dce64083c2daa80
     with:
       fail-on-severity: high
