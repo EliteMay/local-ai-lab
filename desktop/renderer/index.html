@@ -254,6 +254,11 @@
         </div>
       </header>
 
+      <section id="hubSharedSettingsNotice" class="panel hidden">
+        <strong>共通設定はAI Hubで管理します</strong>
+        <p class="option-note">通知、AI Repositoryの共通保存先、Hub起動時の画面などはAI Hubの「共通設定」から変更します。ここにはLocal AI Labだけの設定を残します。</p>
+      </section>
+
       <section class="panel settings">
         <div class="model-routing-settings">
           <label>
@@ -309,7 +314,7 @@
           </div>
         </label>
 
-        <div class="settings-section update-settings">
+        <div id="appUpdateSettings" class="settings-section update-settings">
           <div>
             <strong>アプリ更新</strong>
             <p><span id="appVersion">現在版を確認中...</span> · <span id="updateStatusText">更新状態を確認できます。</span></p>
@@ -328,7 +333,7 @@
         </label>
         <p class="option-note">同じ対象フォルダ・監査目的・AI設定で、内容Fingerprintまで一致した部分だけを再利用します。毎回すべてAIへ再確認させたい場合はOFFにできます。</p>
 
-        <label class="check">
+        <label id="autoCheckUpdatesSetting" class="check">
           <input id="autoCheckUpdates" type="checkbox" checked>
           <span>起動時に新しいバージョンを確認する</span>
         </label>
