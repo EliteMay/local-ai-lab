@@ -1,7 +1,7 @@
 # Local AI Lab Requirements
 
-更新日: 2026-09-22
-Status: Desktop v0.3.2 compatible coverage reuse
+更新日: 2026-10-04
+Status: Desktop v0.3.4 AI Hub shared settings
 
 ## 1. 目的
 
@@ -591,7 +591,7 @@ v1検証後に必要性が確認されたものだけ追加する。
 
 ## 20. AI Hub integration contract
 
-Desktop v0.3.3以降は、Standalone AppとAI Hub Moduleで同じLocal AI Lab Runtimeを共有する。
+Desktop v0.3.3以降はStandalone AppとAI Hub Moduleで同じLocal AI Lab Runtimeを共有し、v0.3.4以降はAI Hubが所有する共通設定をModule Runtimeへ受け渡す。
 
 - Product固有Runtime / Renderer / IPC ContractのOwnerは `local-ai-lab` とする。
 - AI HubはHost Window、Module lifecycle、共通Storage Routingを担当する。
@@ -602,3 +602,10 @@ Desktop v0.3.3以降は、Standalone AppとAI Hub Moduleで同じLocal AI Lab Ru
 - Hub内ではUpdaterを無効化し、同一Runtimeから二重Updaterを起動しない。
 - Hubが終了するときも実行中Commandを無断破棄しないClose GuardをHost側で維持する。
 - Hub統合を理由にv1 Read-only Contract、Evidence Contract、Model Routing Contractを変更しない。
+- 共通設定のCanonical StoreはAI Hubが所有し、Local AI Labのsettings.jsonへ同じ値を第二Source of Truthとして保存しない。
+- Hubから受け取る共通設定は少なくとも通知ON/OFFとAI Repository共通Rootを扱う。
+- 通知OFFの場合、Hub内Local AI LabはBackground完了 / Failure通知を出さない。
+- Repository選択Dialogは共通Repository Rootが利用可能ならそのFolderを初期位置にする。
+- Hub内ではUpdaterを無効化したうえで、App Update UI / 起動時Update確認UIを隠す。
+- Standalone Appでは既存UpdaterとStandalone settingsを維持する。
+- Hub共通設定が存在しない / 壊れている場合もLocal AI Lab固有設定と監査機能を壊さず安全なDefaultへFallbackする。
