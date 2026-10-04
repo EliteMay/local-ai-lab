@@ -405,7 +405,7 @@ Brokered v1 modeでは`tasks.json` / `research.json`等も使用します。`run
 
 ## AI Hub integration
 
-v0.3.4では、v0.3.3のShared Runtime統合に加えて、AI Hubが所有する共通設定をLocal AI Labへ引き継ぎます。
+v0.3.5では、v0.3.3のShared Runtime統合とv0.3.4のShared Settings統合に加えて、設定の操作入口をAI Hubへ一本化します。
 
 - Standalone: `desktop/main.mjs` がRuntimeをactivateする
 - AI Hub: `hub/adapter.mjs` がRuntimeをactivateする
@@ -416,6 +416,8 @@ v0.3.4では、v0.3.3のShared Runtime統合に加えて、AI Hubが所有する
 - Hub共通設定の「通知」をLocal AI LabのBackground通知へ適用する
 - Hub共通設定の「AI Repository保存先」をRepository Folder Pickerの初期位置へ利用する
 - Hub内の設定画面ではApp Update等のHub責務を隠し、Model / Bonsai / 監査等のLocal AI Lab固有設定だけを残す
+- Hub内ではLocal AI Lab自身の「設定」Navigationを隠し、AI Hubの「設定 > アプリ別設定」から固有設定を開く
+- Standalone版では従来どおりLocal AI Lab自身の設定Navigationを表示する
 - 共通設定をLocal AI Lab側のsettings.jsonへCanonical Copyしない
 
 Hub統合でも対象Repository Read-only、allowlisted command、trusted sender検証、sandbox / contextIsolation等の既存Security Contractを維持します。

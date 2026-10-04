@@ -1,7 +1,7 @@
 # Local AI Lab Requirements
 
-更新日: 2026-10-04
-Status: Desktop v0.3.4 AI Hub shared settings
+更新日: 2026-10-05
+Status: Desktop v0.3.5 AI Hub unified settings entry
 
 ## 1. 目的
 
@@ -607,5 +607,7 @@ Desktop v0.3.3以降はStandalone AppとAI Hub Moduleで同じLocal AI Lab Runti
 - 通知OFFの場合、Hub内Local AI LabはBackground完了 / Failure通知を出さない。
 - Repository選択Dialogは共通Repository Rootが利用可能ならそのFolderを初期位置にする。
 - Hub内ではUpdaterを無効化したうえで、App Update UI / 起動時Update確認UIを隠す。
-- Standalone Appでは既存UpdaterとStandalone settingsを維持する。
+- Hub内ではLocal AI Lab自身の「設定」Navigationを重複入口として隠す。
+- `hub/module.json` が `module-settings` Capabilityを宣言し、AI Hubの「設定 > アプリ別設定」からControllerの `openSettings()` を通じてLocal AI Lab固有設定を開ける。
+- Standalone Appでは既存UpdaterとStandalone settings / 設定Navigationを維持する。
 - Hub共通設定が存在しない / 壊れている場合もLocal AI Lab固有設定と監査機能を壊さず安全なDefaultへFallbackする。

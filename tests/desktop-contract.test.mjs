@@ -484,10 +484,16 @@ test("desktop runtime is shared by standalone and AI Hub", async () => {
   assert.match(hubAdapter, /sharedSettings/);
   assert.match(hubPreload, /"local-ai-lab:" \+ name/);
   assert.match(hubPreload, /getHostContext/);
+  assert.match(hubPreload, /onHostNavigate/);
   assert.match(html, /hubSharedSettingsNotice/);
+  assert.match(html, /Local AI Lab設定/);
   assert.match(renderer, /applyHostContext/);
+  assert.match(renderer, /onHostNavigate/);
+  assert.match(renderer, /nav\[data-view="settings"\]/);
+  assert.match(runtimeHost, /openSettings: openModuleSettings/);
   assert.doesNotMatch(hubPreload, /runShell|executeShell|powershell/i);
   assert.equal(manifest.id, "local-ai-lab");
   assert.equal(manifest.mode, "hub-renderer");
   assert.equal(manifest.hubApiVersion, "0.1");
+  assert.ok(manifest.capabilities.includes("module-settings"));
 });

@@ -18,4 +18,5 @@ test("AI Hub module manifest exposes the shared desktop runtime", async () => {
   assert.ok(manifest.capabilities.includes("history"));
   assert.ok(manifest.capabilities.includes("diagnostics"));
   assert.ok(manifest.capabilities.includes("shared-settings"));
+  assert.ok(manifest.capabilities.includes("module-settings"));
 });

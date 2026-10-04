@@ -15,6 +15,7 @@
     "long-running-process",
     "history",
     "diagnostics",
-    "shared-settings"
+    "shared-settings",
+    "module-settings"
   ]
 }

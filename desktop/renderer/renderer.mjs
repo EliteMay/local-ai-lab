@@ -2004,6 +2004,7 @@ function applyHostContext(context) {
   $("#hubSharedSettingsNotice")?.classList.toggle("hidden", !insideHub);
   $("#appUpdateSettings")?.classList.toggle("hidden", insideHub);
   $("#autoCheckUpdatesSetting")?.classList.toggle("hidden", insideHub);
+  document.querySelector('.nav[data-view="settings"]')?.classList.toggle("hidden", insideHub);
 }
 
 async function init() {
@@ -2011,6 +2012,12 @@ async function init() {
     ? await window.localAI.getHostContext()
     : { mode: "standalone", sharedSettings: null };
   applyHostContext(context);
+
+  if (typeof window.localAI.onHostNavigate === "function") {
+    window.localAI.onHostNavigate((payload) => {
+      if (payload?.view === "settings") showView("settings");
+    });
+  }
 
   state.settings = await window.localAI.getSettings();
   state.repository = state.settings.defaultRepository;
