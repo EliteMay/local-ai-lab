@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "0.1",
+  "hubApiVersion": "0.1",
+  "id": "local-ai-lab",
+  "name": "Local AI Lab",
+  "entry": "index.html",
+  "capabilities": [
+    "module-context",
+    "open-full-app",
+    "show-hub-home"
+  ]
+}
