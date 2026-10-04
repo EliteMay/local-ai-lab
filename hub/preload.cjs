@@ -4,6 +4,11 @@ const channel = (name) => "local-ai-lab:" + name;
 
 contextBridge.exposeInMainWorld("localAI", {
   getHostContext: () => ipcRenderer.invoke(channel("host:context")),
+  onHostNavigate: (callback) => {
+    const handler = (_event, payload) => callback(payload);
+    ipcRenderer.on(channel("host:navigate"), handler);
+    return () => ipcRenderer.removeListener(channel("host:navigate"), handler);
+  },
   getSettings: () => ipcRenderer.invoke(channel("settings:get")),
   saveSettings: (input) => ipcRenderer.invoke(channel("settings:save"), input),
   selectRepository: () => ipcRenderer.invoke(channel("repository:select")),
