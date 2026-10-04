@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 const channel = (name) => "local-ai-lab:" + name;
 
 contextBridge.exposeInMainWorld("localAI", {
+  getHostContext: () => ipcRenderer.invoke(channel("host:context")),
   getSettings: () => ipcRenderer.invoke(channel("settings:get")),
   saveSettings: (input) => ipcRenderer.invoke(channel("settings:save"), input),
   selectRepository: () => ipcRenderer.invoke(channel("repository:select")),
