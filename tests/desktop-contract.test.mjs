@@ -464,6 +464,8 @@ test("desktop runtime is shared by standalone and AI Hub", async () => {
   const runtimeHost = await readFile(new URL("../desktop/runtime-host.mjs", import.meta.url), "utf8");
   const hubAdapter = await readFile(new URL("../hub/adapter.mjs", import.meta.url), "utf8");
   const hubPreload = await readFile(new URL("../hub/preload.cjs", import.meta.url), "utf8");
+  const html = await readFile(new URL("../desktop/renderer/index.html", import.meta.url), "utf8");
+  const renderer = await readFile(new URL("../desktop/renderer/renderer.mjs", import.meta.url), "utf8");
   const manifest = JSON.parse(await readFile(new URL("../hub/module.json", import.meta.url), "utf8"));
 
   assert.match(main, /activateLocalAiLabRuntime/);
@@ -472,9 +474,18 @@ test("desktop runtime is shared by standalone and AI Hub", async () => {
   assert.match(runtimeHost, /channelPrefix/);
   assert.match(runtimeHost, /userDataRootOverride/);
   assert.match(runtimeHost, /enableUpdater/);
+  assert.match(runtimeHost, /sharedSettingsState/);
+  assert.match(runtimeHost, /notificationsEnabled/);
+  assert.match(runtimeHost, /repository:select/);
+  assert.match(runtimeHost, /defaultPath/);
   assert.match(hubAdapter, /ipcPrefix: "local-ai-lab:"/);
   assert.match(hubAdapter, /enableUpdater: false/);
+  assert.match(hubAdapter, /hostMode: "hub"/);
+  assert.match(hubAdapter, /sharedSettings/);
   assert.match(hubPreload, /"local-ai-lab:" \+ name/);
+  assert.match(hubPreload, /getHostContext/);
+  assert.match(html, /hubSharedSettingsNotice/);
+  assert.match(renderer, /applyHostContext/);
   assert.doesNotMatch(hubPreload, /runShell|executeShell|powershell/i);
   assert.equal(manifest.id, "local-ai-lab");
   assert.equal(manifest.mode, "hub-renderer");
