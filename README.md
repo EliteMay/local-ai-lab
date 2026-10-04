@@ -405,7 +405,7 @@ Brokered v1 modeでは`tasks.json` / `research.json`等も使用します。`run
 
 ## AI Hub integration
 
-v0.3.3では、既存Desktop Runtimeを `desktop/runtime-host.mjs` へ分離し、Standalone Electron AppとAI Hubの両方から同じRuntimeを利用できるようにします。
+v0.3.4では、v0.3.3のShared Runtime統合に加えて、AI Hubが所有する共通設定をLocal AI Labへ引き継ぎます。
 
 - Standalone: `desktop/main.mjs` がRuntimeをactivateする
 - AI Hub: `hub/adapter.mjs` がRuntimeをactivateする
@@ -413,5 +413,9 @@ v0.3.3では、既存Desktop Runtimeを `desktop/runtime-host.mjs` へ分離し�
 - Hub Preload: `hub/preload.cjs` が `local-ai-lab:` prefix付きの限定IPCを公開する
 - Hub側ではUpdaterを無効化し、Host Appが更新責務を持つ
 - Hub内Data RootはHostから渡され、StandaloneのuserDataと二重の正本を作らない
+- Hub共通設定の「通知」をLocal AI LabのBackground通知へ適用する
+- Hub共通設定の「AI Repository保存先」をRepository Folder Pickerの初期位置へ利用する
+- Hub内の設定画面ではApp Update等のHub責務を隠し、Model / Bonsai / 監査等のLocal AI Lab固有設定だけを残す
+- 共通設定をLocal AI Lab側のsettings.jsonへCanonical Copyしない
 
 Hub統合でも対象Repository Read-only、allowlisted command、trusted sender検証、sandbox / contextIsolation等の既存Security Contractを維持します。
