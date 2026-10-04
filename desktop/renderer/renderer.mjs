@@ -14,6 +14,7 @@ const COMMAND_META = {
 
 const state = {
   settings: null,
+  hostContext: null,
   repository: "",
   selectedCommand: "coverage",
   running: false,
@@ -1997,7 +1998,20 @@ async function clearDiagnostics() {
   }
 }
 
+function applyHostContext(context) {
+  state.hostContext = context || { mode: "standalone", sharedSettings: null };
+  const insideHub = state.hostContext.mode === "hub";
+  $("#hubSharedSettingsNotice")?.classList.toggle("hidden", !insideHub);
+  $("#appUpdateSettings")?.classList.toggle("hidden", insideHub);
+  $("#autoCheckUpdatesSetting")?.classList.toggle("hidden", insideHub);
+}
+
 async function init() {
+  const context = typeof window.localAI.getHostContext === "function"
+    ? await window.localAI.getHostContext()
+    : { mode: "standalone", sharedSettings: null };
+  applyHostContext(context);
+
   state.settings = await window.localAI.getSettings();
   state.repository = state.settings.defaultRepository;
   setText("#repoPath", state.repository || "未選択");
