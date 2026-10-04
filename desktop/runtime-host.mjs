@@ -59,6 +59,11 @@ function getHostContext() {
     sharedSettings: { ...sharedSettingsState }
   };
 }
+
+function openModuleSettings() {
+  rendererWebContents?.send(eventChannel("host:navigate"), { view: "settings" });
+  return { ok: true };
+}
 let activeProcess = null;
 let activeProcessCommand = null;
 let activeOperation = null;
@@ -1167,6 +1172,7 @@ export async function activateLocalAiLabRuntime({
       scheduleAutoCheck: () => updaterController?.scheduleAutoCheck?.(),
       applySharedSettings,
       getHostContext,
+      openSettings: openModuleSettings,
       dispose: disposeLocalAiLabRuntime
     };
   }
@@ -1273,6 +1279,7 @@ export async function activateLocalAiLabRuntime({
     scheduleAutoCheck: () => updaterController?.scheduleAutoCheck?.(),
     applySharedSettings,
     getHostContext,
+    openSettings: openModuleSettings,
     dispose: disposeLocalAiLabRuntime
   };
 }
