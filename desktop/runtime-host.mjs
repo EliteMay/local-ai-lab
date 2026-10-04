@@ -34,7 +34,31 @@ let modulePackagedOverride = null;
 let channelPrefix = "";
 let runtimeActivated = false;
 let moduleVersionOverride = "";
+let hostMode = "standalone";
+let sharedSettingsState = {
+  notificationsEnabled: true,
+  repositoryRoot: ""
+};
 const registeredChannels = new Set();
+
+function normalizeHostSharedSettings(input = {}) {
+  return {
+    notificationsEnabled: input?.notificationsEnabled !== false,
+    repositoryRoot: typeof input?.repositoryRoot === "string" ? input.repositoryRoot.trim() : ""
+  };
+}
+
+function applySharedSettings(next) {
+  sharedSettingsState = normalizeHostSharedSettings(next);
+  return { ...sharedSettingsState };
+}
+
+function getHostContext() {
+  return {
+    mode: hostMode,
+    sharedSettings: { ...sharedSettingsState }
+  };
+}
 let activeProcess = null;
 let activeProcessCommand = null;
 let activeOperation = null;
@@ -377,6 +401,7 @@ function appendBoundedOutput(current, chunk) {
 }
 
 function showCommandNotification(command, ok) {
+  if (sharedSettingsState.notificationsEnabled === false) return;
   if (!Notification.isSupported() || !mainWindow || mainWindow.isDestroyed() || mainWindow.isFocused()) return;
   const label = COMMAND_LABELS.get(command) || "処理";
   const notification = new Notification({
@@ -1128,7 +1153,9 @@ export async function activateLocalAiLabRuntime({
   ipcPrefix = "",
   packaged = null,
   moduleVersion = "",
-  enableUpdater = true
+  enableUpdater = true,
+  hostMode: requestedHostMode = "standalone",
+  sharedSettings = null
 } = {}) {
   if (runtimeActivated) {
     return {
@@ -1138,6 +1165,8 @@ export async function activateLocalAiLabRuntime({
       cancelActiveCommand,
       shouldAllowWindowClose: () => allowWindowClose,
       scheduleAutoCheck: () => updaterController?.scheduleAutoCheck?.(),
+      applySharedSettings,
+      getHostContext,
       dispose: disposeLocalAiLabRuntime
     };
   }
@@ -1152,6 +1181,8 @@ export async function activateLocalAiLabRuntime({
   modulePackagedOverride = packaged;
   channelPrefix = String(ipcPrefix || "");
   moduleVersionOverride = String(moduleVersion || "");
+  hostMode = requestedHostMode === "hub" ? "hub" : "standalone";
+  sharedSettingsState = normalizeHostSharedSettings(sharedSettings);
   runtimeActivated = true;
 
   if (userDataRootOverride) await mkdir(userDataRootOverride, { recursive: true });
@@ -1161,8 +1192,15 @@ export async function activateLocalAiLabRuntime({
 
   registerIpc("settings:get", () => readSettings());
   registerIpc("settings:save", (input) => saveSettings(input));
+  registerIpc("host:context", () => getHostContext());
   registerIpc("repository:select", async () => {
-    const result = await dialog.showOpenDialog(mainWindow, { properties: ["openDirectory"] });
+    const defaultPath = isUsableRepositoryPath(sharedSettingsState.repositoryRoot)
+      ? resolve(sharedSettingsState.repositoryRoot)
+      : undefined;
+    const result = await dialog.showOpenDialog(mainWindow, {
+      ...(defaultPath ? { defaultPath } : {}),
+      properties: ["openDirectory"]
+    });
     return result.canceled ? null : result.filePaths[0];
   });
   registerIpc("runtime:bonsai-select-folder", async () => {
@@ -1233,6 +1271,8 @@ export async function activateLocalAiLabRuntime({
     cancelActiveCommand,
     shouldAllowWindowClose: () => allowWindowClose,
     scheduleAutoCheck: () => updaterController?.scheduleAutoCheck?.(),
+    applySharedSettings,
+    getHostContext,
     dispose: disposeLocalAiLabRuntime
   };
 }
@@ -1249,6 +1289,11 @@ export async function disposeLocalAiLabRuntime() {
   modulePackagedOverride = null;
   channelPrefix = "";
   moduleVersionOverride = "";
+  hostMode = "standalone";
+  sharedSettingsState = {
+    notificationsEnabled: true,
+    repositoryRoot: ""
+  };
   updaterController = null;
   desktopModelManager = null;
   runtimeActivated = false;
