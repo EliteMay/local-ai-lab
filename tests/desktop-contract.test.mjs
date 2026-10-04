@@ -2,8 +2,16 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
+async function readDesktopMainSource() {
+  const [main, runtimeHost] = await Promise.all([
+    readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../desktop/runtime-host.mjs", import.meta.url), "utf8")
+  ]);
+  return main + "\n" + runtimeHost;
+}
+
 test("desktop Electron boundary keeps renderer isolated", async () => {
-  const main = await readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8");
+  const main = await readDesktopMainSource();
   assert.match(main, /contextIsolation:\s*true/);
   assert.match(main, /nodeIntegration:\s*false/);
   assert.match(main, /sandbox:\s*true/);
@@ -12,7 +20,7 @@ test("desktop Electron boundary keeps renderer isolated", async () => {
 });
 
 test("desktop command runner is allowlisted and does not enable shell execution", async () => {
-  const main = await readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8");
+  const main = await readDesktopMainSource();
   assert.match(main, /allowedCommands\s*=\s*new Set/);
   assert.match(main, /shell:\s*false/);
   assert.doesNotMatch(main, /exec\(/);
@@ -28,7 +36,7 @@ test("sandboxed desktop preload uses CommonJS and exposes only the narrow bridge
 
 
 test("desktop validates privileged IPC senders and prevents renderer navigation", async () => {
-  const main = await readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8");
+  const main = await readDesktopMainSource();
   assert.match(main, /function assertTrustedSender/);
   assert.match(main, /senderFrame\?\.url/);
   assert.match(main, /registerIpc\(/);
@@ -49,7 +57,7 @@ test("desktop renderer separates task selection from execution", async () => {
 });
 
 test("desktop exposes recovery state for partial coverage and synthesis", async () => {
-  const main = await readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8");
+  const main = await readDesktopMainSource();
   const renderer = await readFile(new URL("../desktop/renderer/renderer.mjs", import.meta.url), "utf8");
 
   assert.match(main, /coverageComplete:/);
@@ -72,7 +80,7 @@ test("desktop renderer has a restrictive CSP and avoids dynamic error HTML injec
 });
 
 test("desktop diagnostics are bounded and exposed through narrow IPC", async () => {
-  const main = await readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8");
+  const main = await readDesktopMainSource();
   const preload = await readFile(new URL("../desktop/preload.cjs", import.meta.url), "utf8");
 
   assert.match(main, /MAX_DIAGNOSTIC_EVENTS\s*=\s*100/);
@@ -123,7 +131,7 @@ test("desktop user-facing controls are understandable in Japanese", async () => 
 
 
 test("desktop exposes managed Bonsai runtime controls without arbitrary shell access", async () => {
-  const main = await readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8");
+  const main = await readDesktopMainSource();
   const preload = await readFile(new URL("../desktop/preload.cjs", import.meta.url), "utf8");
   const html = await readFile(new URL("../desktop/renderer/index.html", import.meta.url), "utf8");
   const renderer = await readFile(new URL("../desktop/renderer/renderer.mjs", import.meta.url), "utf8");
@@ -149,7 +157,7 @@ test("desktop exposes managed Bonsai runtime controls without arbitrary shell ac
 
 
 test("desktop protects long-running commands from sleep, duplicate instances, and accidental close", async () => {
-  const main = await readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8");
+  const main = await readDesktopMainSource();
 
   assert.match(main, /requestSingleInstanceLock\(\)/);
   assert.match(main, /second-instance/);
@@ -161,7 +169,7 @@ test("desktop protects long-running commands from sleep, duplicate instances, an
 });
 
 test("desktop cancellation is explicit and kills the active process tree", async () => {
-  const main = await readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8");
+  const main = await readDesktopMainSource();
   const renderer = await readFile(new URL("../desktop/renderer/renderer.mjs", import.meta.url), "utf8");
 
   assert.match(main, /function killProcessTree/);
@@ -173,7 +181,7 @@ test("desktop cancellation is explicit and kills the active process tree", async
 });
 
 test("desktop command logs are line-buffered and memory bounded", async () => {
-  const main = await readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8");
+  const main = await readDesktopMainSource();
 
   assert.match(main, /MAX_COMMAND_OUTPUT_CHARS\s*=\s*2_000_000/);
   assert.match(main, /appendBoundedOutput/);
@@ -183,7 +191,7 @@ test("desktop command logs are line-buffered and memory bounded", async () => {
 });
 
 test("desktop history can safely open one run folder and filter saved runs", async () => {
-  const main = await readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8");
+  const main = await readDesktopMainSource();
   const preload = await readFile(new URL("../desktop/preload.cjs", import.meta.url), "utf8");
   const html = await readFile(new URL("../desktop/renderer/index.html", import.meta.url), "utf8");
   const renderer = await readFile(new URL("../desktop/renderer/renderer.mjs", import.meta.url), "utf8");
@@ -199,7 +207,7 @@ test("desktop history can safely open one run folder and filter saved runs", asy
 });
 
 test("desktop notifies when a background command completes or fails", async () => {
-  const main = await readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8");
+  const main = await readDesktopMainSource();
 
   assert.match(main, /Notification\.isSupported\(\)/);
   assert.match(main, /mainWindow\.isFocused\(\)/);
@@ -209,7 +217,7 @@ test("desktop notifies when a background command completes or fails", async () =
 
 
 test("desktop always restores the last repository without asking every launch", async () => {
-  const main = await readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8");
+  const main = await readDesktopMainSource();
   const renderer = await readFile(new URL("../desktop/renderer/renderer.mjs", import.meta.url), "utf8");
   const html = await readFile(new URL("../desktop/renderer/index.html", import.meta.url), "utf8");
 
@@ -248,7 +256,7 @@ test("desktop result panel shows detailed live work and remaining-time context",
 
 
 test("desktop exposes long-run health ETA speed system load and deterministic result summary", async () => {
-  const main = await readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8");
+  const main = await readDesktopMainSource();
   const preload = await readFile(new URL("../desktop/preload.cjs", import.meta.url), "utf8");
   const html = await readFile(new URL("../desktop/renderer/index.html", import.meta.url), "utf8");
   const renderer = await readFile(new URL("../desktop/renderer/renderer.mjs", import.meta.url), "utf8");
@@ -304,7 +312,7 @@ test("desktop clears future ETA when a run is no longer active", async () => {
 
 
 test("desktop reliability foundation keeps settings and checkpoints recoverable", async () => {
-  const main = await readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8");
+  const main = await readDesktopMainSource();
   const runStore = await readFile(new URL("../src/core/run-store.mjs", import.meta.url), "utf8");
   const atomic = await readFile(new URL("../src/core/atomic-file.mjs", import.meta.url), "utf8");
 
@@ -318,7 +326,7 @@ test("desktop reliability foundation keeps settings and checkpoints recoverable"
 });
 
 test("desktop reconciles stale and user-cancelled runs as interrupted", async () => {
-  const main = await readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8");
+  const main = await readDesktopMainSource();
   const renderer = await readFile(new URL("../desktop/renderer/renderer.mjs", import.meta.url), "utf8");
 
   assert.match(main, /reconcileInterruptedRuns/);
@@ -331,7 +339,7 @@ test("desktop reconciles stale and user-cancelled runs as interrupted", async ()
 });
 
 test("desktop result viewer exposes saved findings evidence plans reviews and raw log", async () => {
-  const main = await readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8");
+  const main = await readDesktopMainSource();
   const preload = await readFile(new URL("../desktop/preload.cjs", import.meta.url), "utf8");
   const html = await readFile(new URL("../desktop/renderer/index.html", import.meta.url), "utf8");
   const renderer = await readFile(new URL("../desktop/renderer/renderer.mjs", import.meta.url), "utf8");
@@ -370,7 +378,7 @@ test("desktop Bonsai health check verifies model identity and stop completion", 
 
 
 test("desktop blocks mutable settings and update actions while a run is active", async () => {
-  const main = await readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8");
+  const main = await readDesktopMainSource();
   const renderer = await readFile(new URL("../desktop/renderer/renderer.mjs", import.meta.url), "utf8");
 
   assert.match(main, /処理実行中は設定を変更できません/);
@@ -389,7 +397,7 @@ test("desktop blocks mutable settings and update actions while a run is active",
 });
 
 test("repository maintenance uses a bounded git subprocess and generic remote wording", async () => {
-  const main = await readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8");
+  const main = await readDesktopMainSource();
   const html = await readFile(new URL("../desktop/renderer/index.html", import.meta.url), "utf8");
 
   assert.match(main, /async function runGit\(repoPath, args, \{ timeoutMs = 30000 \}/);
@@ -401,7 +409,7 @@ test("repository maintenance uses a bounded git subprocess and generic remote wo
 
 
 test("desktop exposes deterministic multi-model routing and safe catalog management", async () => {
-  const main = await readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8");
+  const main = await readDesktopMainSource();
   const preload = await readFile(new URL("../desktop/preload.cjs", import.meta.url), "utf8");
   const html = await readFile(new URL("../desktop/renderer/index.html", import.meta.url), "utf8");
   const renderer = await readFile(new URL("../desktop/renderer/renderer.mjs", import.meta.url), "utf8");
@@ -429,7 +437,7 @@ test("desktop exposes deterministic multi-model routing and safe catalog managem
 
 
 test("desktop compares and exports saved runs through narrow IPC", async () => {
-  const main = await readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8");
+  const main = await readDesktopMainSource();
   const preload = await readFile(new URL("../desktop/preload.cjs", import.meta.url), "utf8");
   const renderer = await readFile(new URL("../desktop/renderer/renderer.mjs", import.meta.url), "utf8");
   const html = await readFile(new URL("../desktop/renderer/index.html", import.meta.url), "utf8");
@@ -448,4 +456,27 @@ test("desktop compares and exports saved runs through narrow IPC", async () => {
   assert.match(renderer, /別の対象フォルダの実行履歴とは比較できません/);
   assert.match(html, /id="historyComparePanel"/);
   assert.match(html, /id="compareBaselineStatus"/);
+});
+
+
+test("desktop runtime is shared by standalone and AI Hub", async () => {
+  const main = await readFile(new URL("../desktop/main.mjs", import.meta.url), "utf8");
+  const runtimeHost = await readFile(new URL("../desktop/runtime-host.mjs", import.meta.url), "utf8");
+  const hubAdapter = await readFile(new URL("../hub/adapter.mjs", import.meta.url), "utf8");
+  const hubPreload = await readFile(new URL("../hub/preload.cjs", import.meta.url), "utf8");
+  const manifest = JSON.parse(await readFile(new URL("../hub/module.json", import.meta.url), "utf8"));
+
+  assert.match(main, /activateLocalAiLabRuntime/);
+  assert.match(main, /await win\.loadFile\(rendererPath\)/);
+  assert.match(runtimeHost, /export async function activateLocalAiLabRuntime/);
+  assert.match(runtimeHost, /channelPrefix/);
+  assert.match(runtimeHost, /userDataRootOverride/);
+  assert.match(runtimeHost, /enableUpdater/);
+  assert.match(hubAdapter, /ipcPrefix: "local-ai-lab:"/);
+  assert.match(hubAdapter, /enableUpdater: false/);
+  assert.match(hubPreload, /"local-ai-lab:" \+ name/);
+  assert.doesNotMatch(hubPreload, /runShell|executeShell|powershell/i);
+  assert.equal(manifest.id, "local-ai-lab");
+  assert.equal(manifest.mode, "hub-renderer");
+  assert.equal(manifest.hubApiVersion, "0.1");
 });

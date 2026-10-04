@@ -6,9 +6,17 @@ async function read(path) {
   return readFile(new URL("../" + path, import.meta.url), "utf8");
 }
 
+async function readDesktopMainSource() {
+  const [main, runtimeHost] = await Promise.all([
+    read("desktop/main.mjs"),
+    read("desktop/runtime-host.mjs")
+  ]);
+  return main + "\n" + runtimeHost;
+}
+
 test("desktop exposes safe coverage reuse as a boolean setting and fixed CLI flag", async () => {
   const [main, html, renderer] = await Promise.all([
-    read("desktop/main.mjs"),
+    readDesktopMainSource(),
     read("desktop/renderer/index.html"),
     read("desktop/renderer/renderer.mjs")
   ]);
@@ -24,7 +32,7 @@ test("desktop exposes safe coverage reuse as a boolean setting and fixed CLI fla
 
 test("desktop parses reuse progress without exposing a new privileged IPC surface", async () => {
   const [main, preload] = await Promise.all([
-    read("desktop/main.mjs"),
+    readDesktopMainSource(),
     read("desktop/preload.cjs")
   ]);
 

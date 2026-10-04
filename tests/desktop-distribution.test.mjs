@@ -6,9 +6,17 @@ async function read(path) {
   return readFile(new URL(path, import.meta.url), "utf8");
 }
 
+async function readDesktopMainSource() {
+  const [main, runtimeHost] = await Promise.all([
+    read("../desktop/main.mjs"),
+    read("../desktop/runtime-host.mjs")
+  ]);
+  return main + "\n" + runtimeHost;
+}
+
 test("desktop distribution uses NSIS GitHub Releases auto update", async () => {
   const pkg = JSON.parse(await read("../package.json"));
-  assert.equal(pkg.version, "0.3.2");
+  assert.equal(pkg.version, "0.3.3");
   assert.equal(pkg.main, "desktop/main.mjs");
   assert.equal(pkg.dependencies?.["electron-updater"], "6.8.9");
   assert.equal(pkg.devDependencies?.["electron-builder"], "26.15.3");
@@ -46,7 +54,7 @@ test("auto updater has fixed provider and staged download/restart recovery flow"
 });
 
 test("packaged desktop runs CLI with Electron node mode and userData runtime storage", async () => {
-  const main = await read("../desktop/main.mjs");
+  const main = await readDesktopMainSource();
   const index = await read("../src/index.mjs");
   assert.match(main, /ELECTRON_RUN_AS_NODE/);
   assert.match(main, /LOCAL_AI_RUNTIME_DATA_ROOT/);
@@ -56,7 +64,7 @@ test("packaged desktop runs CLI with Electron node mode and userData runtime sto
 });
 
 test("repository update is explicit clean-tree fast-forward only", async () => {
-  const main = await read("../desktop/main.mjs");
+  const main = await readDesktopMainSource();
   const preload = await read("../desktop/preload.cjs");
   const renderer = await read("../desktop/renderer/renderer.mjs");
   const html = await read("../desktop/renderer/index.html");
@@ -110,11 +118,11 @@ test("renderer exposes app update controls and startup update preference", async
 
 test("desktop builds a dedicated multi-size Local AI Lab icon", async () => {
   const pkg = JSON.parse(await read("../package.json"));
-  const main = await read("../desktop/main.mjs");
+  const main = await readDesktopMainSource();
   const source = await read("../desktop/assets/icon.svg");
   const generator = await read("../scripts/generate-app-icon.mjs");
 
-  assert.equal(pkg.version, "0.3.2");
+  assert.equal(pkg.version, "0.3.3");
   assert.equal(pkg.build?.win?.icon, "desktop/assets/generated/icon.ico");
   assert.equal(pkg.build?.win?.signAndEditExecutable, true);
   assert.equal(pkg.build?.win?.signExecutable, false);
