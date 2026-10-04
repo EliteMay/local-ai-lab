@@ -8,7 +8,7 @@ const projectRoot = resolve(__dirname, "..");
 const rendererPath = join(projectRoot, "desktop", "renderer", "index.html");
 const preloadPath = join(__dirname, "preload.cjs");
 
-export async function activate({ hostWindow, webContents, dataRoot }) {
+export async function activate({ hostWindow, webContents, dataRoot, sharedSettings = null }) {
   const pkg = JSON.parse(await readFile(join(projectRoot, "package.json"), "utf8"));
   return activateLocalAiLabRuntime({
     hostWindow,
@@ -18,7 +18,9 @@ export async function activate({ hostWindow, webContents, dataRoot }) {
     ipcPrefix: "local-ai-lab:",
     packaged: true,
     moduleVersion: pkg.version,
-    enableUpdater: false
+    enableUpdater: false,
+    hostMode: "hub",
+    sharedSettings
   });
 }
 
