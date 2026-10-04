@@ -402,3 +402,16 @@ Brokered v1 modeでは`tasks.json` / `research.json`等も使用します。`run
 - Agent数が多いほど良いと仮定しない
 - Single / Fixed Pipeline / Brokered / Full Coverageを実測比較する
 - 速度改善はCoverageやEvidence品質を落として達成しない
+
+## AI Hub integration
+
+v0.3.3では、既存Desktop Runtimeを `desktop/runtime-host.mjs` へ分離し、Standalone Electron AppとAI Hubの両方から同じRuntimeを利用できるようにします。
+
+- Standalone: `desktop/main.mjs` がRuntimeをactivateする
+- AI Hub: `hub/adapter.mjs` がRuntimeをactivateする
+- Hub Renderer: 既存 `desktop/renderer/index.html` をそのまま利用する
+- Hub Preload: `hub/preload.cjs` が `local-ai-lab:` prefix付きの限定IPCを公開する
+- Hub側ではUpdaterを無効化し、Host Appが更新責務を持つ
+- Hub内Data RootはHostから渡され、StandaloneのuserDataと二重の正本を作らない
+
+Hub統合でも対象Repository Read-only、allowlisted command、trusted sender検証、sandbox / contextIsolation等の既存Security Contractを維持します。

@@ -588,3 +588,17 @@ v1検証後に必要性が確認されたものだけ追加する。
   - 初期同時実行数は1
   - Target RepositoryへのWrite Capabilityは与えない
 - Implementation conversation: `local-ai-lab（実装）`
+
+## 20. AI Hub integration contract
+
+Desktop v0.3.3以降は、Standalone AppとAI Hub Moduleで同じLocal AI Lab Runtimeを共有する。
+
+- Product固有Runtime / Renderer / IPC ContractのOwnerは `local-ai-lab` とする。
+- AI HubはHost Window、Module lifecycle、共通Storage Routingを担当する。
+- `hub/module.json` はHub Module Contractの機械可読入口とする。
+- `hub/adapter.mjs` はAI Hubからのactivate entryとする。
+- Hub内では既存Rendererを再利用し、個別機能をAI Hub Repositoryへ複製しない。
+- Module IPCは `local-ai-lab:` prefixでStandalone IPCと分離する。
+- Hub内ではUpdaterを無効化し、同一Runtimeから二重Updaterを起動しない。
+- Hubが終了するときも実行中Commandを無断破棄しないClose GuardをHost側で維持する。
+- Hub統合を理由にv1 Read-only Contract、Evidence Contract、Model Routing Contractを変更しない。
