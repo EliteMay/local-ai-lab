@@ -13,4 +13,8 @@
     <PublishTrimmed>false</PublishTrimmed>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="PcAgentPrototype.IpcRegression\**\*.cs" />
+  </ItemGroup>
 </Project>
