@@ -26,11 +26,17 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: Restore
+      - name: Restore app
         run: dotnet restore spikes/school-pc-manager-prototype/PcAgentPrototype.csproj
+
+      - name: Restore IPC regression harness
+        run: dotnet restore spikes/school-pc-manager-prototype/PcAgentPrototype.IpcRegression/PcAgentPrototype.IpcRegression.csproj
 
       - name: Build
         run: dotnet build spikes/school-pc-manager-prototype/PcAgentPrototype.csproj -c Release --no-restore
+
+      - name: IPC regression test
+        run: dotnet run --project spikes/school-pc-manager-prototype/PcAgentPrototype.IpcRegression/PcAgentPrototype.IpcRegression.csproj -c Release --no-restore
 
       - name: Publish single-file self-contained win-x64
         run: >-
