@@ -56,6 +56,9 @@ internal sealed class MainForm : Form
     private const string SupabaseHealthUrl = "https://vtnwbgejlaqpnwmlzbjy.supabase.co/auth/v1/health";
     private const string OAuthReadonlyGatewayUrl = "https://vtnwbgejlaqpnwmlzbjy.supabase.co/functions/v1/kaito-pc-agent-oauth-readonly";
 
+    private static readonly byte[] PingPayload = Encoding.ASCII.GetBytes("PING");
+    private static readonly byte[] PongPayload = Encoding.ASCII.GetBytes("PONG");
+
     private readonly Label _managerStatus = NewStatusLabel("Manager: Running");
     private readonly Label _supabaseStatus = NewStatusLabel("Supabase: 未確認");
     private readonly Label _gatewayStatus = NewStatusLabel("OAuth Gateway: 未確認");
@@ -199,11 +202,7 @@ internal sealed class MainForm : Form
     {
         _isClosing = true;
         AppLogger.Write("Window closing: bounded synchronous cleanup start");
-
-        // Do not call an async method synchronously here. WinForms has a UI SynchronizationContext;
-        // blocking on an awaited continuation can deadlock the UI thread during shutdown.
         StopDummyAgentForShutdown();
-
         AppLogger.Write("Window closing: cleanup finished");
         base.OnFormClosing(e);
     }
@@ -214,15 +213,9 @@ internal sealed class MainForm : Form
         SetStatus(_gatewayStatus, "OAuth Gateway: 接続中...");
         AppendLog("Cloud診断開始");
 
-        using var handler = new HttpClientHandler
-        {
-            AllowAutoRedirect = false
-        };
-        using var client = new HttpClient(handler)
-        {
-            Timeout = TimeSpan.FromSeconds(10)
-        };
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("PcAgentSchoolPrototype/0.2");
+        using var handler = new HttpClientHandler { AllowAutoRedirect = false };
+        using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(10) };
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("PcAgentSchoolPrototype/0.3");
 
         var report = new StringBuilder();
 
@@ -291,8 +284,9 @@ internal sealed class MainForm : Form
     private async Task RunNamedPipeSelfTestAsync()
     {
         SetStatus(_ipcStatus, "IPC: テスト中...");
+        AppendLog("IPC自己テスト開始");
         var pipeName = $"PcAgentPrototypeSelfTest-{Guid.NewGuid():N}";
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(4));
 
         try
         {
@@ -303,19 +297,7 @@ internal sealed class MainForm : Form
                 PipeTransmissionMode.Byte,
                 PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
 
-            var serverTask = Task.Run(async () =>
-            {
-                await server.WaitForConnectionAsync(cts.Token);
-                using var reader = new StreamReader(server, Encoding.UTF8, false, 1024, leaveOpen: true);
-                using var writer = new StreamWriter(server, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
-                var message = await reader.ReadLineAsync(cts.Token);
-                if (message != "PING")
-                {
-                    throw new InvalidOperationException($"Unexpected IPC message: {message}");
-                }
-
-                await writer.WriteLineAsync("PONG");
-            }, cts.Token);
+            var serverTask = RunPipeServerRoundTripAsync(server, cts.Token);
 
             using var client = new NamedPipeClientStream(
                 ".",
@@ -324,20 +306,27 @@ internal sealed class MainForm : Form
                 PipeOptions.Asynchronous);
 
             await client.ConnectAsync(cts.Token);
-            using var clientReader = new StreamReader(client, Encoding.UTF8, false, 1024, leaveOpen: true);
-            using var clientWriter = new StreamWriter(client, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
-            await clientWriter.WriteLineAsync("PING");
-            var result = await clientReader.ReadLineAsync(cts.Token);
-            await serverTask;
+            await client.WriteAsync(PingPayload, cts.Token);
+            await client.FlushAsync(cts.Token);
 
-            if (result != "PONG")
+            var response = new byte[PongPayload.Length];
+            await client.ReadExactlyAsync(response, cts.Token);
+            await serverTask.WaitAsync(cts.Token);
+
+            if (!response.AsSpan().SequenceEqual(PongPayload))
             {
-                throw new InvalidOperationException($"Unexpected IPC response: {result}");
+                throw new InvalidOperationException($"Unexpected IPC response: {Encoding.ASCII.GetString(response)}");
             }
 
             SetStatus(_ipcStatus, "IPC: OK (CurrentUserOnly Named Pipe)");
             _lastIpcResult = "Named Pipe self-test: OK";
             AppendLog("IPC自己テスト -> OK");
+        }
+        catch (OperationCanceledException)
+        {
+            SetStatus(_ipcStatus, "IPC: タイムアウト");
+            _lastIpcResult = "Named Pipe self-test: ERROR Timeout";
+            AppendLog("IPC自己テスト ERROR: timeout");
         }
         catch (Exception ex)
         {
@@ -345,6 +334,23 @@ internal sealed class MainForm : Form
             _lastIpcResult = $"Named Pipe self-test: ERROR {ex.GetType().Name}: {ex.Message}";
             AppendLog($"IPC自己テスト ERROR: {ex.Message}");
         }
+    }
+
+    private static async Task RunPipeServerRoundTripAsync(
+        NamedPipeServerStream server,
+        CancellationToken cancellationToken)
+    {
+        await server.WaitForConnectionAsync(cancellationToken);
+
+        var request = new byte[PingPayload.Length];
+        await server.ReadExactlyAsync(request, cancellationToken);
+        if (!request.AsSpan().SequenceEqual(PingPayload))
+        {
+            throw new InvalidOperationException($"Unexpected IPC request: {Encoding.ASCII.GetString(request)}");
+        }
+
+        await server.WriteAsync(PongPayload, cancellationToken);
+        await server.FlushAsync(cancellationToken);
     }
 
     private async Task StartDummyAgentAsync()
@@ -424,7 +430,13 @@ internal sealed class MainForm : Form
     {
         try
         {
-            using var reader = new StreamReader(pipe, Encoding.UTF8, false, 1024, leaveOpen: true);
+            using var reader = new StreamReader(
+                pipe,
+                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+                detectEncodingFromByteOrderMarks: false,
+                bufferSize: 1024,
+                leaveOpen: true);
+
             while (!cancellationToken.IsCancellationRequested && pipe.IsConnected)
             {
                 var line = await reader.ReadLineAsync(cancellationToken);
@@ -693,7 +705,6 @@ internal static class ProcessShutdown
         }
         catch (InvalidOperationException)
         {
-            // The process exited between the state check and termination.
             return true;
         }
         catch (Exception ex)
@@ -777,7 +788,11 @@ internal static class DummyAgent
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(7));
         await client.ConnectAsync(timeout.Token);
 
-        using var writer = new StreamWriter(client, Encoding.UTF8, 1024, leaveOpen: true)
+        using var writer = new StreamWriter(
+            client,
+            new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+            bufferSize: 1024,
+            leaveOpen: true)
         {
             AutoFlush = true
         };
