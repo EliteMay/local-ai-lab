@@ -27,14 +27,14 @@ jobs:
           dotnet-version: '8.0.x'
 
       - name: Restore
-        run: dotnet restore spikes/school-pc-manager-prototype/KaitoPcAgentPrototype.csproj
+        run: dotnet restore spikes/school-pc-manager-prototype/PcAgentPrototype.csproj
 
       - name: Build
-        run: dotnet build spikes/school-pc-manager-prototype/KaitoPcAgentPrototype.csproj -c Release --no-restore
+        run: dotnet build spikes/school-pc-manager-prototype/PcAgentPrototype.csproj -c Release --no-restore
 
       - name: Publish single-file self-contained win-x64
         run: >-
-          dotnet publish spikes/school-pc-manager-prototype/KaitoPcAgentPrototype.csproj
+          dotnet publish spikes/school-pc-manager-prototype/PcAgentPrototype.csproj
           -c Release
           -r win-x64
           --self-contained true
@@ -44,6 +44,14 @@ jobs:
           -p:IncludeNativeLibrariesForSelfExtract=true
           -o publish/school-pc-prototype
 
+      - name: Shutdown smoke test
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath "publish/school-pc-prototype/PcAgentPrototype.exe" -ArgumentList "--shutdown-self-test" -PassThru -Wait
+          if ($p.ExitCode -ne 0) {
+            throw "Shutdown smoke test failed with exit code $($p.ExitCode)"
+          }
+
       - name: Show artifact files
         shell: pwsh
         run: Get-ChildItem -Recurse publish/school-pc-prototype | Select-Object FullName,Length
@@ -51,7 +59,7 @@ jobs:
       - name: Upload Windows prototype
         uses: actions/upload-artifact@v4
         with:
-          name: kaito-pc-agent-school-prototype-win-x64
-          path: publish/school-pc-prototype/KaitoPcAgentPrototype.exe
+          name: pc-agent-school-prototype-win-x64
+          path: publish/school-pc-prototype/PcAgentPrototype.exe
           if-no-files-found: error
           retention-days: 7
