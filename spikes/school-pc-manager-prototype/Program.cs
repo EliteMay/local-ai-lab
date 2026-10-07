@@ -6,23 +6,48 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Forms;
 
-namespace KaitoPcAgentPrototype;
+namespace PcAgentPrototype;
 
 internal static class Program
 {
     [STAThread]
-    private static void Main(string[] args)
+    private static int Main(string[] args)
     {
+        if (args.Length >= 1 && args[0] == "--self-test-child")
+        {
+            Thread.Sleep(Timeout.Infinite);
+            return 0;
+        }
+
+        if (args.Length >= 1 && args[0] == "--shutdown-self-test")
+        {
+            return ShutdownSmokeTest.Run();
+        }
+
         if (args.Length >= 2 && args[0] == "--dummy-agent")
         {
             DummyAgent.RunAsync(args[1]).GetAwaiter().GetResult();
-            return;
+            return 0;
         }
 
-        Application.SetHighDpiMode(HighDpiMode.SystemAware);
-        Application.EnableVisualStyles();
-        Application.SetCompatibleTextRenderingDefault(false);
-        Application.Run(new MainForm());
+        AppLogger.Write("Application starting");
+        Application.ThreadException += (_, e) => AppLogger.Write($"UI UNHANDLED: {e.Exception}");
+        AppDomain.CurrentDomain.UnhandledException += (_, e) => AppLogger.Write($"UNHANDLED: {e.ExceptionObject}");
+
+        try
+        {
+            Application.SetHighDpiMode(HighDpiMode.SystemAware);
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+            Application.Run(new MainForm());
+            AppLogger.Write("Application exited normally");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Write($"FATAL: {ex}");
+            return 1;
+        }
     }
 }
 
@@ -53,10 +78,11 @@ internal sealed class MainForm : Form
     private CancellationTokenSource? _dummyPipeCts;
     private string _lastCloudResult = "未実行";
     private string _lastIpcResult = "未実行";
+    private volatile bool _isClosing;
 
     public MainForm()
     {
-        Text = "Kaito PC Agent - School PC Prototype";
+        Text = "PC Agent - School PC Prototype";
         Width = 760;
         Height = 620;
         MinimumSize = new Size(680, 540);
@@ -67,7 +93,7 @@ internal sealed class MainForm : Form
 
         var title = new Label
         {
-            Text = "Kaito PC Agent Prototype",
+            Text = "PC Agent Prototype",
             AutoSize = true,
             Font = new Font("Segoe UI Semibold", 17F),
             ForeColor = Color.White,
@@ -76,7 +102,7 @@ internal sealed class MainForm : Form
 
         var note = new Label
         {
-            Text = "学校PC向けの安全な検証版です。PC操作・自動起動・レジストリ変更・ファイル編集は行いません。",
+            Text = "学校PC向けの安全な検証版です。PC操作・自動起動・レジストリ変更・通常ファイル編集は行いません。診断用ログのみ一時フォルダへ保存します。",
             AutoSize = true,
             MaximumSize = new Size(700, 0),
             ForeColor = Color.Silver,
@@ -166,19 +192,19 @@ internal sealed class MainForm : Form
         AppendLog($"OS: {RuntimeInformation.OSDescription}");
         AppendLog($"Architecture: {RuntimeInformation.OSArchitecture} / Process {RuntimeInformation.ProcessArchitecture}");
         AppendLog($".NET: {RuntimeInformation.FrameworkDescription}");
+        AppendLog("診断ログを一時フォルダへ記録中");
     }
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
-        try
-        {
-            StopDummyAgentAsync().GetAwaiter().GetResult();
-        }
-        catch
-        {
-            // Prototype: shutdown should not block window close.
-        }
+        _isClosing = true;
+        AppLogger.Write("Window closing: bounded synchronous cleanup start");
 
+        // Do not call an async method synchronously here. WinForms has a UI SynchronizationContext;
+        // blocking on an awaited continuation can deadlock the UI thread during shutdown.
+        StopDummyAgentForShutdown();
+
+        AppLogger.Write("Window closing: cleanup finished");
         base.OnFormClosing(e);
     }
 
@@ -196,7 +222,7 @@ internal sealed class MainForm : Form
         {
             Timeout = TimeSpan.FromSeconds(10)
         };
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("KaitoPcAgentSchoolPrototype/0.1");
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("PcAgentSchoolPrototype/0.2");
 
         var report = new StringBuilder();
 
@@ -265,7 +291,7 @@ internal sealed class MainForm : Form
     private async Task RunNamedPipeSelfTestAsync()
     {
         SetStatus(_ipcStatus, "IPC: テスト中...");
-        var pipeName = $"KaitoPcAgentPrototypeSelfTest-{Guid.NewGuid():N}";
+        var pipeName = $"PcAgentPrototypeSelfTest-{Guid.NewGuid():N}";
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
 
         try
@@ -287,6 +313,7 @@ internal sealed class MainForm : Form
                 {
                     throw new InvalidOperationException($"Unexpected IPC message: {message}");
                 }
+
                 await writer.WriteLineAsync("PONG");
             }, cts.Token);
 
@@ -340,7 +367,7 @@ internal sealed class MainForm : Form
             return;
         }
 
-        var pipeName = $"KaitoPcAgentPrototypeAgent-{Environment.UserName}-{Guid.NewGuid():N}";
+        var pipeName = $"PcAgentPrototypeAgent-{Guid.NewGuid():N}";
         _dummyPipeCts = new CancellationTokenSource();
         _dummyPipeServer = new NamedPipeServerStream(
             pipeName,
@@ -368,7 +395,7 @@ internal sealed class MainForm : Form
             }
 
             _dummyProcess.EnableRaisingEvents = true;
-            _dummyProcess.Exited += (_, _) => BeginInvoke(() =>
+            _dummyProcess.Exited += (_, _) => SafeUi(() =>
             {
                 SetStatus(_agentStatus, "Dummy Agent: 停止");
                 SetStatus(_heartbeatStatus, "Heartbeat: 停止");
@@ -408,12 +435,12 @@ internal sealed class MainForm : Form
 
                 if (line.StartsWith("HELLO|", StringComparison.Ordinal))
                 {
-                    BeginInvoke(() => AppendLog($"Agent IPC: {line}"));
+                    SafeUi(() => AppendLog($"Agent IPC: {line}"));
                 }
                 else if (line.StartsWith("HEARTBEAT|", StringComparison.Ordinal))
                 {
                     var timestamp = line["HEARTBEAT|".Length..];
-                    BeginInvoke(() => SetStatus(_heartbeatStatus, $"Heartbeat: OK {timestamp}"));
+                    SafeUi(() => SetStatus(_heartbeatStatus, $"Heartbeat: OK {timestamp}"));
                 }
             }
         }
@@ -421,56 +448,120 @@ internal sealed class MainForm : Form
         {
             // Expected during stop.
         }
+        catch (ObjectDisposedException) when (cancellationToken.IsCancellationRequested || _isClosing)
+        {
+            // Expected when the pipe is disposed during shutdown.
+        }
         catch (Exception ex)
         {
-            BeginInvoke(() =>
+            SafeUi(() =>
             {
                 SetStatus(_heartbeatStatus, "Heartbeat: 失敗");
                 AppendLog($"Heartbeat ERROR: {ex.Message}");
             });
+            AppLogger.Write($"Heartbeat monitor ERROR: {ex}");
         }
     }
 
     private async Task StopDummyAgentAsync()
     {
-        _dummyPipeCts?.Cancel();
+        var cts = _dummyPipeCts;
+        var pipe = _dummyPipeServer;
+        var process = _dummyProcess;
 
-        if (_dummyProcess is { HasExited: false })
+        _dummyPipeCts = null;
+        _dummyPipeServer = null;
+        _dummyProcess = null;
+
+        cts?.Cancel();
+
+        try
+        {
+            pipe?.Dispose();
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"Pipe停止 ERROR: {ex.Message}");
+        }
+
+        if (process is not null)
         {
             try
             {
-                _dummyProcess.Kill(entireProcessTree: true);
-                await _dummyProcess.WaitForExitAsync();
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                    await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(2));
+                }
+            }
+            catch (TimeoutException)
+            {
+                AppendLog("Dummy Agent停止: 2秒以内に終了確認できませんでした");
             }
             catch (Exception ex)
             {
                 AppendLog($"Dummy Agent停止 ERROR: {ex.Message}");
             }
+            finally
+            {
+                process.Dispose();
+            }
         }
 
-        _dummyProcess?.Dispose();
-        _dummyProcess = null;
-
-        _dummyPipeServer?.Dispose();
-        _dummyPipeServer = null;
-
-        _dummyPipeCts?.Dispose();
-        _dummyPipeCts = null;
-
+        cts?.Dispose();
         SetStatus(_agentStatus, "Dummy Agent: 停止中");
         SetStatus(_heartbeatStatus, "Heartbeat: 停止");
+    }
+
+    private void StopDummyAgentForShutdown()
+    {
+        var cts = _dummyPipeCts;
+        var pipe = _dummyPipeServer;
+        var process = _dummyProcess;
+
+        _dummyPipeCts = null;
+        _dummyPipeServer = null;
+        _dummyProcess = null;
+
+        try
+        {
+            cts?.Cancel();
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Write($"Shutdown cancel ERROR: {ex.Message}");
+        }
+
+        try
+        {
+            pipe?.Dispose();
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Write($"Shutdown pipe dispose ERROR: {ex.Message}");
+        }
+
+        if (process is not null)
+        {
+            ProcessShutdown.TryTerminateProcessTree(
+                process,
+                TimeSpan.FromSeconds(1),
+                message => AppLogger.Write($"Shutdown process: {message}"));
+            process.Dispose();
+        }
+
+        cts?.Dispose();
     }
 
     private void CopyDiagnostics()
     {
         var report = new StringBuilder();
-        report.AppendLine("Kaito PC Agent - School PC Prototype Diagnostic");
+        report.AppendLine("PC Agent - School PC Prototype Diagnostic");
         report.AppendLine($"Timestamp: {DateTimeOffset.Now:O}");
         report.AppendLine($"OS: {RuntimeInformation.OSDescription}");
         report.AppendLine($"OS Architecture: {RuntimeInformation.OSArchitecture}");
         report.AppendLine($"Process Architecture: {RuntimeInformation.ProcessArchitecture}");
         report.AppendLine($"Framework: {RuntimeInformation.FrameworkDescription}");
-        report.AppendLine($"User: {Environment.UserName}");
         report.AppendLine();
         report.AppendLine(_managerStatus.Text);
         report.AppendLine(_supabaseStatus.Text);
@@ -498,13 +589,67 @@ internal sealed class MainForm : Form
 
     private void AppendLog(string message)
     {
-        if (InvokeRequired)
+        AppLogger.Write(message);
+
+        if (_isClosing || IsDisposed || Disposing)
         {
-            BeginInvoke(() => AppendLog(message));
             return;
         }
 
-        _log.AppendText($"[{DateTime.Now:HH:mm:ss}] {message}{Environment.NewLine}");
+        if (InvokeRequired)
+        {
+            SafeUi(() => AppendLog(message));
+            return;
+        }
+
+        if (!_log.IsDisposed)
+        {
+            _log.AppendText($"[{DateTime.Now:HH:mm:ss}] {message}{Environment.NewLine}");
+        }
+    }
+
+    private void SetStatus(Label label, string text)
+    {
+        if (_isClosing || label.IsDisposed)
+        {
+            return;
+        }
+
+        if (label.InvokeRequired)
+        {
+            SafeUi(() => label.Text = text);
+            return;
+        }
+
+        label.Text = text;
+    }
+
+    private void SafeUi(Action action)
+    {
+        if (_isClosing || IsDisposed || Disposing || !IsHandleCreated)
+        {
+            return;
+        }
+
+        try
+        {
+            if (InvokeRequired)
+            {
+                BeginInvoke(action);
+            }
+            else
+            {
+                action();
+            }
+        }
+        catch (InvalidOperationException) when (_isClosing || IsDisposed || Disposing)
+        {
+            // Window is shutting down.
+        }
+        catch (ObjectDisposedException)
+        {
+            // Window is shutting down.
+        }
     }
 
     private static Button NewButton(string text) => new()
@@ -526,16 +671,96 @@ internal sealed class MainForm : Form
         Margin = new Padding(0, 0, 0, 5),
         ForeColor = Color.Gainsboro
     };
+}
 
-    private static void SetStatus(Label label, string text)
+internal static class ProcessShutdown
+{
+    public static bool TryTerminateProcessTree(Process process, TimeSpan timeout, Action<string>? log = null)
     {
-        if (label.InvokeRequired)
+        try
         {
-            label.BeginInvoke(() => label.Text = text);
-            return;
+            if (process.HasExited)
+            {
+                log?.Invoke("already exited");
+                return true;
+            }
+
+            process.Kill(entireProcessTree: true);
+            var timeoutMs = Math.Clamp((int)timeout.TotalMilliseconds, 1, 10_000);
+            var exited = process.WaitForExit(timeoutMs);
+            log?.Invoke(exited ? "terminated" : $"timeout after {timeoutMs} ms");
+            return exited;
+        }
+        catch (InvalidOperationException)
+        {
+            // The process exited between the state check and termination.
+            return true;
+        }
+        catch (Exception ex)
+        {
+            log?.Invoke($"ERROR {ex.GetType().Name}: {ex.Message}");
+            return false;
+        }
+    }
+}
+
+internal static class ShutdownSmokeTest
+{
+    public static int Run()
+    {
+        var executable = Environment.ProcessPath;
+        if (string.IsNullOrWhiteSpace(executable))
+        {
+            return 10;
         }
 
-        label.Text = text;
+        var psi = new ProcessStartInfo
+        {
+            FileName = executable,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            WorkingDirectory = AppContext.BaseDirectory
+        };
+        psi.ArgumentList.Add("--self-test-child");
+
+        using var child = Process.Start(psi);
+        if (child is null)
+        {
+            return 11;
+        }
+
+        Thread.Sleep(250);
+        var stopwatch = Stopwatch.StartNew();
+        var stopped = ProcessShutdown.TryTerminateProcessTree(child, TimeSpan.FromSeconds(2));
+        stopwatch.Stop();
+
+        return stopped && stopwatch.Elapsed < TimeSpan.FromSeconds(3) ? 0 : 12;
+    }
+}
+
+internal static class AppLogger
+{
+    private static readonly object Gate = new();
+    private static readonly string DirectoryPath = Path.Combine(Path.GetTempPath(), "PC-Agent-Prototype");
+    public static string LogPath { get; } = Path.Combine(DirectoryPath, "prototype.log");
+
+    public static void Write(string message)
+    {
+        try
+        {
+            lock (Gate)
+            {
+                Directory.CreateDirectory(DirectoryPath);
+                File.AppendAllText(
+                    LogPath,
+                    $"[{DateTimeOffset.Now:O}] {message}{Environment.NewLine}",
+                    Encoding.UTF8);
+            }
+        }
+        catch
+        {
+            // Diagnostics must never make the prototype fail.
+        }
     }
 }
 
@@ -568,6 +793,10 @@ internal static class DummyAgent
             }
         }
         catch (IOException)
+        {
+            // Manager closed or pipe was disposed.
+        }
+        catch (ObjectDisposedException)
         {
             // Manager closed or pipe was disposed.
         }
