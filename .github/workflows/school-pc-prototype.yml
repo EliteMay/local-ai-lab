@@ -1,0 +1,57 @@
+name: Build School PC Prototype
+
+on:
+  push:
+    branches:
+      - spike/school-pc-prototype
+    paths:
+      - 'spikes/school-pc-manager-prototype/**'
+      - '.github/workflows/school-pc-prototype.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore spikes/school-pc-manager-prototype/KaitoPcAgentPrototype.csproj
+
+      - name: Build
+        run: dotnet build spikes/school-pc-manager-prototype/KaitoPcAgentPrototype.csproj -c Release --no-restore
+
+      - name: Publish single-file self-contained win-x64
+        run: >-
+          dotnet publish spikes/school-pc-manager-prototype/KaitoPcAgentPrototype.csproj
+          -c Release
+          -r win-x64
+          --self-contained true
+          --no-restore
+          -p:PublishSingleFile=true
+          -p:PublishTrimmed=false
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -o publish/school-pc-prototype
+
+      - name: Show artifact files
+        shell: pwsh
+        run: Get-ChildItem -Recurse publish/school-pc-prototype | Select-Object FullName,Length
+
+      - name: Upload Windows prototype
+        uses: actions/upload-artifact@v4
+        with:
+          name: kaito-pc-agent-school-prototype-win-x64
+          path: publish/school-pc-prototype/KaitoPcAgentPrototype.exe
+          if-no-files-found: error
+          retention-days: 7
