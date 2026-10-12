@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { runTeam, createMockAsk, validateTeamOptions } from '../src/cloud-team/team.mjs';
 import { createCloudAsk } from '../src/cloud-team/providers.mjs';
+import { createRoleRouter } from '../src/cloud-team/role-router.mjs';
 
 test('模擬AIの自由会話を1周して9回以上に暴走しない', async () => {
   const output = await runTeam({ topic: 'テストテーマ', rounds: 1, ask: createMockAsk() });
@@ -62,4 +63,22 @@ test('OpenRouter 429で停止して自動有料切替しない', async () => {
 
 test('異常な長文応答を拒否する', async () => {
   await assert.rejects(runTeam({ topic: 'x', ask: async () => 'a'.repeat(4001) }), /長すぎ/);
+});
+
+
+test('同じ議論内でGeminiとOpenRouterを別役割に割り当てられる', async () => {
+  const hosts = [];
+  const ask = createRoleRouter({ provider: 'mock', roleOptions: {
+    planner: { provider: 'gemini', model: 'gemini-2.5-flash-lite' },
+    reviewer: { provider: 'openrouter', model: 'vendor/model:free' },
+  }, env: { CLOUD_TEAM_FREE_TIER_CONFIRMED: '1', GEMINI_API_KEY: 'g-secret', OPENROUTER_API_KEY: 'or-secret' },
+    fetchImpl: async (url) => {
+      hosts.push(new URL(url).host);
+      const data = url.includes('googleapis') ? { candidates: [{ content: { parts: [{ text: 'Gemini回答' }] } }] } :
+        { choices: [{ message: { content: 'OpenRouter回答' } }] };
+      return { ok: true, json: async () => data };
+    } });
+  const result = await runTeam({ topic: '異なるAIで議論', rounds: 1, ask });
+  assert.deepEqual(result.transcript.map(t => t.message), ['Gemini回答', 'OpenRouter回答', '[模擬応答] 最小の案から検証し、失敗条件を明記して進めます。']);
+  assert.deepEqual(hosts, ['generativelanguage.googleapis.com', 'openrouter.ai']);
 });
