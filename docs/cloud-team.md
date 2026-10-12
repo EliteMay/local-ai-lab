@@ -53,3 +53,11 @@ API経由で送った議論やコードは外部サービスへ送信されま�
 - Gemini REST：https://ai.google.dev/api/generate-content
 - OpenRouter無料枠：https://openrouter.ai/pricing
 - OpenRouter chat：https://openrouter.ai/docs/api/api-reference/chat/send-chat-completion-request
+
+## 別々のクラウドAIで議論する
+
+各役に違うプロバイダーを割り当てられます。以下のvendor/model:freeは利用時点で公開中の無料モデルIDに変更してください。設定のない役は既定のprovider（初期値はmock）を使います。
+
+    node src/cloud-team/cli.mjs --topic "仕様を議論" --rounds 1 --planner-provider gemini --planner-model gemini-2.5-flash-lite --reviewer-provider openrouter --reviewer-model vendor/model:free --integrator-provider gemini --integrator-model gemini-2.5-flash-lite
+
+プロバイダー間の会話共有は必要な発言だけを直近6件まで渡します。各社へ直前の議論テキストが送信されるため、送信情報に注意してください。
