@@ -21,7 +21,7 @@ function parseArgs(args) {
 export async function main(args = process.argv.slice(2), env = process.env) {
   const options = parseArgs(args);
   if (options.help) {
-    console.log('node src/cloud-team/cli.mjs --topic "話題" --mode chat|dev --rounds 1..3 --provider mock|gemini|openrouter --model MODEL');
+    console.log('node src/cloud-team/cli.mjs --topic "話題" --mode chat|dev --rounds 1..3 --provider mock|gemini|openrouter --model MODEL [--planner-provider P --planner-model M] [--reviewer-provider P --reviewer-model M] [--integrator-provider P --integrator-model M]');
     return;
   }
   const roleOptions = Object.fromEntries(['planner', 'reviewer', 'integrator'].map(role => [role, {
