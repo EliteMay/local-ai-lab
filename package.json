@@ -14,7 +14,8 @@
     "test": "node --test",
     "desktop": "npm run icon:build && electron desktop/main.mjs",
     "build:win": "npm run icon:build && electron-builder --win nsis --x64 --publish never",
-    "icon:build": "node scripts/generate-app-icon.mjs"
+    "icon:build": "node scripts/generate-app-icon.mjs",
+    "diagnose": "node scripts/audit-diagnostics.mjs"
   },
   "engines": {
     "node": ">=20"
