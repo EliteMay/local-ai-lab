@@ -94,3 +94,23 @@ test('nonexistent run store produces an explicit no-history status',async t=>{
   assert.equal(r.notice,'runs_directory_not_found');
   assert.equal(r.checkedRuns,0);
 });
+
+test('recognizes legacy evidence with a single integer line', () => {
+  const plan = {batches:[{id:'batch-0001',chunks:[{path:'config/default.json',startLine:1,endLine:50}]}]};
+  const evidence = [{batchId:'batch-0001',evidence:[{file:'config/default.json',line:31,text:'redacted legacy source'}]}];
+  const result = checkEvidenceLocations(evidence,plan);
+  assert.equal(result.inPlanRange,1);
+  assert.equal(result.missingOrInvalidLocation,0);
+  assert.equal(result.outsidePlanRange,0);
+});
+
+test('identifies a historical synthesis budget failure separately', async t => {
+  const root=await sandbox(t);
+  const dir=await fixture(root,'run-budget');
+  const filename=join(dir,'run.json');
+  const meta=JSON.parse(await readFile(filename,'utf8'));
+  meta.synthesisError='Findings exceed synthesis budget (49912 > 24000 chars); hierarchical synthesis is required';
+  await writeFile(filename,JSON.stringify(meta));
+  const report=await diagnoseRuns({runsRoot:root});
+  assert.equal(report.runRecords[0].synthesisErrorCategory,'synthesis_budget');
+});
