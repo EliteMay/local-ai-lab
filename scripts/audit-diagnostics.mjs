@@ -5,12 +5,13 @@ import { constants } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 const validId = /^run-[\w.-]+$/;
-const categories = ['output_limit','context_limit','timeout','structured_output','model_unavailable','other'];
+const categories = ['output_limit','context_limit','timeout','structured_output','model_unavailable','synthesis_budget','other'];
 const count = n => Number.isFinite(n) && n >= 0 ? n : 0;
 const category = error => {
   const s = String(error ?? '');
   if (/OUTPUT_TOKEN_LIMIT|max output tokens|max_tokens|output cap/i.test(s)) return 'output_limit';
   if (/CONTEXT_LIMIT|context limit|context window|context length/i.test(s)) return 'context_limit';
+  if (/exceeds? synthesis budget|exceeds? planner budget|hierarchical synthesis.*target/i.test(s)) return 'synthesis_budget';
   if (/timed?\s*out|timeout|AbortError|fetch failed/i.test(s)) return 'timeout';
   if (/JSON|SCHEMA|valid response|inspectedChunks|parse|validation/i.test(s)) return 'structured_output';
   if (/MODEL_NOT_|NO_ROUTED_MODEL|MODEL_ROUTING_FAILED|MODEL.*UNAVAILABLE|ECONNREFUSED/i.test(s)) return 'model_unavailable';
@@ -41,11 +42,15 @@ export function checkEvidenceLocations(findings, plan) {
   const ranges = batches?.flatMap(b => (b.chunks ?? []).map(c => ({...c,batchId:b.id}))) ?? [];
   for (const f of Array.isArray(findings) ? findings : []) for (const ev of Array.isArray(f?.evidence) ? f.evidence : []) {
     result.evidenceItems++;
-    if (typeof ev?.file !== 'string' || !Number.isSafeInteger(ev.lineStart) || !Number.isSafeInteger(ev.lineEnd) || ev.lineStart < 1 || ev.lineEnd < ev.lineStart) {
+    // Old run snapshots recorded a single "line" field; newer ones use a start/end range.
+    const legacy = ev?.lineStart === undefined && ev?.lineEnd === undefined && Number.isSafeInteger(ev?.line);
+    const first = legacy ? ev.line : ev?.lineStart;
+    const last = legacy ? ev.line : ev?.lineEnd;
+    if (typeof ev?.file !== 'string' || !Number.isSafeInteger(first) || !Number.isSafeInteger(last) || first < 1 || last < first) {
       result.missingOrInvalidLocation++; continue;
     }
     if (!batches) { result.uncheckableWithoutPlan++; continue; }
-    const matching = ranges.filter(r => r.path === ev.file && ev.lineStart >= r.startLine && ev.lineEnd <= r.endLine);
+    const matching = ranges.filter(r => r.path === ev.file && first >= r.startLine && last <= r.endLine);
     if (!matching.length) { result.outsidePlanRange++; continue; }
     result.inPlanRange++;
     if (typeof f?.batchId === 'string' && batches.some(b => b.id === f.batchId) && !matching.some(r => r.batchId === f.batchId)) result.outsideReportedBatch++;
