@@ -53,8 +53,12 @@ export async function analyzeRunDirectory(root,id) {
   const coverage = coverageFile ?? run?.coverage ?? {};
   const batches = Array.isArray(batchesFile) ? batchesFile : [];
   const findings = Array.isArray(findingsFile) ? findingsFile : batches.flatMap(b=>Array.isArray(b.findings)?b.findings:[]);
-  const failures = Object.fromEntries(categories.map(c=>[c,0]));
-  for (const b of batches) if (b.status === 'failed') failures[category(b.error)]++;
+  const failureCounts = new Map(categories.map(c=>[c,0]));
+  for (const b of batches) if (b.status === 'failed') {
+    const code = category(b.error);
+    failureCounts.set(code, failureCounts.get(code) + 1);
+  }
+  const failures = Object.fromEntries(failureCounts);
   const models = Array.isArray((usageFile ?? run?.modelRouting)?.models) ? (usageFile ?? run?.modelRouting).models.map(m=>({
     modelId: typeof m.modelId === 'string' && /^[\w./-]{1,90}$/.test(m.modelId) ? m.modelId : 'unknown',
     calls:count(m.calls),failures:count(m.failures),promptTokens:count(m.promptTokens),
