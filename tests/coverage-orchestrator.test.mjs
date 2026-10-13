@@ -153,6 +153,8 @@ test("coverage audit processes every planned chunk, checkpoints results, and rea
   assert.ok(runRecord.createdAt);
   const plannerCall = model.calls.find((call) => call.system.includes("Improvement Planner"));
   const reviewerCall = model.calls.find((call) => call.system.includes("Reviewer"));
+  assert.match(reviewerCall.user, /Original source excerpts for independent review/);
+  assert.match(reviewerCall.user, /SOURCE src\/a\.js:1-1|SOURCE README\.md:1-1/);
   assert.equal(plannerCall.maxTokens, 1700);
   assert.equal(reviewerCall.maxTokens, 2300);
 
