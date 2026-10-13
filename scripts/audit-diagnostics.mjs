@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Read-only diagnostic. Outputs aggregate counters only, never source content or raw errors.
-import { lstat, readFile, readdir } from 'node:fs/promises';
+import { lstat, open, readdir } from 'node:fs/promises';
+import { constants } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 const validId = /^run-[\w.-]+$/;
@@ -17,11 +18,19 @@ const category = error => {
 };
 async function load(dir, name) {
   for (const file of [join(dir,name), join(dir,name+'.backup')]) {
+    let handle;
     try {
-      const stat = await lstat(file);
-      if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 32*1024*1024) continue;
-      return JSON.parse(await readFile(file,'utf8'));
+      // Check and read through the SAME opened file descriptor, avoiding TOCTOU.
+      // On platforms supporting O_NOFOLLOW, refuse symlinks at open time.
+      const flags = constants.O_RDONLY | (process.platform === 'win32' ? 0 : (constants.O_NOFOLLOW ?? 0));
+      handle = await open(file, flags);
+      const stat = await handle.stat();
+      if (!stat.isFile() || stat.size > 32*1024*1024) continue;
+      const source = await handle.readFile('utf8');
+      if (Buffer.byteLength(source, 'utf8') > 32*1024*1024) continue;
+      return JSON.parse(source);
     } catch { /* Old or broken snapshots do not block reading other runs. */ }
+    finally { await handle?.close(); }
   }
   return null;
 }
