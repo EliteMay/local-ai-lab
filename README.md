@@ -421,3 +421,9 @@ v0.3.5では、v0.3.3のShared Runtime統合とv0.3.4のShared Settings統合に
 - 共通設定をLocal AI Lab側のsettings.jsonへCanonical Copyしない
 
 Hub統合でも対象Repository Read-only、allowlisted command、trusted sender検証、sandbox / contextIsolation等の既存Security Contractを維持します。
+
+## クラウドAIチームの試験機能（ローカルLLM不要）
+
+無料API枠の候補を使ってAI同士の議論と開発レビューを行う、既存監査機能から独立したCLI実験です。安全のため既定は模擬AIで、実APIは手動設定が必要です。
+
+詳細・起動方法・課金注意事項は [`docs/cloud-team.md`](docs/cloud-team.md) を参照してください。PC Agentの操作や自動PR作成はまだ対象外です。
